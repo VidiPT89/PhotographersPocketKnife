@@ -1,0 +1,29 @@
+"splash.developedBy" = "Developed by";
+
+"module.culling" = "Culling";
+"module.editing" = "Editing";
+"module.upload" = "Upload";
+
+"sidebar.folders" = "Folders & Collections";
+"sidebar.destinations" = "Upload Destinations";
+"sidebar.empty" = "Nothing here yet";
+
+"toolbar.language" = "Language";
+"toolbar.theme" = "Theme";
+
+"theme.dark" = "Dark";
+"theme.light" = "Light";
+"theme.system" = "System";
+
+"status.selected" = "%d photos selected";
+"status.offline" = "Not connected";
+
+"culling.empty.title" = "No photos imported";
+"culling.empty.subtitle" = "Import a memory card or folder to start culling.";
+"culling.import" = "Import";
+
+"editing.empty.title" = "No photos to edit";
+"editing.empty.subtitle" = "Select photos in the Culling module to edit them here.";
+
+"upload.empty.title" = "Upload queue is empty";
+"upload.empty.subtitle" = "Add an FTP/SFTP destination and send your final photos.";

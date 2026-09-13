@@ -1,0 +1,29 @@
+"splash.developedBy" = "Developed by";
+
+"module.culling" = "Seleção";
+"module.editing" = "Edição";
+"module.upload" = "Envio";
+
+"sidebar.folders" = "Pastas e Coleções";
+"sidebar.destinations" = "Destinos de Envio";
+"sidebar.empty" = "Nada por aqui ainda";
+
+"toolbar.language" = "Idioma";
+"toolbar.theme" = "Tema";
+
+"theme.dark" = "Escuro";
+"theme.light" = "Claro";
+"theme.system" = "Sistema";
+
+"status.selected" = "%d fotos selecionadas";
+"status.offline" = "Sem ligação";
+
+"culling.empty.title" = "Nenhuma foto importada";
+"culling.empty.subtitle" = "Importa um cartão de memória ou uma pasta para começar a seleção.";
+"culling.import" = "Importar";
+
+"editing.empty.title" = "Nenhuma foto para editar";
+"editing.empty.subtitle" = "Seleciona fotos no módulo de Seleção para as editar aqui.";
+
+"upload.empty.title" = "Fila de envio vazia";
+"upload.empty.subtitle" = "Adiciona um destino FTP/SFTP e envia as tuas fotos finais.";

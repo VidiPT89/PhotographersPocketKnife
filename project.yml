@@ -1,0 +1,51 @@
+name: PhotographersPocketKnife
+options:
+  bundleIdPrefix: dev.ividi
+  deploymentTarget:
+    macOS: "14.0"
+  developmentLanguage: en
+  knownRegions: [en, pt-PT]
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  PhotographersPocketKnife:
+    type: application
+    platform: macOS
+    sources:
+      - App
+      - DesignSystem
+      - Modules
+      - Localization
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ividi.PhotographersPocketKnife
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: PhotographersPocketKnife
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© David Arsénio Martins"
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+  PhotographersPocketKnifeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: PhotographersPocketKnife
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PhotographersPocketKnife.app/Contents/MacOS/PhotographersPocketKnife"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  PhotographersPocketKnife:
+    build:
+      targets:
+        PhotographersPocketKnife: all
+    test:
+      targets:
+        - PhotographersPocketKnifeTests
