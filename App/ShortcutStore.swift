@@ -9,6 +9,10 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    var isColorLabel: Bool {
+        [.labelRed, .labelYellow, .labelGreen, .labelBlue, .labelPurple].contains(self)
+    }
+
     /// Ações de classificação mostram uma confirmação; as de navegação não.
     var showsToast: Bool {
         switch self {

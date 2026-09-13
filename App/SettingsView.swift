@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct SettingsView: View {
     @Environment(AppState.self) private var app
@@ -11,8 +12,53 @@ struct SettingsView: View {
                 .tabItem { Label(app.t("settings.shortcuts"), systemImage: "keyboard") }
             UploadSettings()
                 .tabItem { Label(app.t("settings.upload"), systemImage: "arrow.up.to.line") }
+            HotFolderSettings()
+                .tabItem { Label(app.t("hotFolder.title"), systemImage: "flame") }
         }
         .frame(width: 640, height: 480)
+    }
+}
+
+private struct HotFolderSettings: View {
+    @Environment(AppState.self) private var app
+    @Query(sort: \UploadDestination.name) private var destinations: [UploadDestination]
+
+    var body: some View {
+        @Bindable var hot = app.hotFolder
+        Form {
+            Section {
+                Toggle(app.t("hotFolder.enable"), isOn: $hot.isEnabled)
+                Text(app.t("hotFolder.hint"))
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecondary)
+            }
+            Section {
+                Picker(app.t("hotFolder.label"), selection: $hot.label) {
+                    ForEach(ColorLabel.allCases.dropFirst()) { label in
+                        Text(app.t(label.labelKey)).tag(label)
+                    }
+                }
+                Picker(app.t("upload.destination"), selection: $hot.destinationID) {
+                    Text("—").tag(UUID?.none)
+                    ForEach(destinations) { Text($0.name).tag(Optional($0.id)) }
+                }
+                TextField(app.t("rename.event"), text: $hot.event)
+                LabeledContent(app.t("hotFolder.exportFolder")) {
+                    HStack {
+                        Text(hot.exportFolder.path).lineLimit(1).truncationMode(.middle)
+                        Button(app.t("common.choose")) {
+                            if let url = FilePanels.chooseFolder(prompt: app.t("common.choose")) { hot.exportFolderPath = url.path }
+                        }
+                    }
+                }
+            } footer: {
+                Text(app.t("hotFolder.settingsHint"))
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecondary)
+            }
+        }
+        .formStyle(.grouped)
+        .disabled(false)
     }
 }
 

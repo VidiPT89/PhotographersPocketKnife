@@ -27,6 +27,7 @@ struct PhotographersPocketKnifeApp: App {
                 .frame(minWidth: 1100, minHeight: 680)
                 .onAppear {
                     appState.transfers.attach(context: container.mainContext)
+                    appState.hotFolder.attach(context: container.mainContext)
                     appDelegate.attach { urls in openFromFinder(urls) }
                 }
         }

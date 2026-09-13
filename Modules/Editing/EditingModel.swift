@@ -86,8 +86,12 @@ final class EditingModel {
     private(set) var presetFlash = UUID()
     var selectedMaskID: UUID?
 
-    var tab: EditTab = .basic {
-        didSet { if oldValue == .geometry || tab == .geometry { scheduleRender() } }
+    /// O último separador fica guardado entre sessões.
+    var tab: EditTab = EditTab(rawValue: UserDefaults.standard.string(forKey: "editing.tab") ?? "") ?? .basic {
+        didSet {
+            UserDefaults.standard.set(tab.rawValue, forKey: "editing.tab")
+            if oldValue == .geometry || tab == .geometry { scheduleRender() }
+        }
     }
     var compareMode: CompareMode = .off {
         didSet { scheduleRender() }

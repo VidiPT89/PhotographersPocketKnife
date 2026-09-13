@@ -44,6 +44,8 @@ final class AppStateTests: XCTestCase {
             + CullingAction.allCases.map(\.labelKey) + EditTab.allCases.map(\.labelKey) + CompareMode.allCases.map(\.labelKey)
             + CropGuide.allCases.map(\.labelKey) + HSLComponent.allCases.map(\.labelKey) + HSLBand.allCases.map(\.labelKey)
             + CurveChannel.allCases.map(\.labelKey) + UploadTab.allCases.map(\.labelKey)
+            + MaskKind.allCases.map(\.labelKey) + OutputSharpening.allCases.map(\.labelKey) + MetadataRule.allCases.map(\.labelKey)
+            + ResizeMode.allCases.map(\.labelKey) + WatermarkPosition.allCases.map(\.labelKey)
             + AdjustmentSpec.sections.flatMap { [$0.titleKey] + $0.specs.map(\.labelKey) }
         XCTAssertEqual(Set(dynamic).subtracting(available), [])
     }

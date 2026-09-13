@@ -47,6 +47,11 @@ final class TransferIntegrationTests: XCTestCase {
         try await uploadAndVerify(destination, password: "ppkpass123")
     }
 
+    func testWebDAVUpload() async throws {
+        let destination = makeDestination(.webdav, host: "http://localhost:8088", port: 8088, user: "ppk", password: "ppkpass", template: "/{year}/{event}")
+        try await uploadAndVerify(destination, password: "ppkpass")
+    }
+
     func testUnreachableServerRetriesThenFails() async throws {
         let destination = makeDestination(.ftp, host: "127.0.0.1", port: 1, user: "x", password: "y", template: "/")
         let queue = TransferQueue()
@@ -106,7 +111,7 @@ final class TransferIntegrationTests: XCTestCase {
             switch endpoint.transferProtocol {
             case .ftps: args.append("--ssl-reqd")
             case .s3: args += ["--aws-sigv4", "aws:amz:\(endpoint.region):s3"]
-            case .ftp, .sftp: break
+            case .ftp, .sftp, .webdav: break
             }
             args.append(CurlCommand.url(endpoint, remotePath: item.remotePath))
             try await CurlProcess().run(arguments: args, config: CurlCommand.config(endpoint))

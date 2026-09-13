@@ -81,6 +81,7 @@ final class AppState {
     let culling = CullingModel()
     let editing = EditingModel()
     let transfers = TransferQueue()
+    let hotFolder = HotFolderService()
     let shortcuts: ShortcutStore
 
     private var bundle: Bundle

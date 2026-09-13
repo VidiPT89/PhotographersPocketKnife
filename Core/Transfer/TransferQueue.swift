@@ -23,13 +23,55 @@ final class TransferItem: Identifiable {
     var status: TransferStatus = .pending
     var progress = 0.0
     var attempts = 0
+    /// Velocidade suavizada (média exponencial) em bytes por segundo.
+    var bytesPerSecond = 0.0
+    @ObservationIgnored private var lastSample: (time: Date, progress: Double)?
 
-    init(fileURL: URL, destinationID: UUID, destinationName: String, remotePath: String) {
+    init(fileURL: URL, destinationID: UUID, destinationName: String, remotePath: String, bytes: Int64? = nil) {
         self.fileURL = fileURL
         self.destinationID = destinationID
         self.destinationName = destinationName
         self.remotePath = remotePath
-        bytes = Int64((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        self.bytes = bytes ?? Int64((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    }
+
+    func updateProgress(_ value: Double, now: Date = Date()) {
+        let newValue = max(progress, min(value, 1))
+        if let last = lastSample {
+            let elapsed = now.timeIntervalSince(last.time)
+            if elapsed >= 0.25 {
+                let instant = (newValue - last.progress) * Double(bytes) / elapsed
+                bytesPerSecond = bytesPerSecond == 0 ? instant : bytesPerSecond * 0.7 + instant * 0.3
+                lastSample = (now, newValue)
+            }
+        } else {
+            lastSample = (now, newValue)
+        }
+        progress = newValue
+    }
+
+    func resetSpeed() {
+        bytesPerSecond = 0
+        lastSample = nil
+    }
+
+    var remainingSeconds: Double? {
+        guard bytesPerSecond > 1 else { return nil }
+        return (1 - progress) * Double(bytes) / bytesPerSecond
+    }
+}
+
+enum TransferFormat {
+    static func speed(_ bytesPerSecond: Double) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .file) + "/s"
+    }
+
+    static func duration(_ seconds: Double) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = seconds >= 3600 ? [.hour, .minute] : [.minute, .second]
+        formatter.maximumUnitCount = 2
+        return formatter.string(from: max(seconds, 1)) ?? ""
     }
 }
 
@@ -74,6 +116,20 @@ final class TransferQueue {
         guard total > 0 else { return 0 }
         let done = items.reduce(0.0) { $0 + Double(max($1.bytes, 1)) * ($1.status == .done ? 1 : $1.progress) }
         return done / Double(total)
+    }
+
+    var totalBytesPerSecond: Double {
+        items.filter { $0.status == .running }.reduce(0) { $0 + $1.bytesPerSecond }
+    }
+
+    /// Tempo estimado para acabar tudo o que falta, à velocidade atual.
+    var remainingSeconds: Double? {
+        let speed = totalBytesPerSecond
+        guard speed > 1 else { return nil }
+        let remaining = items
+            .filter { [.pending, .running, .waitingRetry].contains($0.status) }
+            .reduce(0.0) { $0 + (1 - $1.progress) * Double($1.bytes) }
+        return remaining / speed
     }
 
     var completedCount: Int { items.filter { $0.status == .done }.count }
@@ -157,7 +213,7 @@ final class TransferQueue {
             trustUnknownHostKey: destination.trustUnknownHostKey
         )
         // A partir da 2.ª tentativa retoma o ficheiro parcial (FTP/SFTP).
-        let resume = item.attempts > 0 && item.progress > 0 && endpoint.transferProtocol != .s3
+        let resume = item.attempts > 0 && item.progress > 0 && [.ftp, .ftps, .sftp].contains(endpoint.transferProtocol)
         let command = TransferCommand.upload(endpoint, file: item.fileURL, remotePath: item.remotePath, resume: resume)
 
         item.status = .running
@@ -168,12 +224,14 @@ final class TransferQueue {
         Task {
             do {
                 try await process.run(arguments: command.arguments, config: command.input) { progress in
-                    Task { @MainActor in item.progress = max(item.progress, progress) }
+                    Task { @MainActor in item.updateProgress(progress) }
                 }
                 item.progress = 1
+                item.resetSpeed()
                 item.status = .done
                 record(item, error: nil)
             } catch TransferError.cancelled {
+                item.resetSpeed()
                 if item.status == .running { item.status = .pending }
             } catch let error as TransferError where error.isRetryable && item.attempts < maxAttempts {
                 item.status = .waitingRetry

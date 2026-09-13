@@ -68,16 +68,16 @@ final class Photo {
 }
 
 enum TransferProtocol: String, CaseIterable, Identifiable, Sendable, Codable {
-    case ftp, ftps, sftp, s3
+    case ftp, ftps, sftp, webdav, s3
     var id: String { rawValue }
 
-    var displayName: String { rawValue.uppercased() }
+    var displayName: String { self == .webdav ? "WebDAV" : rawValue.uppercased() }
 
     var defaultPort: Int {
         switch self {
         case .ftp, .ftps: 21
         case .sftp: 22
-        case .s3: 443
+        case .webdav, .s3: 443
         }
     }
 }

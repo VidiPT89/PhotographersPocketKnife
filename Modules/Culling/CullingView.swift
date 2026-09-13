@@ -101,6 +101,13 @@ struct CullingView: View {
         }
         let affected = culling.viewMode == .compare ? 1 : culling.targets(in: list).count
         withAnimation(Motion.pop) { culling.perform(action, in: list) }
+        if action.isColorLabel, app.hotFolder.isEnabled {
+            let started = app.hotFolder.handleLabelChange(culling.targets(in: list), transfers: app.transfers)
+            if started > 0 {
+                app.showToast(String(format: app.t("toast.hotFolder"), started), icon: "flame.fill")
+                return .handled
+            }
+        }
         if action.showsToast, affected > 0 {
             app.showToast(String(format: app.t("toast.action"), app.t(action.labelKey), affected), icon: action.icon)
         }
@@ -299,15 +306,40 @@ private struct FolderDropTarget: ViewModifier {
                 onFolder(folder)
                 return true
             } isTargeted: { targeted = $0 }
-            .overlay {
-                if targeted {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Brand.gradient, lineWidth: 3)
-                        .shadow(color: Brand.orange.opacity(0.8), radius: 12)
-                        .padding(6)
-                        .allowsHitTesting(false)
-                }
+            .overlay { DropZoneOverlay(active: targeted) }
+    }
+}
+
+/// Contorno tracejado âmbar que "respira" enquanto há ficheiros por cima de uma zona de largada.
+struct DropZoneOverlay: View {
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: CGFloat = 0
+    @State private var breathe = false
+
+    var body: some View {
+        ZStack {
+            if active {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Brand.amber.opacity(0.07))
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Brand.amber, style: StrokeStyle(lineWidth: 2.5, dash: [10, 7], dashPhase: phase))
+                    .shadow(color: Brand.orange.opacity(breathe ? 0.8 : 0.35), radius: breathe ? 14 : 6)
+                    .transition(.opacity)
             }
-            .animation(Motion.smooth, value: targeted)
+        }
+        .padding(6)
+        .scaleEffect(active && breathe && !reduceMotion ? 0.995 : 1)
+        .allowsHitTesting(false)
+        .animation(Motion.smooth, value: active)
+        .onChange(of: active) { _, isActive in
+            guard isActive, !reduceMotion else {
+                phase = 0
+                breathe = false
+                return
+            }
+            withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { phase = -17 }
+            withAnimation(.easeInOut(duration: 1.1).repeatForever()) { breathe = true }
+        }
     }
 }

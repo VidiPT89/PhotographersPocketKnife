@@ -66,6 +66,9 @@ struct TransferCommand: Sendable {
     let environment: [String: String]?
 
     static func upload(_ endpoint: TransferEndpoint, file: URL, remotePath: String, resume: Bool) -> TransferCommand {
+        if endpoint.transferProtocol == .webdav {
+            return TransferCommand(executable: "/usr/bin/curl", arguments: ["--config", "-"], input: WebDAVCommand.uploadConfig(endpoint, file: file, remotePath: remotePath), environment: nil)
+        }
         if endpoint.transferProtocol == .sftp {
             return TransferCommand(
                 executable: SFTPCommand.executable,
@@ -83,6 +86,9 @@ struct TransferCommand: Sendable {
     }
 
     static func test(_ endpoint: TransferEndpoint) -> TransferCommand {
+        if endpoint.transferProtocol == .webdav {
+            return TransferCommand(executable: "/usr/bin/curl", arguments: ["--config", "-"], input: WebDAVCommand.testConfig(endpoint), environment: nil)
+        }
         if endpoint.transferProtocol == .sftp {
             return TransferCommand(
                 executable: SFTPCommand.executable,
@@ -92,6 +98,50 @@ struct TransferCommand: Sendable {
             )
         }
         return TransferCommand(executable: "/usr/bin/curl", arguments: CurlCommand.testArguments(endpoint), input: CurlCommand.config(endpoint), environment: nil)
+    }
+}
+
+/// WebDAV com o curl do sistema. Tudo vai no ficheiro de configuração (stdin), incluindo as credenciais:
+/// primeiro um MKCOL por cada pasta (ignora "já existe"), depois o PUT do ficheiro.
+enum WebDAVCommand {
+    static func uploadConfig(_ endpoint: TransferEndpoint, file: URL, remotePath: String) -> String {
+        let credentials = CurlCommand.config(endpoint)
+        var parts: [String] = []
+        var folder = ""
+        for component in remotePath.split(separator: "/").dropLast() {
+            folder += "/" + component
+            parts.append(credentials + """
+            connect-timeout = 20
+            silent
+            request = "MKCOL"
+            url = "\(CurlCommand.escape(CurlCommand.url(endpoint, remotePath: folder + "/")))"
+
+            """)
+        }
+        parts.append(credentials + """
+        connect-timeout = 20
+        show-error
+        fail
+        progress-bar
+        upload-file = "\(CurlCommand.escape(file.path))"
+        url = "\(CurlCommand.escape(CurlCommand.url(endpoint, remotePath: remotePath)))"
+
+        """)
+        return parts.joined(separator: "next\n")
+    }
+
+    static func testConfig(_ endpoint: TransferEndpoint) -> String {
+        CurlCommand.config(endpoint) + """
+        connect-timeout = 20
+        silent
+        show-error
+        fail
+        request = "PROPFIND"
+        header = "Depth: 0"
+        output = "/dev/null"
+        url = "\(CurlCommand.escape(CurlCommand.url(endpoint, remotePath: "/")))"
+
+        """
     }
 }
 
@@ -161,6 +211,12 @@ enum CurlCommand {
         switch endpoint.transferProtocol {
         case .ftp, .ftps: return "ftp://\(endpoint.host):\(endpoint.port)\(path)"
         case .sftp: return "sftp://\(endpoint.host):\(endpoint.port)\(path)"
+        case .webdav:
+            if endpoint.host.hasPrefix("http://") || endpoint.host.hasPrefix("https://") {
+                let base = endpoint.host.hasSuffix("/") ? String(endpoint.host.dropLast()) : endpoint.host
+                return base + path
+            }
+            return "https://\(endpoint.host):\(endpoint.port)\(path)"
         case .s3:
             // Endpoints com esquema explícito (ex. MinIO local em http://) são usados tal como estão.
             if endpoint.host.hasPrefix("http://") || endpoint.host.hasPrefix("https://") {
@@ -178,7 +234,7 @@ enum CurlCommand {
         case .ftp, .ftps, .sftp:
             args.append("--ftp-create-dirs")
             if resume { args += ["-C", "-"] }
-        case .s3:
+        case .s3, .webdav:
             break
         }
         args.append(url(endpoint, remotePath: remotePath))
@@ -194,16 +250,19 @@ enum CurlCommand {
             args += ["--list-only", "sftp://\(endpoint.host):\(endpoint.port)/~/"]
         case .s3:
             args += ["-I", url(endpoint, remotePath: "/")]
+        case .webdav:
+            args += ["-X", "PROPFIND", "-H", "Depth: 0", url(endpoint, remotePath: "/")]
         }
         return args
     }
 
+    static func escape(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
     /// Credenciais via stdin (`--config -`) para não aparecerem na lista de processos.
     static func config(_ endpoint: TransferEndpoint) -> String {
-        func escape(_ s: String) -> String {
-            s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        }
-        return "user = \"\(escape(endpoint.username)):\(escape(endpoint.password))\"\n"
+        "user = \"\(escape(endpoint.username)):\(escape(endpoint.password))\"\n"
     }
 
     static func parseProgress(_ output: String) -> Double? {
@@ -218,7 +277,7 @@ enum CurlCommand {
         case .ftps: args.append("--ssl-reqd")
         case .sftp: if endpoint.trustUnknownHostKey { args.append("--insecure") }
         case .s3: args += ["--aws-sigv4", "aws:amz:\(endpoint.region):s3"]
-        case .ftp: break
+        case .ftp, .webdav: break
         }
         return args
     }

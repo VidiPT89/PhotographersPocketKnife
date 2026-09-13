@@ -4,48 +4,6 @@ import CoreImage.CIFilterBuiltins
 import ImageIO
 import UniformTypeIdentifiers
 
-enum ExportFormat: String, CaseIterable, Identifiable, Codable, Sendable {
-    case jpeg, tiff, png, heic, dng
-    var id: String { rawValue }
-
-    var utType: UTType {
-        switch self {
-        case .jpeg: .jpeg
-        case .tiff: .tiff
-        case .png: .png
-        case .heic: .heic
-        case .dng: UTType("com.adobe.raw-image") ?? .tiff
-        }
-    }
-
-    var fileExtension: String { self == .jpeg ? "jpg" : rawValue }
-    var displayName: String { rawValue.uppercased() }
-    var supportsQuality: Bool { self == .jpeg || self == .heic }
-    var supports16Bit: Bool { self == .tiff || self == .png }
-}
-
-struct ExportSettings: Codable, Equatable, Sendable {
-    var format: ExportFormat = .jpeg
-    var quality = 0.9
-    var resize = false
-    var longEdge = 2048
-    var suffix = ""
-    var includeMetadata = true
-    var sixteenBit = false
-}
-
-enum ExportError: LocalizedError {
-    case unreadable(String)
-    case cannotWrite(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .unreadable(let name): "Cannot read \(name)"
-        case .cannotWrite(let name): "Cannot export \(name)"
-        }
-    }
-}
-
 /// Pipeline Core Image (acelerado por Metal) partilhado pela edição, thumbnails editadas e exportação.
 final class ImageRenderer: @unchecked Sendable {
     static let shared = ImageRenderer()
@@ -55,7 +13,7 @@ final class ImageRenderer: @unchecked Sendable {
     private var baseCache: [String: CGImage] = [:]
     private var baseOrder: [String] = []
     private var cubeCache: (recipe: EditRecipe, data: Data)?
-    private let sRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    let sRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
     private let extendedLinear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB) ?? CGColorSpaceCreateDeviceRGB()
 
     // MARK: Preview
@@ -411,77 +369,4 @@ final class ImageRenderer: @unchecked Sendable {
         return data
     }
 
-    // MARK: Exportação
-
-    func export(url: URL, recipe: EditRecipe, settings: ExportSettings, to folder: URL) throws -> URL {
-        let source: CIImage?
-        if PhotoImporter.isRaw(url) {
-            source = decodeRAW(url, maxPixel: nil, lensCorrection: recipe.lensCorrection)
-        } else {
-            source = CIImage(contentsOf: url, options: [.applyOrientationProperty: true])
-        }
-        guard let source else { throw ExportError.unreadable(url.lastPathComponent) }
-
-        var image = apply(recipe, to: source)
-        if settings.resize {
-            let longest = max(image.extent.width, image.extent.height)
-            if longest > CGFloat(settings.longEdge) {
-                let f = CIFilter.lanczosScaleTransform()
-                f.inputImage = image
-                f.scale = Float(CGFloat(settings.longEdge) / longest)
-                f.aspectRatio = 1
-                image = f.outputImage ?? image
-                // O Lanczos deixa bordas fracionárias: corta para o tamanho exato pedido.
-                let e = image.extent
-                let scale = CGFloat(settings.longEdge) / longest
-                let size = CGSize(width: (source.extent.width * scale).rounded(), height: (source.extent.height * scale).rounded())
-                let fitted = e.width >= e.height
-                    ? CGSize(width: CGFloat(settings.longEdge), height: min(size.height, e.height.rounded(.down)))
-                    : CGSize(width: min(size.width, e.width.rounded(.down)), height: CGFloat(settings.longEdge))
-                image = image.cropped(to: CGRect(origin: CGPoint(x: e.minX.rounded(.up), y: e.minY.rounded(.up)), size: fitted))
-            }
-        }
-        image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
-
-        let baseName = url.deletingPathExtension().lastPathComponent + settings.suffix
-        let target = PhotoImporter.uniqueURL(folder.appendingPathComponent(baseName).appendingPathExtension(settings.format.fileExtension))
-
-        if settings.format == .dng {
-            try DNGWriter.write(image, context: context, to: target, camera: MetadataReader.basicInfo(for: url).camera)
-            return target
-        }
-
-        let format: CIFormat = settings.sixteenBit && settings.format.supports16Bit ? .RGBA16 : .RGBA8
-        guard let cgImage = context.createCGImage(image, from: image.extent.integral, format: format, colorSpace: sRGB) else {
-            throw ExportError.cannotWrite(url.lastPathComponent)
-        }
-
-        guard let destination = CGImageDestinationCreateWithURL(target as CFURL, settings.format.utType.identifier as CFString, 1, nil) else {
-            throw ExportError.cannotWrite(url.lastPathComponent)
-        }
-
-        var properties: [CFString: Any] = [kCGImagePropertyOrientation: 1]
-        if settings.format.supportsQuality {
-            properties[kCGImageDestinationLossyCompressionQuality] = settings.quality
-        }
-        if settings.includeMetadata {
-            let original = MetadataReader.properties(for: url)
-            for key in [kCGImagePropertyExifDictionary, kCGImagePropertyIPTCDictionary, kCGImagePropertyGPSDictionary] {
-                if let value = original[key as String] { properties[key] = value }
-            }
-            if var tiff = original[kCGImagePropertyTIFFDictionary as String] as? [String: Any] {
-                tiff[kCGImagePropertyTIFFOrientation as String] = 1
-                properties[kCGImagePropertyTIFFDictionary] = tiff
-            }
-        }
-
-        // Em RAW, os IPTC vivem no sidecar XMP: vão junto com a imagem exportada.
-        if settings.includeMetadata, PhotoImporter.isRaw(url), let xmp = MetadataWriter.readMetadata(for: url) {
-            CGImageDestinationAddImageAndMetadata(destination, cgImage, xmp, properties as CFDictionary)
-        } else {
-            CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
-        }
-        guard CGImageDestinationFinalize(destination) else { throw ExportError.cannotWrite(url.lastPathComponent) }
-        return target
-    }
 }
