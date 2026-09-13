@@ -1,15 +1,238 @@
 import SwiftUI
+import SwiftData
 
 struct CullingView: View {
     @Environment(AppState.self) private var app
+    @Query(sort: \Photo.importedAt) private var photos: [Photo]
+    @FocusState private var keyboardFocus: Bool
 
     var body: some View {
-        EmptyModuleView(
-            systemImage: "photo.stack",
-            title: app.t("culling.empty.title"),
-            subtitle: app.t("culling.empty.subtitle"),
-            actionTitle: app.t("culling.import"),
-            action: {}
-        )
+        @Bindable var culling = app.culling
+        let list = culling.visible(photos)
+
+        VStack(spacing: 0) {
+            CullingToolbar(photos: photos, visible: list)
+            Divider()
+            HStack(spacing: 0) {
+                content(list: list)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if culling.showInfoPanel, !photos.isEmpty {
+                    Divider()
+                    InfoPanel(photo: culling.focused(in: list))
+                        .frame(width: 260)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+            .animation(Motion.smooth, value: culling.showInfoPanel)
+        }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($keyboardFocus)
+        .onAppear { keyboardFocus = true }
+        .simultaneousGesture(TapGesture().onEnded { keyboardFocus = true })
+        .onKeyPress(phases: .down) { press in handleKey(press, list: list) }
+        .sheet(item: $culling.activeSheet) { sheet in
+            switch sheet {
+            case .importFolder(let url): ImportSheet(folder: url)
+            case .rename: RenameSheet(photos: culling.targets(in: list))
+            case .metadata: MetadataSheet(photos: culling.targets(in: list))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func content(list: [Photo]) -> some View {
+        if photos.isEmpty {
+            EmptyModuleView(
+                systemImage: "photo.stack",
+                title: app.t("culling.empty.title"),
+                subtitle: app.t("culling.empty.subtitle"),
+                actionTitle: app.t("culling.import"),
+                action: { FilePanels.chooseImportFolder(app) }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .folderDropTarget { app.culling.activeSheet = .importFolder($0) }
+        } else {
+            switch app.culling.viewMode {
+            case .grid: PhotoGridView(list: list).transition(.opacity)
+            case .loupe: LoupeView(list: list).transition(.opacity)
+            case .compare: CompareView(list: list).transition(.opacity)
+            }
+        }
+    }
+
+    private func handleKey(_ press: KeyPress, list: [Photo]) -> KeyPress.Result {
+        let culling = app.culling
+        let extend = press.modifiers.contains(.shift)
+        let rowStep = culling.viewMode == .grid ? max(culling.gridColumns, 1) : 1
+        switch press.key {
+        case .leftArrow: culling.move(by: -1, in: list, extend: extend); return .handled
+        case .rightArrow: culling.move(by: 1, in: list, extend: extend); return .handled
+        case .upArrow: culling.move(by: -rowStep, in: list, extend: extend); return .handled
+        case .downArrow: culling.move(by: rowStep, in: list, extend: extend); return .handled
+        case .escape:
+            guard culling.viewMode != .grid else { return .ignored }
+            withAnimation(Motion.smooth) { culling.viewMode = .grid }
+            return .handled
+        default: break
+        }
+        if press.modifiers.contains(.command) {
+            guard press.characters == "a" else { return .ignored }
+            culling.selection = Set(list.map(\.id))
+            return .handled
+        }
+        guard let action = app.shortcuts.action(for: press.characters) else { return .ignored }
+        withAnimation(Motion.pop) { culling.perform(action, in: list) }
+        return .handled
+    }
+}
+
+struct CullingToolbar: View {
+    @Environment(AppState.self) private var app
+    let photos: [Photo]
+    let visible: [Photo]
+
+    var body: some View {
+        @Bindable var c = app.culling
+        let cameras = Set(photos.compactMap(\.camera)).sorted()
+        let lenses = Set(photos.compactMap(\.lens)).sorted()
+        let hasTargets = !c.targets(in: visible).isEmpty
+
+        HStack(spacing: 10) {
+            PrimaryButton(title: app.t("culling.import"), systemImage: "square.and.arrow.down") {
+                FilePanels.chooseImportFolder(app)
+            }
+
+            Picker("", selection: $c.viewMode) {
+                ForEach(CullingViewMode.allCases) { Image(systemName: $0.icon).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 110)
+
+            Menu {
+                Picker(app.t("filter.minRating"), selection: $c.minRating) {
+                    ForEach(0...5, id: \.self) { Text($0 == 0 ? app.t("filter.any") : String(repeating: "★", count: $0)).tag($0) }
+                }
+                Picker(app.t("filter.flag"), selection: $c.flagFilter) {
+                    ForEach(FlagFilter.allCases) { Text(app.t($0.labelKey)).tag($0) }
+                }
+                Picker(app.t("filter.color"), selection: $c.colorFilter) {
+                    Text(app.t("filter.any")).tag(ColorLabel?.none)
+                    ForEach(ColorLabel.allCases.dropFirst()) { Text(app.t($0.labelKey)).tag(Optional($0)) }
+                }
+                Picker(app.t("meta.camera"), selection: $c.camera) {
+                    Text(app.t("filter.any")).tag(String?.none)
+                    ForEach(cameras, id: \.self) { Text($0).tag(Optional($0)) }
+                }
+                Picker(app.t("meta.lens"), selection: $c.lens) {
+                    Text(app.t("filter.any")).tag(String?.none)
+                    ForEach(lenses, id: \.self) { Text($0).tag(Optional($0)) }
+                }
+                Divider()
+                Button(app.t("filter.clear")) { c.clearFilters() }
+            } label: {
+                Label(app.t("filter.title"), systemImage: c.hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            }
+            .fixedSize()
+
+            Menu {
+                Picker(app.t("sort.title"), selection: $c.sort) {
+                    ForEach(PhotoSort.allCases) { Text(app.t($0.labelKey)).tag($0) }
+                }
+                Toggle(app.t("sort.ascending"), isOn: $c.sortAscending)
+            } label: {
+                Label(app.t("sort.title"), systemImage: "arrow.up.arrow.down")
+            }
+            .fixedSize()
+
+            TextField(app.t("filter.search"), text: $c.searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 140)
+
+            Spacer()
+
+            Button {
+                if c.showDuplicatesOnly {
+                    c.showDuplicatesOnly = false
+                } else {
+                    Task { await c.findDuplicates(in: photos) }
+                }
+            } label: {
+                if c.isFindingDuplicates {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: c.showDuplicatesOnly ? "square.on.square.fill" : "square.on.square")
+                }
+            }
+            .help(app.t("culling.duplicates"))
+
+            Button { c.activeSheet = .rename } label: { Image(systemName: "character.cursor.ibeam") }
+                .help(app.t("rename.title"))
+                .disabled(!hasTargets)
+            Button { c.activeSheet = .metadata } label: { Image(systemName: "tag") }
+                .help(app.t("metadata.title"))
+                .disabled(!hasTargets)
+
+            Slider(value: $c.thumbnailSize, in: 110...360)
+                .frame(width: 90)
+                .help(app.t("culling.thumbnailSize"))
+
+            Button { c.showInfoPanel.toggle() } label: { Image(systemName: "sidebar.right") }
+                .help(app.t("info.metadata"))
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
+@MainActor
+enum FilePanels {
+    static func chooseFolder(prompt: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = prompt
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
+    static func chooseImportFolder(_ app: AppState) {
+        guard let url = chooseFolder(prompt: app.t("culling.import")) else { return }
+        app.module = .culling
+        app.culling.activeSheet = .importFolder(url)
+    }
+}
+
+extension View {
+    /// Aceita pastas largadas por drag & drop, com a zona a brilhar.
+    func folderDropTarget(_ onFolder: @escaping (URL) -> Void) -> some View {
+        modifier(FolderDropTarget(onFolder: onFolder))
+    }
+}
+
+private struct FolderDropTarget: ViewModifier {
+    let onFolder: (URL) -> Void
+    @State private var targeted = false
+
+    func body(content: Content) -> some View {
+        content
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let folder = urls.first(where: { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }) else { return false }
+                onFolder(folder)
+                return true
+            } isTargeted: { targeted = $0 }
+            .overlay {
+                if targeted {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Brand.gradient, lineWidth: 3)
+                        .shadow(color: Brand.orange.opacity(0.8), radius: 12)
+                        .padding(6)
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(Motion.smooth, value: targeted)
     }
 }

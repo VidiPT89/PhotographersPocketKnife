@@ -29,9 +29,9 @@ Tudo com uma interface cuidada, animada, com suporte a **Dark/Light/System mode*
 
 | Módulo | O que faz |
 |---|---|
-| **Culling** | Importação rápida de cartões de memória, grid de thumbnails, vista de lupa, comparação lado a lado, rating, flags, cores, renomeação em lote |
-| **Edição** | Exposição, contraste, cor, curvas, HSL, crop, presets, histórico visual, non-destructive |
-| **Envio** | Perfis FTP/SFTP guardados, fila de transferência com progresso, retomada automática, notificações |
+| **Culling** | Importação de cartões/pastas (com cópia por data), grid de thumbnails com cache, lupa, comparação de 2–4 fotos, rating, flags, cores, filtros e ordenação, renomeação em lote com templates, IPTC em lote (sidecar XMP para RAW), deteção de duplicados, atalhos configuráveis |
+| **Edição** | Non-destructive (Core Image + Metal): exposição, contraste, realces/sombras, brancos/pretos, temperatura/tinta, vibrância/saturação, nitidez, ruído, vinheta, curvas RGB e por canal, HSL, crop com terços/espiral dourada, endireitar, perspetiva, correção de lente RAW, histórico com undo/redo, presets, copiar/colar definições, antes/depois, exportação JPEG/TIFF/PNG/HEIC com presets |
+| **Envio** | Perfis FTP, FTPS, SFTP e S3 com passwords no Keychain, teste de ligação, pastas remotas por data/evento, fila com progresso, pausa/retoma, retry automático, notificações e histórico, "exportar + enviar" |
 
 ---
 
@@ -52,6 +52,8 @@ cd PhotographersPocketKnife
 xcodegen generate   # brew install xcodegen
 open PhotographersPocketKnife.xcodeproj
 ```
+
+Testes: `xcodebuild test -scheme PhotographersPocketKnife -destination 'platform=macOS'`
 
 Escolhe o scheme `PhotographersPocketKnife` e corre (⌘R). Requer macOS 14+, Xcode 15+ e [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 

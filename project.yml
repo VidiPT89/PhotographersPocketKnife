@@ -17,6 +17,7 @@ targets:
     platform: macOS
     sources:
       - App
+      - Core
       - DesignSystem
       - Modules
       - Localization

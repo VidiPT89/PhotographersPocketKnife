@@ -56,6 +56,13 @@ final class AppState {
 
     var module: AppModule = .culling
     var isSplashVisible = true
+    /// Ficheiros à espera de escolher destino no módulo de envio.
+    var pendingUploadURLs: [URL] = []
+
+    let culling = CullingModel()
+    let editing = EditingModel()
+    let transfers = TransferQueue()
+    let shortcuts: ShortcutStore
 
     private var bundle: Bundle
 
@@ -66,6 +73,8 @@ final class AppState {
         let lang = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .pt
         language = lang
         bundle = Self.bundle(for: lang)
+        shortcuts = ShortcutStore(defaults: defaults)
+        transfers.localize = { [weak self] key in self?.t(key) ?? key }
     }
 
     /// Traduz uma chave no idioma escolhido, sem depender do idioma do sistema.
