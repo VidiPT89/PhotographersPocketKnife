@@ -18,7 +18,7 @@ struct MetadataField: Identifiable, Sendable, Equatable {
 }
 
 enum MetadataReader {
-    nonisolated(unsafe) private static let exifDateFormatter: DateFormatter = {
+    private static let exifDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
