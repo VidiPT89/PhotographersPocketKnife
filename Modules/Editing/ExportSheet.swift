@@ -34,6 +34,11 @@ struct ExportSheet: View {
     @Query(sort: \UploadDestination.name) private var destinations: [UploadDestination]
     let photos: [Photo]
 
+    init(photos: [Photo], startWithUpload: Bool = false) {
+        self.photos = photos
+        _uploadAfter = State(initialValue: startWithUpload)
+    }
+
     @State private var settings = ExportPresetStore.lastSettings
     @State private var presets = ExportPresetStore.presets()
     @State private var presetName = ""

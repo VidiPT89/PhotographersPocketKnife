@@ -116,6 +116,12 @@ final class ImageRenderer: @unchecked Sendable {
 
     func apply(_ r: EditRecipe, to input: CIImage, applyCrop: Bool = true) -> CIImage {
         var image = input
+        // Raios dos filtros proporcionais ao tamanho: a preview (≈2000 px) e a exportação dão o mesmo aspeto.
+        let scale = max(max(input.extent.width, input.extent.height) / 2000, 0.25)
+
+        if r.chromaticAberration != 0 {
+            image = correctChromaticAberration(image, amount: r.chromaticAberration)
+        }
 
         if r.exposure != 0 {
             let f = CIFilter.exposureAdjust()
@@ -152,6 +158,12 @@ final class ImageRenderer: @unchecked Sendable {
             f.amount = Float(r.vibrance)
             image = f.outputImage ?? image
         }
+        if r.clarity != 0 {
+            image = localContrast(image, amount: r.clarity * 0.8, radius: 22 * scale)
+        }
+        if r.texture != 0 {
+            image = localContrast(image, amount: r.texture * 0.9, radius: 3 * scale)
+        }
         if r.needsToneCube {
             let f = CIFilter.colorCubeWithColorSpace()
             f.inputImage = image
@@ -167,12 +179,19 @@ final class ImageRenderer: @unchecked Sendable {
             f.sharpness = 0.4
             image = f.outputImage ?? image
         }
+        if r.colorNoiseReduction > 0 {
+            // Mantém a luminância original e usa a cor de uma versão desfocada: tira o ruído de cor sem perder detalhe.
+            let e = image.extent
+            let blurred = image.clampedToExtent().applyingGaussianBlur(sigma: r.colorNoiseReduction * 6 * scale).cropped(to: e)
+            image = image.applyingFilter("CILuminosityBlendMode", parameters: [kCIInputBackgroundImageKey: blurred]).cropped(to: e)
+        }
         if r.sharpness > 0 {
             let f = CIFilter.sharpenLuminance()
             f.inputImage = image
             f.sharpness = Float(r.sharpness * 1.2)
-            f.radius = 1.5
-            image = f.outputImage ?? image
+            f.radius = Float(max(r.sharpenRadius * scale, 0.5))
+            let sharpened = (f.outputImage ?? image).cropped(to: image.extent)
+            image = r.sharpenMasking > 0 ? blend(sharpened, over: image, mask: edgeMask(image, masking: r.sharpenMasking)) : sharpened
         }
 
         image = applyGeometry(r, to: image)
@@ -187,6 +206,9 @@ final class ImageRenderer: @unchecked Sendable {
             ).integral
             image = image.cropped(to: rect)
         }
+        for mask in r.masks where !mask.isNeutral {
+            image = applyMask(mask, to: image, scale: scale)
+        }
         if r.vignette != 0 {
             let e = image.extent
             let f = CIFilter.vignetteEffect()
@@ -197,7 +219,150 @@ final class ImageRenderer: @unchecked Sendable {
             f.falloff = 0.6
             image = (f.outputImage ?? image).cropped(to: e)
         }
+        if r.grain > 0 {
+            image = addGrain(image, amount: r.grain, size: r.grainSize, scale: scale)
+        }
         return image
+    }
+
+    // MARK: Filtros compostos
+
+    /// Contraste local (clareza/textura). Valores negativos suavizam misturando uma versão desfocada.
+    private func localContrast(_ image: CIImage, amount: Double, radius: CGFloat) -> CIImage {
+        let e = image.extent
+        if amount > 0 {
+            let f = CIFilter.unsharpMask()
+            f.inputImage = image.clampedToExtent()
+            f.radius = Float(radius)
+            f.intensity = Float(amount)
+            return (f.outputImage ?? image).cropped(to: e)
+        }
+        let blurred = image.clampedToExtent().applyingGaussianBlur(sigma: Double(radius) * 0.5).cropped(to: e)
+        return mix(image, blurred, amount: -amount)
+    }
+
+    /// Mistura `top` por cima de `base` com a opacidade indicada.
+    private func mix(_ base: CIImage, _ top: CIImage, amount: Double) -> CIImage {
+        let faded = top.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(min(max(amount, 0), 1)))])
+        return faded.composited(over: base).cropped(to: base.extent)
+    }
+
+    private func blend(_ top: CIImage, over base: CIImage, mask: CIImage) -> CIImage {
+        top.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: base, kCIInputMaskImageKey: mask]).cropped(to: base.extent)
+    }
+
+    /// Máscara de contornos para a nitidez: com `masking` alto só as arestas fortes são afiadas.
+    private func edgeMask(_ image: CIImage, masking: Double) -> CIImage {
+        let edges = image.applyingFilter("CIEdges", parameters: [kCIInputIntensityKey: 6]).applyingFilter("CIMaximumComponent")
+        let f = CIFilter.colorControls()
+        f.inputImage = edges
+        f.contrast = Float(1 + masking * 3)
+        f.brightness = Float(0.2 - masking * 0.5)
+        f.saturation = 0
+        return (f.outputImage ?? edges).cropped(to: image.extent)
+    }
+
+    /// Aberração cromática lateral: aproxima/afasta os canais vermelho e azul do centro.
+    private func correctChromaticAberration(_ image: CIImage, amount: Double) -> CIImage {
+        let e = image.extent
+        let shift = CGFloat(amount) * 0.003
+        func channel(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, scale: CGFloat) -> CIImage {
+            let isolated = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: r, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: g, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: b, w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            ])
+            let transform = CGAffineTransform(translationX: e.midX, y: e.midY).scaledBy(x: scale, y: scale).translatedBy(x: -e.midX, y: -e.midY)
+            return isolated.clampedToExtent().transformed(by: transform).cropped(to: e)
+        }
+        let red = channel(1, 0, 0, scale: 1 - shift)
+        let green = channel(0, 1, 0, scale: 1)
+        let blue = channel(0, 0, 1, scale: 1 + shift)
+        return red
+            .applyingFilter("CIMaximumCompositing", parameters: [kCIInputBackgroundImageKey: green])
+            .applyingFilter("CIMaximumCompositing", parameters: [kCIInputBackgroundImageKey: blue])
+            .cropped(to: e)
+    }
+
+    /// Grão monocromático em soft light, com tamanho proporcional à imagem.
+    private func addGrain(_ image: CIImage, amount: Double, size: Double, scale: CGFloat) -> CIImage {
+        let e = image.extent
+        guard let noise = CIFilter.randomGenerator().outputImage else { return image }
+        let strength = CGFloat(min(max(amount, 0), 1) * 0.55)
+        let luma = CIVector(x: 0.3 * strength, y: 0.59 * strength, z: 0.11 * strength, w: 0)
+        let neutral = 0.5 * (1 - strength)
+        let grainScale = CGFloat(0.6 + size * 2.4) * scale
+        let grain = noise
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": luma, "inputGVector": luma, "inputBVector": luma,
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                "inputBiasVector": CIVector(x: neutral, y: neutral, z: neutral, w: 0),
+            ])
+            .transformed(by: CGAffineTransform(scaleX: grainScale, y: grainScale))
+            .cropped(to: e)
+        return grain.applyingFilter("CISoftLightBlendMode", parameters: [kCIInputBackgroundImageKey: image]).cropped(to: e)
+    }
+
+    // MARK: Máscaras locais
+
+    func applyMask(_ mask: LocalMask, to image: CIImage, scale: CGFloat) -> CIImage {
+        let e = image.extent
+        var adjusted = image
+        if mask.exposure != 0 {
+            let f = CIFilter.exposureAdjust()
+            f.inputImage = adjusted
+            f.ev = Float(mask.exposure)
+            adjusted = f.outputImage ?? adjusted
+        }
+        if mask.temperature != 0 {
+            let f = CIFilter.temperatureAndTint()
+            f.inputImage = adjusted
+            f.neutral = CIVector(x: 6500 + mask.temperature * 3000, y: 0)
+            f.targetNeutral = CIVector(x: 6500, y: 0)
+            adjusted = f.outputImage ?? adjusted
+        }
+        if mask.contrast != 0 || mask.saturation != 0 {
+            let f = CIFilter.colorControls()
+            f.inputImage = adjusted
+            f.contrast = Float(1 + mask.contrast * 0.5)
+            f.saturation = Float(1 + mask.saturation)
+            f.brightness = 0
+            adjusted = f.outputImage ?? adjusted
+        }
+        if mask.clarity != 0 {
+            adjusted = localContrast(adjusted, amount: mask.clarity * 0.8, radius: 22 * scale)
+        }
+        return blend(adjusted.cropped(to: e), over: image, mask: maskImage(mask, extent: e))
+    }
+
+    func maskImage(_ mask: LocalMask, extent e: CGRect) -> CIImage {
+        var gradient: CIImage
+        switch mask.kind {
+        case .radial:
+            let rx = max(CGFloat(mask.radiusX) * e.width, 1)
+            let ry = max(CGFloat(mask.radiusY) * e.height, 1)
+            let f = CIFilter.radialGradient()
+            f.center = .zero
+            f.radius0 = Float(rx * CGFloat(1 - mask.feather))
+            f.radius1 = Float(rx)
+            f.color0 = CIColor(red: 1, green: 1, blue: 1)
+            f.color1 = CIColor(red: 0, green: 0, blue: 0)
+            let center = CGPoint(x: e.minX + CGFloat(mask.centerX) * e.width, y: e.minY + CGFloat(1 - mask.centerY) * e.height)
+            gradient = (f.outputImage ?? CIImage.empty())
+                .transformed(by: CGAffineTransform(scaleX: 1, y: ry / rx).concatenating(CGAffineTransform(translationX: center.x, y: center.y)))
+        case .linear:
+            let f = CIFilter.linearGradient()
+            f.point0 = CGPoint(x: e.minX + CGFloat(mask.startX) * e.width, y: e.minY + CGFloat(1 - mask.startY) * e.height)
+            f.point1 = CGPoint(x: e.minX + CGFloat(mask.endX) * e.width, y: e.minY + CGFloat(1 - mask.endY) * e.height)
+            f.color0 = CIColor(red: 1, green: 1, blue: 1)
+            f.color1 = CIColor(red: 0, green: 0, blue: 0)
+            gradient = f.outputImage ?? CIImage.empty()
+        }
+        if mask.invert {
+            gradient = gradient.applyingFilter("CIColorInvert")
+        }
+        return gradient.cropped(to: e)
     }
 
     func applyGeometry(_ r: EditRecipe, to input: CIImage) -> CIImage {
@@ -239,15 +404,7 @@ final class ImageRenderer: @unchecked Sendable {
     private func cube(for recipe: EditRecipe) -> Data {
         lock.lock()
         defer { lock.unlock() }
-        var toneOnly = EditRecipe()
-        toneOnly.whites = recipe.whites
-        toneOnly.blacks = recipe.blacks
-        toneOnly.highlights = max(0, recipe.highlights)
-        toneOnly.curveMaster = recipe.curveMaster
-        toneOnly.curveRed = recipe.curveRed
-        toneOnly.curveGreen = recipe.curveGreen
-        toneOnly.curveBlue = recipe.curveBlue
-        toneOnly.hsl = recipe.hsl
+        let toneOnly = recipe.cubeRecipe
         if let cached = cubeCache, cached.recipe == toneOnly { return cached.data }
         let data = ColorCube.data(for: toneOnly)
         cubeCache = (toneOnly, data)

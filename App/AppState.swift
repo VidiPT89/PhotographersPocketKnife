@@ -74,6 +74,8 @@ final class AppState {
     var isSplashVisible = true
     /// Ficheiros à espera de escolher destino no módulo de envio.
     var pendingUploadURLs: [URL] = []
+    /// Pedido de exportação vindo do menu: `false` = exportar, `true` = exportar e enviar.
+    var pendingExport: Bool?
     private(set) var toast: Toast?
 
     let culling = CullingModel()

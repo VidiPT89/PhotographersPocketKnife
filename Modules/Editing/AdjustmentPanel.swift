@@ -5,6 +5,7 @@ struct AdjustmentSpec: Identifiable {
     let labelKey: String
     let keyPath: WritableKeyPath<EditRecipe, Double>
     let range: ClosedRange<Double>
+    var defaultValue = 0.0
     var id: String { labelKey }
 
     @MainActor static let sections: [(titleKey: String, specs: [AdjustmentSpec])] = [
@@ -16,6 +17,10 @@ struct AdjustmentSpec: Identifiable {
             AdjustmentSpec(labelKey: "adjust.whites", keyPath: \.whites, range: -1...1),
             AdjustmentSpec(labelKey: "adjust.blacks", keyPath: \.blacks, range: -1...1),
         ]),
+        ("adjust.presence", [
+            AdjustmentSpec(labelKey: "adjust.texture", keyPath: \.texture, range: -1...1),
+            AdjustmentSpec(labelKey: "adjust.clarity", keyPath: \.clarity, range: -1...1),
+        ]),
         ("adjust.color", [
             AdjustmentSpec(labelKey: "adjust.temperature", keyPath: \.temperature, range: -1...1),
             AdjustmentSpec(labelKey: "adjust.tint", keyPath: \.tint, range: -1...1),
@@ -24,10 +29,18 @@ struct AdjustmentSpec: Identifiable {
         ]),
         ("adjust.detail", [
             AdjustmentSpec(labelKey: "adjust.sharpness", keyPath: \.sharpness, range: 0...1),
+            AdjustmentSpec(labelKey: "adjust.sharpenRadius", keyPath: \.sharpenRadius, range: 0.5...3, defaultValue: 1),
+            AdjustmentSpec(labelKey: "adjust.sharpenMasking", keyPath: \.sharpenMasking, range: 0...1),
             AdjustmentSpec(labelKey: "adjust.noise", keyPath: \.noiseReduction, range: 0...1),
+            AdjustmentSpec(labelKey: "adjust.colorNoise", keyPath: \.colorNoiseReduction, range: 0...1),
+        ]),
+        ("adjust.optics", [
+            AdjustmentSpec(labelKey: "adjust.chromaticAberration", keyPath: \.chromaticAberration, range: -1...1),
         ]),
         ("adjust.effects", [
             AdjustmentSpec(labelKey: "adjust.vignette", keyPath: \.vignette, range: -1...1),
+            AdjustmentSpec(labelKey: "adjust.grain", keyPath: \.grain, range: 0...1),
+            AdjustmentSpec(labelKey: "adjust.grainSize", keyPath: \.grainSize, range: 0...1, defaultValue: 0.5),
         ]),
     ]
 }
@@ -41,6 +54,18 @@ struct AdjustmentPanel: View {
         VStack(spacing: 0) {
             HistogramView(data: editing.histogram)
                 .frame(height: 80)
+                .overlay(alignment: .topLeading) {
+                    ClippingIndicator(
+                        clipped: (editing.histogram?.clippedShadows ?? 0) > HistogramData.clippingThreshold,
+                        color: Color(hex: 0x3B82F6), isOn: editing.showClipping, helpKey: "clipping.shadows"
+                    ) { editing.showClipping.toggle() }
+                }
+                .overlay(alignment: .topTrailing) {
+                    ClippingIndicator(
+                        clipped: (editing.histogram?.clippedHighlights ?? 0) > HistogramData.clippingThreshold,
+                        color: Brand.error, isOn: editing.showClipping, helpKey: "clipping.highlights"
+                    ) { editing.showClipping.toggle() }
+                }
                 .padding(12)
 
             Picker("", selection: $editing.tab) {
@@ -63,6 +88,8 @@ struct AdjustmentPanel: View {
                     case .basic: basic
                     case .curve: CurvePanel()
                     case .hsl: HSLPanel()
+                    case .grading: ColorGradingPanel()
+                    case .masks: MasksPanel()
                     case .geometry: GeometryPanel()
                     case .presets: PresetsPanel(list: list)
                     case .history: HistoryPanel()
@@ -80,7 +107,7 @@ struct AdjustmentPanel: View {
         ForEach(Array(AdjustmentSpec.sections.enumerated()), id: \.element.titleKey) { index, section in
             CollapsibleSection(title: app.t(section.titleKey)) {
                 ForEach(section.specs) { spec in
-                    AdjustmentSlider(labelKey: spec.labelKey, value: spec.keyPath, range: spec.range)
+                    AdjustmentSlider(labelKey: spec.labelKey, value: spec.keyPath, range: spec.range, defaultValue: spec.defaultValue)
                 }
             }
             .appearAnimation(delay: Double(index) * 0.05)
@@ -95,27 +122,36 @@ struct AdjustmentSlider: View {
     let labelKey: String
     let value: WritableKeyPath<EditRecipe, Double>
     let range: ClosedRange<Double>
+    var defaultValue = 0.0
     var tint: Color = Brand.orange
+
+    /// Enquanto se arrasta, o valor ganha halo laranja e cresce ligeiramente.
+    @State private var dragging = false
 
     var body: some View {
         let editing = app.editing
         let current = editing.recipe[keyPath: value]
+        let changed = current != defaultValue
         VStack(spacing: 2) {
             HStack {
                 Text(app.t(labelKey))
                     .onTapGesture(count: 2) {
-                        editing.recipe[keyPath: value] = 0
+                        editing.recipe[keyPath: value] = defaultValue
                         editing.commit(labelKey)
                     }
                 Spacer()
                 Text(String(format: "%+.2f", current))
-                    .monospacedDigit()
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .contentTransition(.numericText(value: current))
-                    .foregroundStyle(current == 0 ? Palette.textSecondary : Brand.orange)
+                    .foregroundStyle(changed ? Brand.orange : Palette.textSecondary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(Capsule().fill(current == 0 ? Color.clear : Brand.orange.opacity(0.14)))
+                    .background(Capsule().fill(changed ? Brand.orange.opacity(0.14) : Color.clear))
+                    .scaleEffect(dragging ? 1.15 : 1)
+                    .offset(y: dragging ? -2 : 0)
+                    .shadow(color: Brand.orange.opacity(dragging ? 0.6 : 0), radius: 6)
                     .animation(Motion.snappy, value: current)
+                    .animation(Motion.snappy, value: dragging)
             }
             .font(Typography.caption)
             Slider(
@@ -128,9 +164,11 @@ struct AdjustmentSlider: View {
                 ),
                 in: range
             ) { isEditing in
+                dragging = isEditing
                 if !isEditing { editing.commit(labelKey) }
             }
             .tint(tint)
+            .shadow(color: Brand.orange.opacity(dragging ? 0.35 : 0), radius: 8)
         }
     }
 }
@@ -360,8 +398,10 @@ struct PresetsPanel: View {
                 Spacer()
                 Button(app.t("presets.apply")) {
                     guard let recipe = try? JSONDecoder().decode(EditRecipe.self, from: preset.recipeData) else { return }
+                    editing.hoverPreview = nil
                     let targets = app.culling.targets(in: list)
                     editing.applySettings(recipe, labelKey: "history.preset", to: targets.isEmpty ? list.filter { $0.id == editing.photo?.id } : targets)
+                    editing.flashPreset()
                 }
                 Button(role: .destructive) {
                     context.delete(preset)
@@ -370,15 +410,53 @@ struct PresetsPanel: View {
             }
             .padding(8)
             .background(Palette.background, in: RoundedRectangle(cornerRadius: 6))
+            .hoverLift(scale: 1.01, glow: true)
+            // Pré-visualização do preset na foto enquanto o rato está por cima.
+            .onHover { hovering in
+                if hovering, let recipe = try? JSONDecoder().decode(EditRecipe.self, from: preset.recipeData) {
+                    editing.hoverPreview = editing.recipe.applyingSettings(from: recipe)
+                } else {
+                    editing.hoverPreview = nil
+                }
+            }
         }
     }
 }
 
 struct HistoryPanel: View {
     @Environment(AppState.self) private var app
+    @State private var snapshotName = ""
 
     var body: some View {
         let editing = app.editing
+        PanelHeader(title: app.t("history.snapshots"))
+        HStack {
+            TextField(app.t("snapshot.name"), text: $snapshotName)
+                .textFieldStyle(.roundedBorder)
+            Button(app.t("history.saveSnapshot")) {
+                let name = snapshotName.trimmingCharacters(in: .whitespaces)
+                editing.saveSnapshot(named: name.isEmpty ? "Snapshot \(editing.history.snapshots.count + 1)" : name)
+                snapshotName = ""
+            }
+        }
+        ForEach(editing.history.snapshots) { snapshot in
+            HStack(spacing: 8) {
+                Image(systemName: "camera.aperture").foregroundStyle(Brand.orange)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(snapshot.name)
+                    Text(snapshot.date.formatted(date: .abbreviated, time: .shortened))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecondary)
+                }
+                Spacer()
+                Button(app.t("snapshot.apply")) { editing.applySnapshot(snapshot) }
+                Button(role: .destructive) { editing.deleteSnapshot(snapshot) } label: { Image(systemName: "trash") }
+            }
+            .padding(8)
+            .background(Palette.background, in: RoundedRectangle(cornerRadius: 6))
+            .appearAnimation()
+        }
+        PanelHeader(title: app.t("editTab.history"))
         HStack {
             Button(app.t("history.undo")) { editing.undo() }.disabled(!editing.history.canUndo)
             Button(app.t("history.redo")) { editing.redo() }.disabled(!editing.history.canRedo)

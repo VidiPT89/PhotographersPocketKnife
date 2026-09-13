@@ -5,6 +5,8 @@ struct EditingView: View {
     @Environment(AppState.self) private var app
     @Query(sort: \Photo.importedAt) private var photos: [Photo]
     @State private var showExport = false
+    @State private var exportWithUpload = false
+    @FocusState private var keyboardFocus: Bool
 
     var body: some View {
         let list = app.culling.visible(photos)
@@ -23,11 +25,25 @@ struct EditingView: View {
                 AdjustmentPanel(list: list)
                     .frame(width: 300)
             }
+            .focusable()
+            .focusEffectDisabled()
+            .focused($keyboardFocus)
+            .onAppear {
+                keyboardFocus = true
+                consumeExportRequest()
+            }
+            .onKeyPress(phases: .down) { press in handleKey(press) }
             .task(id: "\(photo.id)|\(photo.path)") { app.editing.load(photo) }
             .sheet(isPresented: $showExport) {
-                ExportSheet(photos: app.culling.targets(in: list).isEmpty ? [photo] : app.culling.targets(in: list))
+                ExportSheet(photos: app.culling.targets(in: list).isEmpty ? [photo] : app.culling.targets(in: list), startWithUpload: exportWithUpload)
             }
-            .onReceive(NotificationCenter.default.publisher(for: .showExport)) { _ in showExport = true }
+            .onChange(of: app.pendingExport) { _, _ in consumeExportRequest() }
+            .onReceive(NotificationCenter.default.publisher(for: .pasteDevelop)) { _ in
+                guard let clipboard = app.editing.clipboard else { return }
+                let targets = app.culling.targets(in: list)
+                app.editing.applySettings(clipboard, labelKey: "history.paste", to: targets)
+                app.showToast(String(format: app.t("toast.pasted"), targets.count), icon: "doc.on.clipboard.fill")
+            }
         } else {
             EmptyModuleView(
                 systemImage: "slider.horizontal.3",
@@ -36,10 +52,36 @@ struct EditingView: View {
             )
         }
     }
+
+    /// `⌘E` / `⌘⇧E` podem chegar antes de este ecrã existir: o pedido fica no estado da app até ser consumido.
+    private func consumeExportRequest() {
+        guard let withUpload = app.pendingExport else { return }
+        app.pendingExport = nil
+        exportWithUpload = withUpload
+        showExport = true
+    }
+
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard !press.modifiers.contains(.command) else { return .ignored }
+        let editing = app.editing
+        switch press.characters {
+        case "\\":
+            withAnimation(Motion.snappy) { editing.compareMode = editing.compareMode == .before ? .off : .before }
+            return .handled
+        case "r":
+            withAnimation(Motion.snappy) { editing.tab = editing.tab == .geometry ? .basic : .geometry }
+            return .handled
+        case "m":
+            withAnimation(Motion.snappy) { editing.tab = .masks }
+            return .handled
+        default:
+            return .ignored
+        }
+    }
 }
 
 extension Notification.Name {
-    static let showExport = Notification.Name("PhotographersPocketKnife.showExport")
+    static let pasteDevelop = Notification.Name("PhotographersPocketKnife.pasteDevelop")
 }
 
 struct EditingToolbar: View {
@@ -97,13 +139,26 @@ struct EditCanvas: View {
         let editing = app.editing
         GeometryReader { geo in
             ZStack {
-                Palette.background
+                Palette.canvas
                 if let preview = editing.preview {
                     let rect = fittedSize(CGSize(width: preview.width, height: preview.height), in: geo.size, padding: 24)
                     ZStack(alignment: .topLeading) {
                         canvasImage(preview: preview, size: rect)
+                        if editing.showClipping, editing.compareMode != .before, let clipping = editing.clippingOverlay {
+                            Image(decorative: clipping, scale: 1)
+                                .resizable()
+                                .frame(width: rect.width, height: rect.height)
+                                .allowsHitTesting(false)
+                                .transition(.opacity)
+                        }
+                        PresetSweep(trigger: editing.presetFlash)
+                            .frame(width: rect.width, height: rect.height)
                         if editing.isCropping {
                             CropOverlay(size: rect)
+                        }
+                        if editing.tab == .masks {
+                            MaskOverlay(size: rect)
+                                .transition(.opacity)
                         }
                     }
                     .frame(width: rect.width, height: rect.height)
@@ -136,10 +191,17 @@ struct EditCanvas: View {
                         Rectangle().frame(width: size.width * editing.splitPosition)
                     }
                 Rectangle()
-                    .fill(Brand.orange)
+                    .fill(Brand.amber)
                     .frame(width: 2)
                     .offset(x: size.width * editing.splitPosition - 1)
-                    .shadow(color: Brand.orange, radius: 4)
+                    .shadow(color: Brand.amber, radius: 6)
+                Circle()
+                    .fill(Brand.amber)
+                    .frame(width: 26, height: 26)
+                    .overlay(Image(systemName: "arrow.left.and.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Brand.black))
+                    .shadow(color: Brand.amber.opacity(0.7), radius: 8)
+                    .offset(x: size.width * editing.splitPosition - 13, y: size.height / 2 - 13)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
             .frame(width: size.width, height: size.height)
             .contentShape(Rectangle())

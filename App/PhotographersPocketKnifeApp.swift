@@ -93,9 +93,28 @@ struct AppCommands: Commands {
                 .keyboardShortcut("i")
             Button(app.t("export.title")) {
                 app.module = .editing
-                NotificationCenter.default.post(name: .showExport, object: nil)
+                app.pendingExport = false
             }
             .keyboardShortcut("e")
+            Button(app.t("export.andUpload")) {
+                app.module = .editing
+                app.pendingExport = true
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+        }
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Button(app.t("editing.copy")) {
+                app.editing.copySettings()
+                app.showToast(app.t("toast.copied"), icon: "doc.on.doc.fill")
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .disabled(app.module != .editing)
+            Button(app.t("editing.paste")) {
+                NotificationCenter.default.post(name: .pasteDevelop, object: nil)
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+            .disabled(app.module != .editing || app.editing.clipboard == nil)
         }
         CommandGroup(replacing: .undoRedo) {
             Button(app.t("history.undo")) { app.editing.undo() }

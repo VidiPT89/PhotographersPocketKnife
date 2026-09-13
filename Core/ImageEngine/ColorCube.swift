@@ -11,6 +11,7 @@ enum ColorCube {
         let green = MonotoneCurve(recipe.curveGreen)
         let blue = MonotoneCurve(recipe.curveBlue)
         let hasHSL = recipe.hsl.contains { $0 != HSLAdjustment() }
+        let hasGrading = recipe.hasColorGrading
 
         var cube = [Float](repeating: 0, count: n * n * n * 4)
         var offset = 0
@@ -27,6 +28,7 @@ enum ColorCube {
                     rgb.1 = green.evaluate(master.evaluate(tone(rgb.1, recipe)))
                     rgb.2 = blue.evaluate(master.evaluate(tone(rgb.2, recipe)))
                     if hasHSL { rgb = applyHSL(rgb, recipe.hsl) }
+                    if hasGrading { rgb = applyGrading(rgb, recipe) }
                     cube[offset] = Float(clamp(rgb.0))
                     cube[offset + 1] = Float(clamp(rgb.1))
                     cube[offset + 2] = Float(clamp(rgb.2))
@@ -36,6 +38,29 @@ enum ColorCube {
             }
         }
         return cube.withUnsafeBufferPointer { Data(buffer: $0) }
+    }
+
+    /// Gradação de cor: tinge sombras, meios-tons e altas luzes; `gradingBalance` desloca o ponto de viragem.
+    static func applyGrading(_ rgb: (Double, Double, Double), _ recipe: EditRecipe) -> (Double, Double, Double) {
+        let luma = 0.2126 * rgb.0 + 0.7152 * rgb.1 + 0.0722 * rgb.2
+        let pivot = min(max(0.5 + recipe.gradingBalance * 0.25, 0.1), 0.9)
+        let shadowWeight = pow(max(0, 1 - luma / pivot), 2)
+        let highlightWeight = pow(max(0, (luma - pivot) / (1 - pivot)), 2)
+        let midWeight = max(0, 1 - abs(luma - pivot) / 0.5)
+
+        func tint(_ hue: Double, _ saturation: Double) -> (Double, Double, Double) {
+            let color = hslToRGB(hue, 1, 0.5)
+            return ((color.0 - 0.5) * saturation, (color.1 - 0.5) * saturation, (color.2 - 0.5) * saturation)
+        }
+        let shadow = tint(recipe.shadowsHue, recipe.shadowsSaturation)
+        let mid = tint(recipe.midtonesHue, recipe.midtonesSaturation)
+        let high = tint(recipe.highlightsHue, recipe.highlightsSaturation)
+        let strength = 0.35
+        return (
+            rgb.0 + strength * (shadow.0 * shadowWeight + mid.0 * midWeight + high.0 * highlightWeight),
+            rgb.1 + strength * (shadow.1 * shadowWeight + mid.1 * midWeight + high.1 * highlightWeight),
+            rgb.2 + strength * (shadow.2 * shadowWeight + mid.2 * midWeight + high.2 * highlightWeight)
+        )
     }
 
     static func tone(_ value: Double, _ recipe: EditRecipe) -> Double {

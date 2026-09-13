@@ -36,32 +36,86 @@ struct CropRect: Codable, Equatable, Sendable {
     var isFull: Bool { self == CropRect() }
 }
 
+enum MaskKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case linear, radial
+    var id: String { rawValue }
+    var labelKey: String { "mask.\(rawValue)" }
+    var icon: String { self == .linear ? "rectangle.lefthalf.inset.filled" : "circle.dashed.inset.filled" }
+}
+
+/// Ajuste local com máscara de gradiente. Coordenadas normalizadas na imagem final (depois do recorte).
+struct LocalMask: Codable, Equatable, Identifiable, Sendable {
+    var id = UUID()
+    var kind: MaskKind
+    // Radial
+    var centerX = 0.5
+    var centerY = 0.5
+    var radiusX = 0.25
+    var radiusY = 0.25
+    // Linear: efeito total no início, nenhum no fim
+    var startX = 0.5
+    var startY = 0.15
+    var endX = 0.5
+    var endY = 0.55
+    var feather = 0.5
+    var invert = false
+    // Ajustes
+    var exposure = 0.0
+    var contrast = 0.0
+    var saturation = 0.0
+    var temperature = 0.0
+    var clarity = 0.0
+
+    var isNeutral: Bool {
+        exposure == 0 && contrast == 0 && saturation == 0 && temperature == 0 && clarity == 0
+    }
+}
+
 /// A "receita" não-destrutiva de uma foto. O original nunca é alterado.
-struct EditRecipe: Codable, Equatable, Sendable {
+struct EditRecipe: Equatable, Sendable {
     static let linearCurve = [CurvePoint(x: 0, y: 0), CurvePoint(x: 1, y: 1)]
 
-    // Luz
+    // Luz e presença
     var exposure = 0.0
     var contrast = 0.0
     var highlights = 0.0
     var shadows = 0.0
     var whites = 0.0
     var blacks = 0.0
+    var texture = 0.0
+    var clarity = 0.0
     // Cor
     var temperature = 0.0
     var tint = 0.0
     var vibrance = 0.0
     var saturation = 0.0
-    // Detalhe e efeitos
+    // Detalhe
     var sharpness = 0.0
+    var sharpenRadius = 1.0
+    var sharpenMasking = 0.0
     var noiseReduction = 0.0
+    var colorNoiseReduction = 0.0
+    // Ótica e efeitos
+    var chromaticAberration = 0.0
     var vignette = 0.0
+    var grain = 0.0
+    var grainSize = 0.5
     // Curvas e HSL
     var curveMaster = linearCurve
     var curveRed = linearCurve
     var curveGreen = linearCurve
     var curveBlue = linearCurve
     var hsl = Array(repeating: HSLAdjustment(), count: HSLBand.allCases.count)
+    // Gradação de cor (matiz em graus, saturação 0…1)
+    var shadowsHue = 220.0
+    var shadowsSaturation = 0.0
+    var midtonesHue = 30.0
+    var midtonesSaturation = 0.0
+    var highlightsHue = 45.0
+    var highlightsSaturation = 0.0
+    var gradingBalance = 0.0
+    // Ajustes locais
+    var masks: [LocalMask] = []
     // Geometria e lente
     var crop = CropRect()
     var straighten = 0.0
@@ -75,10 +129,35 @@ struct EditRecipe: Codable, Equatable, Sendable {
 
     var isIdentity: Bool { self == .identity }
 
+    var hasColorGrading: Bool {
+        shadowsSaturation > 0 || midtonesSaturation > 0 || highlightsSaturation > 0
+    }
+
     var needsToneCube: Bool {
-        whites != 0 || blacks != 0 || highlights > 0
+        whites != 0 || blacks != 0 || highlights > 0 || hasColorGrading
             || [curveMaster, curveRed, curveGreen, curveBlue].contains { $0 != Self.linearCurve }
             || hsl.contains { $0 != HSLAdjustment() }
+    }
+
+    /// Só os campos que entram na LUT 3D (para a cache do cubo não depender do resto).
+    var cubeRecipe: EditRecipe {
+        var recipe = EditRecipe()
+        recipe.whites = whites
+        recipe.blacks = blacks
+        recipe.highlights = max(0, highlights)
+        recipe.curveMaster = curveMaster
+        recipe.curveRed = curveRed
+        recipe.curveGreen = curveGreen
+        recipe.curveBlue = curveBlue
+        recipe.hsl = hsl
+        recipe.shadowsHue = shadowsHue
+        recipe.shadowsSaturation = shadowsSaturation
+        recipe.midtonesHue = midtonesHue
+        recipe.midtonesSaturation = midtonesSaturation
+        recipe.highlightsHue = highlightsHue
+        recipe.highlightsSaturation = highlightsSaturation
+        recipe.gradingBalance = gradingBalance
+        return recipe
     }
 
     func curve(_ channel: CurveChannel) -> [CurvePoint] {
@@ -113,7 +192,7 @@ struct EditRecipe: Codable, Equatable, Sendable {
         return recipe
     }
 
-    /// Copia os ajustes de `other` mas mantém o enquadramento desta foto (presets e sincronização).
+    /// Copia os ajustes de `other` mas mantém o enquadramento e as máscaras desta foto (presets e sincronização).
     func applyingSettings(from other: EditRecipe) -> EditRecipe {
         var result = other
         result.crop = crop
@@ -122,7 +201,71 @@ struct EditRecipe: Codable, Equatable, Sendable {
         result.flipHorizontal = flipHorizontal
         result.perspectiveVertical = perspectiveVertical
         result.perspectiveHorizontal = perspectiveHorizontal
+        result.masks = masks
         return result
+    }
+}
+
+extension EditRecipe: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case exposure, contrast, highlights, shadows, whites, blacks, texture, clarity
+        case temperature, tint, vibrance, saturation
+        case sharpness, sharpenRadius, sharpenMasking, noiseReduction, colorNoiseReduction
+        case chromaticAberration, vignette, grain, grainSize
+        case curveMaster, curveRed, curveGreen, curveBlue, hsl
+        case shadowsHue, shadowsSaturation, midtonesHue, midtonesSaturation, highlightsHue, highlightsSaturation, gradingBalance
+        case masks
+        case crop, straighten, quarterTurns, flipHorizontal, perspectiveVertical, perspectiveHorizontal, lensCorrection
+    }
+
+    /// Campos em falta (receitas de versões anteriores) ficam com o valor por defeito.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = EditRecipe()
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            (try? container.decodeIfPresent(T.self, forKey: key)) ?? fallback
+        }
+        exposure = value(.exposure, defaults.exposure)
+        contrast = value(.contrast, defaults.contrast)
+        highlights = value(.highlights, defaults.highlights)
+        shadows = value(.shadows, defaults.shadows)
+        whites = value(.whites, defaults.whites)
+        blacks = value(.blacks, defaults.blacks)
+        texture = value(.texture, defaults.texture)
+        clarity = value(.clarity, defaults.clarity)
+        temperature = value(.temperature, defaults.temperature)
+        tint = value(.tint, defaults.tint)
+        vibrance = value(.vibrance, defaults.vibrance)
+        saturation = value(.saturation, defaults.saturation)
+        sharpness = value(.sharpness, defaults.sharpness)
+        sharpenRadius = value(.sharpenRadius, defaults.sharpenRadius)
+        sharpenMasking = value(.sharpenMasking, defaults.sharpenMasking)
+        noiseReduction = value(.noiseReduction, defaults.noiseReduction)
+        colorNoiseReduction = value(.colorNoiseReduction, defaults.colorNoiseReduction)
+        chromaticAberration = value(.chromaticAberration, defaults.chromaticAberration)
+        vignette = value(.vignette, defaults.vignette)
+        grain = value(.grain, defaults.grain)
+        grainSize = value(.grainSize, defaults.grainSize)
+        curveMaster = value(.curveMaster, defaults.curveMaster)
+        curveRed = value(.curveRed, defaults.curveRed)
+        curveGreen = value(.curveGreen, defaults.curveGreen)
+        curveBlue = value(.curveBlue, defaults.curveBlue)
+        hsl = value(.hsl, defaults.hsl)
+        shadowsHue = value(.shadowsHue, defaults.shadowsHue)
+        shadowsSaturation = value(.shadowsSaturation, defaults.shadowsSaturation)
+        midtonesHue = value(.midtonesHue, defaults.midtonesHue)
+        midtonesSaturation = value(.midtonesSaturation, defaults.midtonesSaturation)
+        highlightsHue = value(.highlightsHue, defaults.highlightsHue)
+        highlightsSaturation = value(.highlightsSaturation, defaults.highlightsSaturation)
+        gradingBalance = value(.gradingBalance, defaults.gradingBalance)
+        masks = value(.masks, defaults.masks)
+        crop = value(.crop, defaults.crop)
+        straighten = value(.straighten, defaults.straighten)
+        quarterTurns = value(.quarterTurns, defaults.quarterTurns)
+        flipHorizontal = value(.flipHorizontal, defaults.flipHorizontal)
+        perspectiveVertical = value(.perspectiveVertical, defaults.perspectiveVertical)
+        perspectiveHorizontal = value(.perspectiveHorizontal, defaults.perspectiveHorizontal)
+        lensCorrection = value(.lensCorrection, defaults.lensCorrection)
     }
 }
 
@@ -131,11 +274,20 @@ struct HistoryEntry: Codable, Equatable, Sendable {
     var recipe: EditRecipe
 }
 
-struct EditHistory: Codable, Equatable, Sendable {
+/// Estado guardado com nome, para voltar a ele a qualquer momento.
+struct EditSnapshot: Codable, Equatable, Identifiable, Sendable {
+    var id = UUID()
+    var name: String
+    var recipe: EditRecipe
+    var date = Date()
+}
+
+struct EditHistory: Equatable, Sendable {
     static let maxEntries = 100
 
     var entries = [HistoryEntry(labelKey: "history.original", recipe: .identity)]
     var index = 0
+    var snapshots: [EditSnapshot] = []
 
     var current: EditRecipe { entries[index].recipe }
     var canUndo: Bool { index > 0 }
@@ -164,6 +316,18 @@ struct EditHistory: Codable, Equatable, Sendable {
     mutating func jump(to newIndex: Int) -> EditRecipe {
         index = min(max(newIndex, 0), entries.count - 1)
         return current
+    }
+}
+
+extension EditHistory: Codable {
+    private enum CodingKeys: String, CodingKey { case entries, index, snapshots }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decoded = try container.decode([HistoryEntry].self, forKey: .entries)
+        entries = decoded.isEmpty ? EditHistory().entries : decoded
+        index = min(max(try container.decode(Int.self, forKey: .index), 0), entries.count - 1)
+        snapshots = (try? container.decodeIfPresent([EditSnapshot].self, forKey: .snapshots)) ?? []
     }
 }
 

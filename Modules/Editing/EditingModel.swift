@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum EditTab: String, CaseIterable, Identifiable {
-    case basic, curve, hsl, geometry, presets, history
+    case basic, curve, hsl, grading, masks, geometry, presets, history
     var id: String { rawValue }
     var labelKey: String { "editTab.\(rawValue)" }
 
@@ -10,6 +10,8 @@ enum EditTab: String, CaseIterable, Identifiable {
         case .basic: "slider.horizontal.3"
         case .curve: "point.topleft.down.to.point.bottomright.curvepath"
         case .hsl: "paintpalette"
+        case .grading: "circle.lefthalf.striped.horizontal"
+        case .masks: "circle.dashed.inset.filled"
         case .geometry: "crop.rotate"
         case .presets: "square.stack"
         case .history: "clock.arrow.circlepath"
@@ -70,7 +72,19 @@ final class EditingModel {
     private(set) var preview: CGImage?
     private(set) var beforeImage: CGImage?
     private(set) var histogram: HistogramData?
+    private(set) var clippingOverlay: CGImage?
     private(set) var isRendering = false
+    /// Mostra a vermelho/azul as zonas com altas luzes ou sombras recortadas.
+    var showClipping = false {
+        didSet { scheduleRender() }
+    }
+    /// Receita temporária para pré-visualizar um preset ao passar o rato.
+    var hoverPreview: EditRecipe? {
+        didSet { if hoverPreview != oldValue { scheduleRender() } }
+    }
+    /// Muda sempre que um preset é aplicado (dispara o reflexo de luz no canvas).
+    private(set) var presetFlash = UUID()
+    var selectedMaskID: UUID?
 
     var tab: EditTab = .basic {
         didSet { if oldValue == .geometry || tab == .geometry { scheduleRender() } }
@@ -102,7 +116,49 @@ final class EditingModel {
         recipe = photo.recipeData.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) } ?? history.current
         preview = nil
         beforeImage = nil
+        clippingOverlay = nil
+        hoverPreview = nil
+        selectedMaskID = recipe.masks.first?.id
         scheduleRender()
+    }
+
+    // MARK: Snapshots e máscaras
+
+    func saveSnapshot(named name: String) {
+        history.snapshots.append(EditSnapshot(name: name, recipe: recipe))
+        persist()
+    }
+
+    func applySnapshot(_ snapshot: EditSnapshot) {
+        recipe = snapshot.recipe
+        commit("history.snapshot")
+    }
+
+    func deleteSnapshot(_ snapshot: EditSnapshot) {
+        history.snapshots.removeAll { $0.id == snapshot.id }
+        persist()
+    }
+
+    func addMask(_ kind: MaskKind) {
+        var mask = LocalMask(kind: kind)
+        mask.exposure = 0.5
+        recipe.masks.append(mask)
+        selectedMaskID = mask.id
+        commit("history.mask")
+    }
+
+    func deleteMask(_ id: UUID) {
+        recipe.masks.removeAll { $0.id == id }
+        if selectedMaskID == id { selectedMaskID = recipe.masks.last?.id }
+        commit("history.mask")
+    }
+
+    var selectedMaskIndex: Int? {
+        recipe.masks.firstIndex { $0.id == selectedMaskID }
+    }
+
+    func flashPreset() {
+        presetFlash = UUID()
     }
 
     // MARK: Histórico
@@ -181,24 +237,27 @@ final class EditingModel {
         dirty = false
         rendering = true
         isRendering = true
-        let recipe = recipe
+        let recipe = hoverPreview ?? recipe
         let applyCrop = !isCropping
         let maxPixel = previewMaxPixel
         let needsBefore = compareMode != .off
+        let needsClipping = showClipping
 
         Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> (SendableImage?, SendableImage?, HistogramData?) in
+            let result = await Task.detached(priority: .userInitiated) { () -> (SendableImage?, SendableImage?, HistogramData?, SendableImage?) in
                 let after = ImageRenderer.shared.renderPreview(url: url, recipe: recipe, maxPixel: maxPixel, applyCrop: applyCrop)
                 let before = needsBefore
                     ? ImageRenderer.shared.renderPreview(url: url, recipe: recipe.geometryOnly, maxPixel: maxPixel, applyCrop: applyCrop)
                     : nil
-                return (after, before, after.map { Histogram.compute($0.cgImage) })
+                let clipping = needsClipping ? after.flatMap { ClippingOverlay.make(from: $0.cgImage) }.map { SendableImage(cgImage: $0) } : nil
+                return (after, before, after.map { Histogram.compute($0.cgImage) }, clipping)
             }.value
 
             if self.url == url {
                 preview = result.0?.cgImage
                 beforeImage = result.1?.cgImage
                 histogram = result.2
+                clippingOverlay = result.3?.cgImage
             }
             rendering = false
             if dirty {

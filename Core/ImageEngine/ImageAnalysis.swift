@@ -65,6 +65,41 @@ struct HistogramData: Sendable, Equatable {
     var green: [Float]
     var blue: [Float]
     var luma: [Float]
+    /// Fração de píxeis com sombras a preto puro / altas luzes a branco (recorte).
+    var clippedShadows: Float = 0
+    var clippedHighlights: Float = 0
+
+    static let clippingThreshold: Float = 0.001
+}
+
+/// Overlay de recorte: altas luzes a vermelho, sombras a azul (como no Lightroom).
+enum ClippingOverlay {
+    static func make(from image: CGImage) -> CGImage? {
+        let width = image.width, height = image.height
+        guard width > 0, height > 0, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        var source = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = source.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                          space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return nil }
+
+        var overlay = [UInt8](repeating: 0, count: width * height * 4)
+        for i in stride(from: 0, to: source.count, by: 4) {
+            let r = source[i], g = source[i + 1], b = source[i + 2]
+            if r >= 254 || g >= 254 || b >= 254 {
+                overlay[i] = 230; overlay[i + 1] = 30; overlay[i + 2] = 40; overlay[i + 3] = 230
+            } else if r <= 1, g <= 1, b <= 1 {
+                overlay[i] = 30; overlay[i + 1] = 110; overlay[i + 2] = 240; overlay[i + 3] = 230
+            }
+        }
+        return overlay.withUnsafeMutableBytes { buffer in
+            CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
+        }
+    }
 }
 
 enum Histogram {
@@ -84,8 +119,11 @@ enum Histogram {
         }
 
         var r = [Float](repeating: 0, count: 256), g = r, b = r, l = r
+        var shadowsClipped: Float = 0, highlightsClipped: Float = 0
         for i in stride(from: 0, to: pixels.count, by: 4) {
             let red = pixels[i], green = pixels[i + 1], blue = pixels[i + 2]
+            if red >= 254 || green >= 254 || blue >= 254 { highlightsClipped += 1 }
+            if red <= 1, green <= 1, blue <= 1 { shadowsClipped += 1 }
             r[Int(red)] += 1
             g[Int(green)] += 1
             b[Int(blue)] += 1
@@ -95,6 +133,10 @@ enum Histogram {
         let peak = max(r.max() ?? 1, g.max() ?? 1, b.max() ?? 1, l.max() ?? 1, 1)
         // Raiz quadrada para os picos não esmagarem o resto do gráfico.
         func normalize(_ bins: [Float]) -> [Float] { bins.map { ($0 / peak).squareRoot() } }
-        return HistogramData(red: normalize(r), green: normalize(g), blue: normalize(b), luma: normalize(l))
+        let total = Float(max(pixels.count / 4, 1))
+        return HistogramData(
+            red: normalize(r), green: normalize(g), blue: normalize(b), luma: normalize(l),
+            clippedShadows: shadowsClipped / total, clippedHighlights: highlightsClipped / total
+        )
     }
 }
