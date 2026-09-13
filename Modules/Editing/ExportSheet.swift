@@ -150,7 +150,10 @@ struct ExportSheet: View {
                 app.module = .upload
             }
             progress = nil
-            if errors.isEmpty { dismiss() }
+            if errors.isEmpty {
+                app.showToast(String(format: app.t("toast.exported"), outputs.count), icon: "square.and.arrow.up.fill")
+                dismiss()
+            }
         }
     }
 }

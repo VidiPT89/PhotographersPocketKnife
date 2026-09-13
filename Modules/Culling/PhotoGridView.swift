@@ -12,7 +12,7 @@ struct PhotoGridView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: culling.thumbnailSize, maximum: culling.thumbnailSize + 60), spacing: spacing)], spacing: spacing) {
-                        ForEach(list) { photo in
+                        ForEach(Array(list.enumerated()), id: \.element.id) { index, photo in
                             PhotoCell(
                                 photo: photo,
                                 size: culling.thumbnailSize,
@@ -21,6 +21,7 @@ struct PhotoGridView: View {
                                 duplicateGroup: culling.showDuplicatesOnly ? culling.duplicateGroups[photo.id] : nil
                             )
                             .id(photo.id)
+                            .appearAnimation(delay: index < 40 ? Double(index) * 0.018 : 0)
                             .onTapGesture(count: 2) {
                                 culling.focusedID = photo.id
                                 culling.selection = [photo.id]
@@ -47,6 +48,7 @@ struct PhotoGridView: View {
             .onChange(of: geo.size.width) { _, width in updateColumns(width: width) }
             .onChange(of: culling.thumbnailSize) { _, _ in updateColumns(width: geo.size.width) }
         }
+        .background(Palette.canvas)
         .folderDropTarget { app.culling.activeSheet = .importFolder($0) }
     }
 
@@ -61,8 +63,6 @@ struct PhotoCell: View {
     let isSelected: Bool
     let isFocused: Bool
     let duplicateGroup: Int?
-
-    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -102,12 +102,14 @@ struct PhotoCell: View {
             RoundedRectangle(cornerRadius: 9)
                 .stroke(isFocused ? Brand.orange : (isSelected ? Brand.orange.opacity(0.45) : Palette.separator), lineWidth: isFocused ? 2 : 1)
         )
-        .shadow(color: Brand.orange.opacity(hovering || isFocused ? 0.35 : 0), radius: 8)
-        .scaleEffect(hovering ? 1.02 : 1)
+        .shadow(color: Brand.orange.opacity(isFocused ? 0.4 : 0), radius: 10)
+        .hoverLift(scale: 1.025)
         .opacity(photo.flag == .reject ? 0.45 : 1)
+        .saturation(photo.flag == .reject ? 0.2 : 1)
+        .animation(Motion.snappy, value: isSelected)
+        .animation(Motion.snappy, value: isFocused)
         .animation(Motion.smooth, value: photo.flagRaw)
         .animation(Motion.smooth, value: photo.colorLabelRaw)
-        .onHover { hover in withAnimation(Motion.smooth) { hovering = hover } }
     }
 }
 

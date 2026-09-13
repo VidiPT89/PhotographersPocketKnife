@@ -82,7 +82,11 @@ struct CullingView: View {
             return .handled
         }
         guard let action = app.shortcuts.action(for: press.characters) else { return .ignored }
+        let affected = culling.viewMode == .compare ? 1 : culling.targets(in: list).count
         withAnimation(Motion.pop) { culling.perform(action, in: list) }
+        if action != .loupe, action != .compare, affected > 0 {
+            app.showToast(String(format: app.t("toast.action"), app.t(action.labelKey), affected), icon: action.icon)
+        }
         return .handled
     }
 }

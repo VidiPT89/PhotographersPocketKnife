@@ -44,7 +44,11 @@ struct ImportSheet: View {
         let name = session.trimmingCharacters(in: .whitespaces).isEmpty ? folder.lastPathComponent : session
         let culling = app.culling
         let context = context
-        Task { await culling.importFolder(folder, options: options, session: name, context: context) }
+        let app = app
+        Task {
+            await culling.importFolder(folder, options: options, session: name, context: context)
+            app.showToast(String(format: app.t("toast.imported"), culling.lastImportCount ?? 0), icon: "photo.stack")
+        }
         dismiss()
     }
 }
@@ -114,6 +118,7 @@ struct RenameSheet: View {
                 photo.fileName = plan.to.lastPathComponent
             }
             try? context.save()
+            app.showToast(String(format: app.t("toast.renamed"), plans.count), icon: "character.cursor.ibeam")
             dismiss()
         } catch {
             self.error = error.localizedDescription
@@ -172,6 +177,7 @@ struct MetadataSheet: View {
             }.value
             isWriting = false
             if failures == 0 {
+                app.showToast(String(format: app.t("toast.metadata"), urls.count), icon: "tag.fill")
                 dismiss()
             } else {
                 message = String(format: app.t("metadata.failures"), failures)

@@ -9,6 +9,19 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var labelKey: String { "shortcut.\(rawValue)" }
 
+    var icon: String {
+        switch self {
+        case .rate0: "star.slash"
+        case .rate1, .rate2, .rate3, .rate4, .rate5: "star.fill"
+        case .pick: "flag.fill"
+        case .reject: "xmark.circle.fill"
+        case .unflag: "flag.slash"
+        case .labelRed, .labelYellow, .labelGreen, .labelBlue, .labelPurple: "circle.fill"
+        case .loupe: "magnifyingglass"
+        case .compare: "rectangle.split.2x1"
+        }
+    }
+
     /// Paridade com o Photo Mechanic: 1–5 rating, P pick, X reject.
     var defaultKey: String {
         switch self {

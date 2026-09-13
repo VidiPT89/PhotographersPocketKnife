@@ -6,6 +6,15 @@
 "module.upload" = "Upload";
 "menu.view" = "Modules";
 "menu.checkUpdates" = "Check for Updates…";
+"splash.tagline" = "CULL · DEVELOP · DELIVER";
+"toast.action" = "%@ · %d photos";
+"toast.imported" = "%d photos imported";
+"toast.renamed" = "%d photos renamed";
+"toast.metadata" = "Metadata applied to %d photos";
+"toast.exported" = "%d photos exported";
+"toast.copied" = "Settings copied";
+"toast.pasted" = "Settings pasted to %d photos";
+"toast.uploadDone" = "Upload finished · %d sent, %d failed";
 "toolbar.language" = "Language";
 "toolbar.theme" = "Theme";
 "theme.dark" = "Dark";

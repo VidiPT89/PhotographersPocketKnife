@@ -77,11 +77,13 @@ struct AdjustmentPanel: View {
     }
 
     private var basic: some View {
-        ForEach(AdjustmentSpec.sections, id: \.titleKey) { section in
-            PanelHeader(title: app.t(section.titleKey))
-            ForEach(section.specs) { spec in
-                AdjustmentSlider(labelKey: spec.labelKey, value: spec.keyPath, range: spec.range)
+        ForEach(Array(AdjustmentSpec.sections.enumerated()), id: \.element.titleKey) { index, section in
+            CollapsibleSection(title: app.t(section.titleKey)) {
+                ForEach(section.specs) { spec in
+                    AdjustmentSlider(labelKey: spec.labelKey, value: spec.keyPath, range: spec.range)
+                }
             }
+            .appearAnimation(delay: Double(index) * 0.05)
         }
     }
 }
@@ -108,7 +110,12 @@ struct AdjustmentSlider: View {
                 Spacer()
                 Text(String(format: "%+.2f", current))
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: current))
                     .foregroundStyle(current == 0 ? Palette.textSecondary : Brand.orange)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(current == 0 ? Color.clear : Brand.orange.opacity(0.14)))
+                    .animation(Motion.snappy, value: current)
             }
             .font(Typography.caption)
             Slider(

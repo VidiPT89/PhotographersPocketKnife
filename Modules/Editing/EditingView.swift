@@ -61,17 +61,25 @@ struct EditingToolbar: View {
                 ForEach(CompareMode.allCases) { Text(app.t($0.labelKey)).tag($0) }
             }
             .pickerStyle(.segmented)
-            .frame(width: 220)
+            .fixedSize()
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            Button(app.t("editing.copy")) { editing.copySettings() }
-            Button(app.t("editing.paste")) {
+            Button {
+                editing.copySettings()
+                app.showToast(app.t("toast.copied"), icon: "doc.on.doc.fill")
+            } label: { Image(systemName: "doc.on.doc") }
+            .help(app.t("editing.copy"))
+            Button {
                 guard let clipboard = editing.clipboard else { return }
-                editing.applySettings(clipboard, labelKey: "history.paste", to: app.culling.targets(in: list))
-            }
+                let targets = app.culling.targets(in: list)
+                editing.applySettings(clipboard, labelKey: "history.paste", to: targets)
+                app.showToast(String(format: app.t("toast.pasted"), targets.count), icon: "doc.on.clipboard.fill")
+            } label: { Image(systemName: "doc.on.clipboard") }
             .disabled(editing.clipboard == nil)
-            Button(app.t("editing.reset")) { editing.reset() }
+            .help(app.t("editing.paste"))
+            Button { editing.reset() } label: { Image(systemName: "arrow.counterclockwise") }
+                .help(app.t("editing.reset"))
 
             PrimaryButton(title: app.t("export.title"), systemImage: "square.and.arrow.up") { showExport = true }
         }

@@ -47,6 +47,7 @@ final class TransferQueue {
     }
 
     @ObservationIgnored var localize: (String) -> String = { $0 }
+    @ObservationIgnored var onBatchFinished: ((Int, Int) -> Void)?
     @ObservationIgnored private var context: ModelContext?
     @ObservationIgnored private var running: [UUID: CurlProcess] = [:]
     @ObservationIgnored private var batchActive = false
@@ -200,6 +201,7 @@ final class TransferQueue {
         let busy = items.contains { [.pending, .running, .waitingRetry].contains($0.status) }
         guard batchActive, !busy, !items.isEmpty else { return }
         batchActive = false
+        onBatchFinished?(completedCount, failedCount)
         let content = UNMutableNotificationContent()
         content.title = localize("notification.uploadDone.title")
         content.body = String(format: localize("notification.uploadDone.body"), completedCount, failedCount)

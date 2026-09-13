@@ -13,6 +13,20 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 
     var labelKey: String { "theme.\(rawValue)" }
+
+    var icon: String {
+        switch self {
+        case .dark: "moon.fill"
+        case .light: "sun.max.fill"
+        case .system: "circle.lefthalf.filled"
+        }
+    }
+}
+
+struct Toast: Equatable, Identifiable {
+    let id = UUID()
+    let icon: String
+    let message: String
 }
 
 enum AppLanguage: String, CaseIterable, Identifiable {
@@ -60,6 +74,7 @@ final class AppState {
     var isSplashVisible = true
     /// Ficheiros à espera de escolher destino no módulo de envio.
     var pendingUploadURLs: [URL] = []
+    private(set) var toast: Toast?
 
     let culling = CullingModel()
     let editing = EditingModel()
@@ -78,6 +93,20 @@ final class AppState {
         bundle = Self.bundle(for: lang)
         shortcuts = ShortcutStore(defaults: defaults)
         transfers.localize = { [weak self] key in self?.t(key) ?? key }
+        transfers.onBatchFinished = { [weak self] done, failed in
+            guard let self else { return }
+            showToast(String(format: t("toast.uploadDone"), done, failed), icon: failed == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+        }
+    }
+
+    /// Mostra uma confirmação curta que desaparece sozinha.
+    func showToast(_ message: String, icon: String = "checkmark.circle.fill") {
+        let next = Toast(icon: icon, message: message)
+        toast = next
+        Task {
+            try? await Task.sleep(for: .seconds(2.2))
+            if toast?.id == next.id { toast = nil }
+        }
     }
 
     /// Traduz uma chave no idioma escolhido, sem depender do idioma do sistema.

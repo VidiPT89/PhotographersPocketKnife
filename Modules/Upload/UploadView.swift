@@ -86,6 +86,7 @@ struct TransferQueueView: View {
             } else {
                 List(queue.items) { item in
                     TransferRow(item: item)
+                        .appearAnimation()
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -139,7 +140,11 @@ struct TransferRow: View {
         case .pending: Image(systemName: "clock").foregroundStyle(Palette.textSecondary)
         case .running: ProgressView().controlSize(.mini)
         case .waitingRetry: Image(systemName: "arrow.clockwise").foregroundStyle(Brand.burntYellow)
-        case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.success).transition(.scale)
+        case .done:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Brand.success)
+                .symbolEffect(.bounce, value: item.status == .done)
+                .transition(.scale.combined(with: .opacity))
         case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.error)
         }
     }

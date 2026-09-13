@@ -9,7 +9,7 @@ struct MainWindowView: View {
 
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+                .navigationSplitViewColumnWidth(min: 230, ideal: 260)
         } detail: {
             VStack(spacing: 0) {
                 ZStack {
@@ -20,25 +20,35 @@ struct MainWindowView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(Motion.smooth, value: app.module)
+                .animation(Motion.snappy, value: app.module)
 
                 StatusBarView()
             }
             .background(Palette.background)
+            .overlay(alignment: .bottom) {
+                ToastOverlay().padding(.bottom, 46)
+            }
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("", selection: $app.module) {
-                    ForEach(AppModule.allCases) { module in
-                        Label(app.t(module.labelKey), systemImage: module.icon).tag(module)
-                    }
+                PillPicker(selection: $app.module, options: AppModule.allCases) { module, _ in
+                    Label(app.t(module.labelKey), systemImage: module.icon)
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 12, weight: .semibold))
                 }
-                .pickerStyle(.segmented)
-                .labelStyle(.titleAndIcon)
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                LanguageMenu()
-                ThemeMenu()
+                PillPicker(selection: $app.language, options: AppLanguage.allCases, compact: true) { language, _ in
+                    Text(language.shortLabel).font(.system(size: 11, weight: .bold))
+                }
+                .help(app.t("toolbar.language"))
+
+                PillPicker(selection: $app.theme, options: AppTheme.allCases, compact: true) { theme, _ in
+                    Image(systemName: theme.icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .help(app.t(theme.labelKey))
+                }
+                .help(app.t("toolbar.theme"))
             }
         }
     }
@@ -57,17 +67,19 @@ struct SidebarView: View {
 
         List {
             Section(app.t("sidebar.library")) {
-                SidebarRow(title: app.t("sidebar.allPhotos"), icon: "photo.on.rectangle", count: photos.count, active: app.culling.session == nil) {
+                SidebarRow(title: app.t("sidebar.allPhotos"), icon: "photo.on.rectangle.angled", count: photos.count, active: app.culling.session == nil) {
                     app.culling.session = nil
+                    app.module = .culling
                 }
             }
             Section(app.t("sidebar.folders")) {
                 if sessions.isEmpty {
-                    Label(app.t("sidebar.empty"), systemImage: "folder").foregroundStyle(.secondary)
+                    SidebarPlaceholder(title: app.t("sidebar.empty"), icon: "folder")
                 }
                 ForEach(sessions, id: \.name) { session in
-                    SidebarRow(title: session.name, icon: "folder", count: session.count, active: app.culling.session == session.name) {
+                    SidebarRow(title: session.name, icon: "folder.fill", count: session.count, active: app.culling.session == session.name) {
                         app.culling.session = session.name
+                        app.module = .culling
                     }
                     .contextMenu {
                         Button(app.t("sidebar.removeFromCatalog"), role: .destructive) {
@@ -79,7 +91,7 @@ struct SidebarView: View {
             }
             Section(app.t("sidebar.destinations")) {
                 if destinations.isEmpty {
-                    Label(app.t("sidebar.empty"), systemImage: "server.rack").foregroundStyle(.secondary)
+                    SidebarPlaceholder(title: app.t("sidebar.empty"), icon: "server.rack")
                 }
                 ForEach(destinations) { destination in
                     DestinationDropRow(destination: destination)
@@ -87,11 +99,49 @@ struct SidebarView: View {
             }
             if app.culling.isImporting {
                 Section(app.t("import.importing")) {
-                    BrandProgressBar(value: app.culling.importProgress)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(Int(app.culling.importProgress * 100))%")
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(Brand.orange)
+                            .contentTransition(.numericText())
+                        BrandProgressBar(value: app.culling.importProgress)
+                    }
+                    .padding(.vertical, 4)
+                    .transition(.opacity.combined(with: .move(edge: .leading)))
                 }
             }
         }
         .listStyle(.sidebar)
+        .animation(Motion.snappy, value: app.culling.isImporting)
+        .animation(Motion.snappy, value: sessions.count)
+        .safeAreaInset(edge: .bottom) { SidebarBrand() }
+    }
+}
+
+private struct SidebarBrand: View {
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            ApertureShape(openness: 0.65)
+                .fill(Brand.diagonal)
+                .overlay(ApertureShape(openness: 0.65).stroke(Color.black.opacity(0.35), lineWidth: 0.7))
+                .frame(width: 20, height: 20)
+                .shadow(color: Brand.orange.opacity(0.5), radius: 5)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Photographer's Pocket Knife")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(Palette.textPrimary)
+                Text("v\(version)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.textSecondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }
 
@@ -101,20 +151,58 @@ struct SidebarRow: View {
     let count: Int
     let active: Bool
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack {
-                Label(title, systemImage: icon)
-                    .foregroundStyle(active ? Brand.orange : Palette.textPrimary)
-                Spacer()
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(active ? AnyShapeStyle(Brand.diagonal) : AnyShapeStyle(Palette.textSecondary))
+                    .frame(width: 16)
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .fontWeight(active ? .semibold : .regular)
+                    .foregroundStyle(Palette.textPrimary)
+                    .layoutPriority(1)
+                Spacer(minLength: 2)
                 Text("\(count)")
-                    .font(Typography.caption)
-                    .foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                    .contentTransition(.numericText())
+                    .fixedSize()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(active ? Brand.orange.opacity(0.2) : Palette.separator.opacity(0.6)))
+                    .foregroundStyle(active ? Brand.orange : Palette.textSecondary)
+                    .fixedSize()
+            }
+            .padding(.vertical, 5)
+            .padding(.horizontal, 6)
+            .background(RoundedRectangle(cornerRadius: 7).fill(active ? Brand.orange.opacity(0.12) : (hovering ? Palette.separator.opacity(0.45) : .clear)))
+            .overlay(alignment: .leading) {
+                if active {
+                    Capsule().fill(Brand.diagonal).frame(width: 3, height: 16).offset(x: -3).transition(.scale)
+                }
             }
             .contentShape(Rectangle())
+            .animation(Motion.snappy, value: active)
+            .animation(Motion.snappy, value: count)
         }
         .buttonStyle(.plain)
+        .onHover { hover in withAnimation(Motion.snappy) { hovering = hover } }
+    }
+}
+
+private struct SidebarPlaceholder: View {
+    let title: String
+    let icon: String
+
+    var body: some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: 12))
+            .foregroundStyle(Palette.textSecondary.opacity(0.8))
+            .padding(.horizontal, 8)
     }
 }
 
@@ -123,50 +211,37 @@ struct DestinationDropRow: View {
     @Environment(AppState.self) private var app
     let destination: UploadDestination
     @State private var targeted = false
+    @State private var hovering = false
 
     var body: some View {
-        Label(destination.name, systemImage: "server.rack")
-            .padding(.vertical, 2)
-            .padding(.horizontal, 4)
-            .background(targeted ? Brand.orange.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 5))
-            .shadow(color: Brand.orange.opacity(targeted ? 0.6 : 0), radius: 6)
-            .scaleEffect(targeted ? 1.04 : 1)
-            .animation(Motion.smooth, value: targeted)
-            .onTapGesture { app.module = .upload }
-            .dropDestination(for: URL.self) { urls, _ in
-                let files = urls.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
-                guard !files.isEmpty else { return false }
-                app.transfers.enqueue(files: files, destination: destination, event: app.culling.session ?? "")
-                return true
-            } isTargeted: { targeted = $0 }
-    }
-}
-
-struct LanguageMenu: View {
-    @Environment(AppState.self) private var app
-
-    var body: some View {
-        Menu(app.language.shortLabel) {
-            ForEach(AppLanguage.allCases) { lang in
-                Button(lang.shortLabel) { app.language = lang }
-            }
+        HStack(spacing: 8) {
+            Image(systemName: "server.rack")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(targeted ? AnyShapeStyle(Brand.diagonal) : AnyShapeStyle(Palette.textSecondary))
+                .frame(width: 18)
+            Text(destination.name).lineLimit(1)
+            Spacer()
+            Text(destination.transferProtocol.displayName)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Palette.textSecondary)
         }
-        .help(app.t("toolbar.language"))
-    }
-}
-
-struct ThemeMenu: View {
-    @Environment(AppState.self) private var app
-
-    var body: some View {
-        Menu {
-            ForEach(AppTheme.allCases) { theme in
-                Button(app.t(theme.labelKey)) { app.theme = theme }
-            }
-        } label: {
-            Image(systemName: "circle.lefthalf.filled")
-        }
-        .help(app.t("toolbar.theme"))
+        .padding(.vertical, 5)
+        .padding(.horizontal, 8)
+        .background(RoundedRectangle(cornerRadius: 7).fill(targeted ? Brand.orange.opacity(0.25) : (hovering ? Palette.separator.opacity(0.45) : .clear)))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(targeted ? Brand.orange : .clear, lineWidth: 1.5))
+        .shadow(color: Brand.orange.opacity(targeted ? 0.6 : 0), radius: 8)
+        .scaleEffect(targeted ? 1.04 : 1)
+        .contentShape(Rectangle())
+        .animation(Motion.snappy, value: targeted)
+        .onHover { hover in withAnimation(Motion.snappy) { hovering = hover } }
+        .onTapGesture { app.module = .upload }
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+            guard !files.isEmpty else { return false }
+            app.transfers.enqueue(files: files, destination: destination, event: app.culling.session ?? "")
+            app.showToast(String(format: app.t("upload.filesSelected"), files.count) + " → " + destination.name, icon: "arrow.up.circle.fill")
+            return true
+        } isTargeted: { targeted = $0 }
     }
 }
 
@@ -176,22 +251,33 @@ struct StatusBarView: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Text(String(format: app.t("status.selected"), app.culling.selection.count))
+            Label {
+                Text(String(format: app.t("status.selected"), app.culling.selection.count))
+                    .contentTransition(.numericText())
+            } icon: {
+                Image(systemName: "checkmark.circle")
+            }
             if let count = app.culling.lastImportCount, !app.culling.isImporting {
-                Text(String(format: app.t("status.imported"), count))
+                Label(String(format: app.t("status.imported"), count), systemImage: "photo.stack")
+                    .transition(.opacity)
             }
             Spacer()
             if let freeSpace {
                 Label(String(format: app.t("status.freeSpace"), ByteCountFormatter.string(fromByteCount: freeSpace, countStyle: .file)), systemImage: "internaldrive")
             }
-            Label(connectionText, systemImage: "circle.fill")
-                .labelStyle(StatusDotLabelStyle(color: connectionColor))
+            HStack(spacing: 3) {
+                PulsingDot(color: connectionColor, pulsing: app.transfers.connectionState == .transferring)
+                Text(connectionText).contentTransition(.opacity)
+            }
         }
         .font(Typography.caption)
         .foregroundStyle(Palette.textSecondary)
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .background(Palette.panel)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 1) }
+        .animation(Motion.snappy, value: app.culling.selection.count)
+        .animation(Motion.snappy, value: app.transfers.connectionState)
         .task {
             while !Task.isCancelled {
                 let values = try? URL(fileURLWithPath: NSHomeDirectory()).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
@@ -216,17 +302,6 @@ struct StatusBarView: View {
         case .transferring: Brand.success
         case .paused: Brand.burntYellow
         case .error: Brand.error
-        }
-    }
-}
-
-private struct StatusDotLabelStyle: LabelStyle {
-    let color: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 4) {
-            configuration.icon.font(.system(size: 6)).foregroundStyle(color)
-            configuration.title
         }
     }
 }

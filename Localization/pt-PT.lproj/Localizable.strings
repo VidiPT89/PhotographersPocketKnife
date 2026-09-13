@@ -6,6 +6,15 @@
 "module.upload" = "Envio";
 "menu.view" = "Módulos";
 "menu.checkUpdates" = "Procurar atualizações…";
+"splash.tagline" = "SELECIONA · EDITA · ENTREGA";
+"toast.action" = "%@ · %d fotos";
+"toast.imported" = "%d fotos importadas";
+"toast.renamed" = "%d fotos renomeadas";
+"toast.metadata" = "Metadados aplicados a %d fotos";
+"toast.exported" = "%d fotos exportadas";
+"toast.copied" = "Definições copiadas";
+"toast.pasted" = "Definições coladas em %d fotos";
+"toast.uploadDone" = "Envio concluído · %d enviados, %d falhados";
 "toolbar.language" = "Idioma";
 "toolbar.theme" = "Tema";
 "theme.dark" = "Escuro";

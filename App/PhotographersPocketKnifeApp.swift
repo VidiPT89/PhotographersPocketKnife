@@ -58,6 +58,7 @@ struct PhotographersPocketKnifeApp: App {
             if let first = files.first {
                 await culling.importFiles(files, options: .init(copyDestination: nil), session: first.deletingLastPathComponent().lastPathComponent, context: context)
             }
+            appState.showToast(String(format: appState.t("toast.imported"), culling.lastImportCount ?? 0), icon: "photo.stack")
         }
     }
 }

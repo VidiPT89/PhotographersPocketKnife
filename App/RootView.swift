@@ -7,12 +7,12 @@ struct RootView: View {
         ZStack {
             if app.isSplashVisible {
                 SplashScreenView {
-                    withAnimation(.easeInOut(duration: 0.5)) { app.isSplashVisible = false }
+                    withAnimation(.easeOut(duration: 0.5)) { app.isSplashVisible = false }
                 }
                 .transition(.opacity)
             } else {
                 MainWindowView()
-                    .transition(.opacity)
+                    .transition(.opacity.combined(with: .scale(scale: 1.015)))
             }
         }
     }

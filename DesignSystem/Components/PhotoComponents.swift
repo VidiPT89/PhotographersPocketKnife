@@ -31,8 +31,9 @@ struct ThumbnailView: View {
                     .aspectRatio(contentMode: fit ? .fit : .fill)
                     .transition(.opacity)
             } else {
-                Rectangle().fill(Palette.separator.opacity(0.4))
-                ProgressView().controlSize(.small)
+                Rectangle()
+                    .fill(Palette.separator.opacity(0.35))
+                    .shimmer()
             }
         }
         .frame(minWidth: 0, minHeight: 0)
