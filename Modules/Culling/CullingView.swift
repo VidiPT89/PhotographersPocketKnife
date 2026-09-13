@@ -71,6 +71,10 @@ struct CullingView: View {
         case .upArrow: culling.move(by: -rowStep, in: list, extend: extend); return .handled
         case .downArrow: culling.move(by: rowStep, in: list, extend: extend); return .handled
         case .escape:
+            if culling.zoomed || culling.magnifier {
+                withAnimation(Motion.snappy) { culling.zoomed = false; culling.magnifier = false }
+                return .handled
+            }
             guard culling.viewMode != .grid else { return .ignored }
             withAnimation(Motion.smooth) { culling.viewMode = .grid }
             return .handled
@@ -81,10 +85,23 @@ struct CullingView: View {
             culling.selection = Set(list.map(\.id))
             return .handled
         }
-        guard let action = app.shortcuts.action(for: press.characters) else { return .ignored }
+        // "+" é Shift + "=" no teclado: as duas teclas aumentam as miniaturas.
+        let characters = press.characters == "+" ? "=" : press.characters
+        guard let action = app.shortcuts.action(for: characters) else { return .ignored }
+        switch action {
+        case .develop:
+            app.module = .editing
+            return .handled
+        case .crop:
+            app.module = .editing
+            app.editing.tab = .geometry
+            return .handled
+        default:
+            break
+        }
         let affected = culling.viewMode == .compare ? 1 : culling.targets(in: list).count
         withAnimation(Motion.pop) { culling.perform(action, in: list) }
-        if action != .loupe, action != .compare, affected > 0 {
+        if action.showsToast, affected > 0 {
             app.showToast(String(format: app.t("toast.action"), app.t(action.labelKey), affected), icon: action.icon)
         }
         return .handled
@@ -100,6 +117,7 @@ struct CullingToolbar: View {
         @Bindable var c = app.culling
         let cameras = Set(photos.compactMap(\.camera)).sorted()
         let lenses = Set(photos.compactMap(\.lens)).sorted()
+        let focalLengths = Set(photos.compactMap { $0.focalLength?.rounded() }).sorted()
         let hasTargets = !c.targets(in: visible).isEmpty
 
         HStack(spacing: 10) {
@@ -131,6 +149,13 @@ struct CullingToolbar: View {
                 Picker(app.t("meta.lens"), selection: $c.lens) {
                     Text(app.t("filter.any")).tag(String?.none)
                     ForEach(lenses, id: \.self) { Text($0).tag(Optional($0)) }
+                }
+                Picker(app.t("filter.iso"), selection: $c.minISO) {
+                    ForEach(CullingModel.isoSteps, id: \.self) { Text($0 == 0 ? app.t("filter.any") : "≥ ISO \($0)").tag($0) }
+                }
+                Picker(app.t("meta.focal"), selection: $c.focalLength) {
+                    Text(app.t("filter.any")).tag(Double?.none)
+                    ForEach(focalLengths, id: \.self) { Text("\(Int($0)) mm").tag(Optional($0)) }
                 }
                 Divider()
                 Button(app.t("filter.clear")) { c.clearFilters() }
@@ -177,9 +202,27 @@ struct CullingToolbar: View {
                 .help(app.t("metadata.title"))
                 .disabled(!hasTargets)
 
-            Slider(value: $c.thumbnailSize, in: 110...360)
-                .frame(width: 90)
-                .help(app.t("culling.thumbnailSize"))
+            Menu {
+                Button(app.t("culling.presentation"), systemImage: "play.rectangle") {
+                    withAnimation(Motion.smooth) { c.presenting = true }
+                }
+                Divider()
+                Button(app.t("culling.saveSidecars"), systemImage: "doc.badge.gearshape") { saveSidecars() }
+                Button(app.t("culling.exportXMP"), systemImage: "arrow.up.doc") { exportXMP() }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(app.t("culling.more"))
+
+            Slider(
+                value: Binding(get: { Double(c.thumbnailStep) }, set: { c.thumbnailStep = Int($0.rounded()) }),
+                in: 0...Double(CullingModel.thumbnailSizes.count - 1),
+                step: 1
+            )
+            .frame(width: 90)
+            .help(app.t("culling.thumbnailSize"))
 
             Button { c.showInfoPanel.toggle() } label: { Image(systemName: "sidebar.right") }
                 .help(app.t("info.metadata"))
@@ -188,6 +231,34 @@ struct CullingToolbar: View {
         .controlSize(.small)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// A seleção, ou todas as fotos visíveis se não houver seleção.
+    private var actionTargets: [Photo] {
+        let targets = app.culling.targets(in: visible)
+        return targets.isEmpty ? visible : targets
+    }
+
+    private func saveSidecars() {
+        let items = CatalogService.sidecars(for: actionTargets)
+        let app = app
+        Task {
+            let written = await Task.detached(priority: .userInitiated) {
+                items.filter { (try? $0.sidecar.write(for: $0.url)) != nil }.count
+            }.value
+            app.showToast(String(format: app.t("toast.sidecars"), written), icon: "doc.badge.gearshape")
+        }
+    }
+
+    private func exportXMP() {
+        let items = actionTargets.map { (url: $0.url, rating: $0.rating, label: $0.colorLabel) }
+        let app = app
+        Task {
+            let written = await Task.detached(priority: .userInitiated) {
+                items.filter { (try? MetadataWriter.writeRating($0.rating, label: $0.label, to: $0.url)) != nil }.count
+            }.value
+            app.showToast(String(format: app.t("toast.xmp"), written), icon: "arrow.up.doc.fill")
+        }
     }
 }
 

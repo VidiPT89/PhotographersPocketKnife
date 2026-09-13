@@ -5,8 +5,18 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
     case pick, reject, unflag
     case labelRed, labelYellow, labelGreen, labelBlue, labelPurple
     case loupe, compare
+    case zoom, magnifier, develop, crop, presentation, smaller, larger
 
     var id: String { rawValue }
+
+    /// Ações de classificação mostram uma confirmação; as de navegação não.
+    var showsToast: Bool {
+        switch self {
+        case .rate0, .rate1, .rate2, .rate3, .rate4, .rate5, .pick, .reject, .unflag,
+             .labelRed, .labelYellow, .labelGreen, .labelBlue, .labelPurple: true
+        default: false
+        }
+    }
     var labelKey: String { "shortcut.\(rawValue)" }
 
     var icon: String {
@@ -19,6 +29,13 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
         case .labelRed, .labelYellow, .labelGreen, .labelBlue, .labelPurple: "circle.fill"
         case .loupe: "magnifyingglass"
         case .compare: "rectangle.split.2x1"
+        case .zoom: "1.magnifyingglass"
+        case .magnifier: "magnifyingglass.circle"
+        case .develop: "slider.horizontal.3"
+        case .crop: "crop"
+        case .presentation: "play.rectangle"
+        case .smaller: "minus.magnifyingglass"
+        case .larger: "plus.magnifyingglass"
         }
     }
 
@@ -41,6 +58,13 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
         case .labelPurple: "v"
         case .loupe: " "
         case .compare: "c"
+        case .zoom: "z"
+        case .magnifier: "l"
+        case .develop: "t"
+        case .crop: "r"
+        case .presentation: "f"
+        case .smaller: "-"
+        case .larger: "="
         }
     }
 }

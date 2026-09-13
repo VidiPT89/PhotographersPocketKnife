@@ -50,12 +50,28 @@ final class CullingModel {
     var colorFilter: ColorLabel?
     var camera: String?
     var lens: String?
+    var minISO = 0
+    var focalLength: Double?
     var searchText = ""
     var sort: PhotoSort = .captureDate
     var sortAscending = true
 
-    var viewMode: CullingViewMode = .grid
-    var thumbnailSize: Double = 180
+    var viewMode: CullingViewMode = .grid {
+        didSet { if viewMode != .loupe { zoomed = false; magnifier = false } }
+    }
+    /// 5 tamanhos de miniatura (teclas `-` e `+`).
+    static let thumbnailSizes: [Double] = [110, 150, 200, 270, 360]
+    static let isoSteps = [0, 400, 800, 1600, 3200, 6400]
+    var thumbnailStep = 2
+    var thumbnailSize: Double { Self.thumbnailSizes[min(max(thumbnailStep, 0), Self.thumbnailSizes.count - 1)] }
+    /// Zoom 100 % a seguir o cursor, na lupa.
+    var zoomed = false
+    /// Lupa circular a 100 % a seguir o cursor.
+    var magnifier = false
+    /// Modo apresentação ao cliente, em ecrã completo.
+    var presenting = false
+    /// Direção da última navegação, para o pré-carregamento dar mais peso ao que vem a seguir.
+    var lastDirection = 1
     var gridColumns = 1
     var showInfoPanel = true
     var activeSheet: CullingSheet?
@@ -67,9 +83,11 @@ final class CullingModel {
     var isImporting = false
     var importProgress = 0.0
     var lastImportCount: Int?
+    var lastImportFailures = 0
 
     var hasActiveFilters: Bool {
-        minRating > 0 || flagFilter != .all || colorFilter != nil || camera != nil || lens != nil || showDuplicatesOnly
+        minRating > 0 || flagFilter != .all || colorFilter != nil || camera != nil || lens != nil
+            || minISO > 0 || focalLength != nil || showDuplicatesOnly
     }
 
     func clearFilters() {
@@ -78,6 +96,8 @@ final class CullingModel {
         colorFilter = nil
         camera = nil
         lens = nil
+        minISO = 0
+        focalLength = nil
         showDuplicatesOnly = false
         searchText = ""
     }
@@ -98,6 +118,8 @@ final class CullingModel {
             if let colorFilter, photo.colorLabel != colorFilter { return false }
             if let camera, photo.camera != camera { return false }
             if let lens, photo.lens != lens { return false }
+            if minISO > 0, (photo.iso ?? 0) < minISO { return false }
+            if let focalLength, photo.focalLength?.rounded() != focalLength { return false }
             if showDuplicatesOnly, duplicateGroups[photo.id] == nil { return false }
             if !query.isEmpty, !photo.fileName.lowercased().contains(query) { return false }
             return true
@@ -147,6 +169,7 @@ final class CullingModel {
 
     func move(by delta: Int, in list: [Photo], extend: Bool) {
         guard !list.isEmpty else { return }
+        lastDirection = delta >= 0 ? 1 : -1
         let next: Int
         if let current = list.firstIndex(where: { $0.id == focusedID }) {
             next = min(max(current + delta, 0), list.count - 1)
@@ -185,6 +208,18 @@ final class CullingModel {
         case .labelPurple: toggle(.purple, photos)
         case .loupe: viewMode = viewMode == .loupe ? .grid : .loupe
         case .compare: viewMode = viewMode == .compare ? .grid : .compare
+        case .zoom:
+            if viewMode != .loupe { viewMode = .loupe }
+            zoomed.toggle()
+            if zoomed { magnifier = false }
+        case .magnifier:
+            if viewMode != .loupe { viewMode = .loupe }
+            magnifier.toggle()
+            if magnifier { zoomed = false }
+        case .smaller: thumbnailStep = max(thumbnailStep - 1, 0)
+        case .larger: thumbnailStep = min(thumbnailStep + 1, Self.thumbnailSizes.count - 1)
+        case .presentation: presenting.toggle()
+        case .develop, .crop: break // tratados pela app (mudam de módulo)
         }
     }
 
@@ -208,12 +243,13 @@ final class CullingModel {
     func importFiles(_ files: [URL], options: PhotoImporter.Options, session: String, context: ModelContext) async {
         isImporting = true
         importProgress = 0
-        let infos = await Task.detached(priority: .userInitiated) {
-            (try? PhotoImporter.run(files: files, options: options) { done, total in
+        let result = await Task.detached(priority: .userInitiated) {
+            (try? PhotoImporter.runReporting(files: files, options: options) { done, total in
                 Task { @MainActor in self.importProgress = Double(done) / Double(max(total, 1)) }
-            }) ?? []
+            }) ?? PhotoImporter.Result(infos: [], failures: [])
         }.value
-        lastImportCount = CatalogService.insert(infos, session: session, into: context)
+        lastImportFailures = result.failures.count
+        lastImportCount = CatalogService.insert(result.infos, session: session, into: context)
         self.session = session
         isImporting = false
     }

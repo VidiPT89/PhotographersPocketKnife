@@ -20,6 +20,9 @@ final class Photo {
     var captureDate: Date?
     var camera: String?
     var lens: String?
+    var iso: Int?
+    var aperture: Double?
+    var focalLength: Double?
     var pixelWidth: Int
     var pixelHeight: Int
     var fileSize: Int64
@@ -39,6 +42,9 @@ final class Photo {
         captureDate = info.captureDate
         camera = info.camera
         lens = info.lens
+        iso = info.iso
+        aperture = info.aperture
+        focalLength = info.focalLength
         pixelWidth = info.width
         pixelHeight = info.height
         fileSize = info.fileSize

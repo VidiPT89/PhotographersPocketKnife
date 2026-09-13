@@ -9,6 +9,11 @@ struct ImportedPhotoInfo: Sendable {
     let width: Int
     let height: Int
     let fileSize: Int64
+    var iso: Int? = nil
+    var aperture: Double? = nil
+    var focalLength: Double? = nil
+    /// Classificação e revelação lidas de um `.ppk` ao lado da foto, se existir.
+    var sidecar: PPKSidecar? = nil
 }
 
 /// Um campo de metadados; `id` é a chave de tradução do rótulo.
@@ -55,7 +60,10 @@ enum MetadataReader {
             lens: lens,
             width: width,
             height: height,
-            fileSize: Int64(values?.fileSize ?? 0)
+            fileSize: Int64(values?.fileSize ?? 0),
+            iso: (exif[kCGImagePropertyExifISOSpeedRatings as String] as? [Int])?.first,
+            aperture: exif[kCGImagePropertyExifFNumber as String] as? Double,
+            focalLength: exif[kCGImagePropertyExifFocalLength as String] as? Double
         )
     }
 

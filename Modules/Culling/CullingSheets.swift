@@ -11,43 +11,83 @@ struct ImportSheet: View {
     @State private var copyFiles = false
     @State private var destination: URL?
     @State private var byDate = true
+    @AppStorage("import.folderTemplate") private var folderTemplate = "{year}/{date}_{event}/{type}"
+    @AppStorage("import.verify") private var verify = true
+    @State private var useBackup = false
+    @State private var backup: URL?
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
-                LabeledContent(app.t("import.source"), value: folder.path)
-                TextField(app.t("import.session"), text: $session)
-                Toggle(app.t("import.copy"), isOn: $copyFiles)
+                Section {
+                    LabeledContent(app.t("import.source"), value: folder.path)
+                    TextField(app.t("import.session"), text: $session)
+                    Toggle(app.t("import.copy"), isOn: $copyFiles.animation(Motion.snappy))
+                }
                 if copyFiles {
-                    LabeledContent(app.t("import.destination")) {
-                        HStack {
-                            Text(destination?.path ?? "—").lineLimit(1).truncationMode(.middle)
-                            Button(app.t("common.choose")) {
-                                destination = FilePanels.chooseFolder(prompt: app.t("common.choose"))
-                            }
+                    Section {
+                        folderPicker(app.t("import.destination"), url: $destination)
+                        Toggle(app.t("import.useTemplate"), isOn: $byDate.animation(Motion.snappy))
+                        if byDate {
+                            TextField(app.t("import.template"), text: $folderTemplate)
+                            Text(app.t("rename.tokens") + " " + IngestTemplate.tokens.joined(separator: " "))
+                                .font(Typography.caption)
+                                .foregroundStyle(Palette.textSecondary)
+                            LabeledContent(app.t("import.example"), value: IngestTemplate.path(folderTemplate, date: Date(), event: session, isRaw: true))
                         }
                     }
-                    Toggle(app.t("import.byDate"), isOn: $byDate)
+                    Section {
+                        Toggle(app.t("import.verify"), isOn: $verify)
+                        Toggle(app.t("import.backup"), isOn: $useBackup.animation(Motion.snappy))
+                        if useBackup {
+                            folderPicker(app.t("import.backupDestination"), url: $backup)
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)
-            SheetButtons(confirmTitle: app.t("culling.import"), confirmDisabled: copyFiles && destination == nil) {
+            SheetButtons(
+                confirmTitle: app.t("culling.import"),
+                confirmDisabled: copyFiles && (destination == nil || (useBackup && backup == nil))
+            ) {
                 start()
             }
         }
-        .frame(width: 480)
+        .frame(width: 520)
         .onAppear { session = folder.lastPathComponent }
     }
 
+    private func folderPicker(_ title: String, url: Binding<URL?>) -> some View {
+        LabeledContent(title) {
+            HStack {
+                Text(url.wrappedValue?.path ?? "—").lineLimit(1).truncationMode(.middle)
+                Button(app.t("common.choose")) {
+                    url.wrappedValue = FilePanels.chooseFolder(prompt: app.t("common.choose"))
+                }
+            }
+        }
+    }
+
     private func start() {
-        let options = PhotoImporter.Options(copyDestination: copyFiles ? destination : nil, subfolderByDate: byDate)
         let name = session.trimmingCharacters(in: .whitespaces).isEmpty ? folder.lastPathComponent : session
+        let options = PhotoImporter.Options(
+            copyDestination: copyFiles ? destination : nil,
+            subfolderByDate: byDate,
+            folderTemplate: folderTemplate,
+            event: name,
+            backupDestination: copyFiles && useBackup ? backup : nil,
+            verifyChecksum: copyFiles && verify
+        )
         let culling = app.culling
         let context = context
         let app = app
         Task {
             await culling.importFolder(folder, options: options, session: name, context: context)
-            app.showToast(String(format: app.t("toast.imported"), culling.lastImportCount ?? 0), icon: "photo.stack")
+            if culling.lastImportFailures > 0 {
+                app.showToast(String(format: app.t("toast.importFailures"), culling.lastImportCount ?? 0, culling.lastImportFailures), icon: "exclamationmark.triangle.fill")
+            } else {
+                app.showToast(String(format: app.t("toast.imported"), culling.lastImportCount ?? 0), icon: "photo.stack")
+            }
         }
         dismiss()
     }
@@ -134,12 +174,46 @@ struct MetadataSheet: View {
     @State private var fields = IPTCFields()
     @State private var isWriting = false
     @State private var message: String?
+    @State private var event = ""
+    @State private var templates: [SavedCaption] = []
+    @State private var templateName = ""
 
     private static let storageKey = "metadata.lastFields"
+    private static let templatesKey = "metadata.captionTemplates"
+
+    struct SavedCaption: Codable, Hashable, Identifiable {
+        var id: String { name }
+        var name: String
+        var title: String
+        var caption: String
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                Section(app.t("metadata.templates")) {
+                    HStack {
+                        Menu(app.t("metadata.loadTemplate")) {
+                            ForEach(templates) { template in
+                                Button(template.name) {
+                                    fields.title = template.title
+                                    fields.caption = template.caption
+                                }
+                            }
+                        }
+                        .disabled(templates.isEmpty)
+                        TextField(app.t("metadata.templateName"), text: $templateName)
+                        Button(app.t("presets.save")) { saveTemplate() }
+                            .disabled(templateName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    TextField(app.t("metadata.event"), text: $event)
+                    Text(app.t("rename.tokens") + " " + CaptionTemplate.tokens.joined(separator: " "))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecondary)
+                    if let first = photos.first, !(fields.caption + fields.title).isEmpty {
+                        LabeledContent(app.t("import.example"), value: CaptionTemplate.resolve(fields.caption.isEmpty ? fields.title : fields.caption, context(for: first, index: 0)))
+                    }
+                }
                 Section(String(format: app.t("metadata.applyTo"), photos.count)) {
                     TextField(app.t("meta.title"), text: $fields.title)
                     TextField(app.t("meta.caption"), text: $fields.caption, axis: .vertical).lineLimit(2...4)
@@ -157,27 +231,51 @@ struct MetadataSheet: View {
                 apply()
             }
         }
-        .frame(width: 480, height: 520)
+        .frame(width: 540, height: 680)
         .onAppear {
             if let data = UserDefaults.standard.data(forKey: Self.storageKey),
                let saved = try? JSONDecoder().decode(IPTCFields.self, from: data) {
                 fields = saved
             }
+            if let data = UserDefaults.standard.data(forKey: Self.templatesKey),
+               let saved = try? JSONDecoder().decode([SavedCaption].self, from: data) {
+                templates = saved
+            }
         }
     }
 
+    private func context(for photo: Photo, index: Int) -> CaptionTemplate.Context {
+        CaptionTemplate.Context(
+            date: photo.captureDate, event: event, camera: photo.camera, city: fields.city,
+            country: fields.country, creator: fields.creator, fileName: photo.fileName, sequence: index + 1
+        )
+    }
+
+    private func saveTemplate() {
+        let name = templateName.trimmingCharacters(in: .whitespaces)
+        templates.removeAll { $0.name == name }
+        templates.append(SavedCaption(name: name, title: fields.title, caption: fields.caption))
+        UserDefaults.standard.set(try? JSONEncoder().encode(templates), forKey: Self.templatesKey)
+        templateName = ""
+    }
+
     private func apply() {
-        let urls = photos.map(\.url)
-        let fields = fields
+        // Legenda e título resolvidos por foto ({date}, {event}, {seq}…).
+        let jobs = photos.enumerated().map { index, photo -> (url: URL, fields: IPTCFields) in
+            var resolved = fields
+            resolved.title = CaptionTemplate.resolve(fields.title, context(for: photo, index: index))
+            resolved.caption = CaptionTemplate.resolve(fields.caption, context(for: photo, index: index))
+            return (photo.url, resolved)
+        }
         UserDefaults.standard.set(try? JSONEncoder().encode(fields), forKey: Self.storageKey)
         isWriting = true
         Task {
             let failures = await Task.detached(priority: .userInitiated) {
-                urls.filter { (try? MetadataWriter.write(fields, to: $0)) == nil }.count
+                jobs.filter { (try? MetadataWriter.write($0.fields, to: $0.url)) == nil }.count
             }.value
             isWriting = false
             if failures == 0 {
-                app.showToast(String(format: app.t("toast.metadata"), urls.count), icon: "tag.fill")
+                app.showToast(String(format: app.t("toast.metadata"), jobs.count), icon: "tag.fill")
                 dismiss()
             } else {
                 message = String(format: app.t("metadata.failures"), failures)

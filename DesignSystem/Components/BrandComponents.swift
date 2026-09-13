@@ -38,7 +38,7 @@ private struct BrandButtonBody: View {
             .padding(.vertical, 8)
             .background {
                 Capsule().fill(LinearGradient(
-                    colors: hovering ? [Color(hex: 0xFF8A33), Brand.burntYellow] : [Brand.orange, Color(hex: 0xE8850A)],
+                    colors: configuration.isPressed ? [Brand.ember, Brand.orange] : (hovering ? [Brand.orangeBright, Brand.amber] : [Brand.orange, Brand.orangeBright]),
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
             }

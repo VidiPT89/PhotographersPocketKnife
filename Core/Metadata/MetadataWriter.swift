@@ -41,15 +41,29 @@ enum MetadataWriter {
 
     /// Escreve sem recomprimir a imagem. Em RAW usa um ficheiro .xmp ao lado (sidecar).
     static func write(_ fields: IPTCFields, to url: URL) throws {
+        try update(url) { apply(fields, to: $0) }
+    }
+
+    /// `xmp:Rating` e `xmp:Label`, que o Lightroom e o Bridge leem (só a pedido, para não poluir as pastas).
+    static func writeRating(_ rating: Int, label: ColorLabel, to url: URL) throws {
+        try update(url) { metadata in
+            CGImageMetadataSetValueWithPath(metadata, nil, "xmp:Rating" as CFString, NSNumber(value: min(max(rating, 0), 5)))
+            if let name = label.xmpName {
+                CGImageMetadataSetValueWithPath(metadata, nil, "xmp:Label" as CFString, name as CFString)
+            }
+        }
+    }
+
+    private static func update(_ url: URL, _ body: (CGMutableImageMetadata) -> Void) throws {
         if PhotoImporter.isRaw(url) {
-            try writeSidecar(fields, for: url)
+            try writeSidecar(for: url, body)
             return
         }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let type = CGImageSourceGetType(source) else { throw MetadataError.unreadable(url) }
 
         let metadata = CGImageMetadataCreateMutable()
-        apply(fields, to: metadata)
+        body(metadata)
 
         let temp = url.deletingLastPathComponent().appendingPathComponent(".ppk-\(UUID().uuidString)-\(url.lastPathComponent)")
         guard let destination = CGImageDestinationCreateWithURL(temp as CFURL, type, 1, nil) else {
@@ -75,7 +89,7 @@ enum MetadataWriter {
         return CGImageSourceCopyMetadataAtIndex(source, 0, nil)
     }
 
-    private static func writeSidecar(_ fields: IPTCFields, for url: URL) throws {
+    private static func writeSidecar(for url: URL, _ body: (CGMutableImageMetadata) -> Void) throws {
         let sidecar = sidecarURL(for: url)
         let metadata: CGMutableImageMetadata
         if let data = try? Data(contentsOf: sidecar),
@@ -85,7 +99,7 @@ enum MetadataWriter {
         } else {
             metadata = CGImageMetadataCreateMutable()
         }
-        apply(fields, to: metadata)
+        body(metadata)
         guard let xmp = CGImageMetadataCreateXMPData(metadata, nil) else { throw MetadataError.cannotWrite(url) }
         try (xmp as Data).write(to: sidecar, options: .atomic)
     }

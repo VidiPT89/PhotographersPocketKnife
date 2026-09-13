@@ -1,29 +1,32 @@
 import SwiftUI
 import AppKit
 
-/// Cores fixas da marca (ividi.dev), iguais em qualquer tema.
+/// Cores da marca, retiradas do CSS de ividi.dev. Iguais em qualquer tema.
 enum Brand {
-    static let orange = Color(hex: 0xFF7A1A)
-    static let burntYellow = Color(hex: 0xD98A00)
-    static let amber = Color(hex: 0xFFB347)
-    static let black = Color(hex: 0x0E0E0F)
-    static let success = Color(hex: 0x3FBE6B)
-    static let error = Color(hex: 0xE5484D)
+    static let orange = Color(hex: 0xD97706)
+    static let orangeBright = Color(hex: 0xF59E0B)
+    static let amber = Color(hex: 0xFBBF24)
+    static let ember = Color(hex: 0xB45309)
+    /// Nome antigo mantido para o acento secundário (hover, badges, estados de espera).
+    static let burntYellow = orangeBright
+    static let black = Color(hex: 0x0A0A0F)
+    static let success = Color(hex: 0x4ADE80)
+    static let error = Color(hex: 0xEF4444)
 
-    static let gradient = LinearGradient(colors: [orange, burntYellow], startPoint: .leading, endPoint: .trailing)
-    static let diagonal = LinearGradient(colors: [orange, burntYellow], startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let gradient = LinearGradient(colors: [orange, orangeBright], startPoint: .leading, endPoint: .trailing)
+    static let diagonal = LinearGradient(colors: [orange, amber], startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
-/// Cores semânticas que se adaptam a Dark/Light.
+/// Cores semânticas que se adaptam a Dark/Light. O laranja e o âmbar mantêm-se nos dois modos.
 enum Palette {
-    static let background = Color(light: 0xF5F3F0, dark: 0x0E0E0F)
-    static let panel = Color(light: 0xFFFFFF, dark: 0x1A1A1C)
-    static let elevated = Color(light: 0xFFFFFF, dark: 0x222225)
-    /// Fundo neutro atrás das fotos, para não enviesar a leitura de cor.
-    static let canvas = Color(light: 0xE8E7E5, dark: 0x131315)
-    static let separator = Color(light: 0xD8D6D2, dark: 0x2A2A2C)
-    static let textPrimary = Color(light: 0x1A1A1C, dark: 0xF5F3F0)
-    static let textSecondary = Color(hex: 0x8A8A8E)
+    static let background = Color(light: 0xFAFAF7, dark: 0x0A0A0F)
+    static let panel = Color(light: 0xFFFFFF, dark: 0x1A1A22)
+    static let elevated = Color(light: 0xF1F0EC, dark: 0x24242E)
+    /// Fundo neutro atrás das fotos: nenhum tom da marca, para não falsear a leitura de cor.
+    static let canvas = Color(light: 0xE8E8E8, dark: 0x1A1A1A)
+    static let separator = Color(light: 0xE2E0DA, dark: 0x33333F)
+    static let textPrimary = Color(light: 0x14141A, dark: 0xF5F5F0)
+    static let textSecondary = Color(light: 0x71717A, dark: 0xA1A1AA)
 }
 
 extension Color {

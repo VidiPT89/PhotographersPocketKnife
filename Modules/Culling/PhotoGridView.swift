@@ -64,6 +64,10 @@ struct PhotoCell: View {
     let isFocused: Bool
     let duplicateGroup: Int?
 
+    /// Contorno verde/vermelho que pulsa uma vez ao marcar pick/reject.
+    @State private var flagPulse = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             ThumbnailView(url: photo.url, maxPixel: size > 240 ? 640 : 320, recipeData: photo.recipeData)
@@ -102,6 +106,18 @@ struct PhotoCell: View {
             RoundedRectangle(cornerRadius: 9)
                 .stroke(isFocused ? Brand.orange : (isSelected ? Brand.orange.opacity(0.45) : Palette.separator), lineWidth: isFocused ? 2 : 1)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(photo.flag == .reject ? Brand.error : Brand.success, lineWidth: 3)
+                .scaleEffect(1 + (1 - flagPulse) * 0.06)
+                .opacity(flagPulse)
+                .allowsHitTesting(false)
+        }
+        .onChange(of: photo.flagRaw) { _, newValue in
+            guard newValue != 0 else { return }
+            flagPulse = 1
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeOut(duration: 0.7)) { flagPulse = 0 }
+        }
         .shadow(color: Brand.orange.opacity(isFocused ? 0.4 : 0), radius: 10)
         .hoverLift(scale: 1.025)
         .opacity(photo.flag == .reject ? 0.45 : 1)

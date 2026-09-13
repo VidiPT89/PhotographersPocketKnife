@@ -29,6 +29,15 @@ struct MainWindowView: View {
                 ToastOverlay().padding(.bottom, 46)
             }
         }
+        .overlay {
+            if app.culling.presenting {
+                PresentationView()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
+        .animation(Motion.smooth, value: app.culling.presenting)
+        .toolbar(app.culling.presenting ? .hidden : .visible, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 PillPicker(selection: $app.module, options: AppModule.allCases) { module, _ in

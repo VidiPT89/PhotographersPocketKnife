@@ -35,6 +35,8 @@ targets:
     info:
       path: App/Info.plist
       properties:
+        CFBundleDisplayName: Photographer's Pocket Knife
+        CFBundleName: Photographer's Pocket Knife
         CFBundleDocumentTypes:
           - CFBundleTypeName: Folder
             CFBundleTypeRole: Viewer
@@ -51,9 +53,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.ividi.PhotographersPocketKnife
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: PhotographersPocketKnife
+        INFOPLIST_KEY_CFBundleDisplayName: "Photographer's Pocket Knife"
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
-        INFOPLIST_KEY_NSHumanReadableCopyright: "© David Arsénio Martins"
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 David Arsénio Martins"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: YES
   PhotographersPocketKnifeTests:
