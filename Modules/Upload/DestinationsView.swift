@@ -130,7 +130,9 @@ struct DestinationEditor: View {
         testState = .testing
         Task {
             do {
-                try await CurlProcess().run(arguments: CurlCommand.testArguments(endpoint), config: CurlCommand.config(endpoint))
+                let command = TransferCommand.test(endpoint)
+                try await CurlProcess(executable: command.executable, environment: command.environment)
+                    .run(arguments: command.arguments, config: command.input)
                 testState = .ok
             } catch {
                 testState = .failed(error.localizedDescription)

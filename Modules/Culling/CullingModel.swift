@@ -201,10 +201,15 @@ final class CullingModel {
     // MARK: Importação e duplicados
 
     func importFolder(_ folder: URL, options: PhotoImporter.Options, session: String, context: ModelContext) async {
+        let files = await Task.detached(priority: .userInitiated) { PhotoImporter.imageFiles(in: folder) }.value
+        await importFiles(files, options: options, session: session, context: context)
+    }
+
+    func importFiles(_ files: [URL], options: PhotoImporter.Options, session: String, context: ModelContext) async {
         isImporting = true
         importProgress = 0
         let infos = await Task.detached(priority: .userInitiated) {
-            (try? PhotoImporter.run(folder: folder, options: options) { done, total in
+            (try? PhotoImporter.run(files: files, options: options) { done, total in
                 Task { @MainActor in self.importProgress = Double(done) / Double(max(total, 1)) }
             }) ?? []
         }.value

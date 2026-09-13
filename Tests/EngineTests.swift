@@ -131,6 +131,41 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(info.height, 50)
     }
 
+    func testExportWritesReadableDNG() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ppk-dng-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let source = folder.appendingPathComponent("source.png")
+        // Tamanho realista: o ImageIO lê DNGs minúsculos como TIFF.
+        let context = try XCTUnwrap(CGContext(data: nil, width: 2048, height: 1366, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 2048, height: 1366))
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 683, width: 2048, height: 683)) // metade de cima vermelha
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        var settings = ExportSettings()
+        settings.format = .dng
+        let output = try ImageRenderer.shared.export(url: source, recipe: EditRecipe(), settings: settings, to: folder)
+        XCTAssertEqual(output.pathExtension, "dng")
+
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetType(imageSource) as String?, "com.adobe.raw-image")
+
+        let raw = try XCTUnwrap(CIRAWFilter(imageURL: output))
+        let decoded = try XCTUnwrap(raw.outputImage)
+        XCTAssertEqual(decoded.extent.width, 2048)
+        XCTAssertEqual(decoded.extent.height, 1366)
+        let top = try pixel(decoded.cropped(to: CGRect(x: 0, y: 1200, width: 2048, height: 100)))
+        let bottom = try pixel(decoded.cropped(to: CGRect(x: 0, y: 0, width: 2048, height: 100)))
+        XCTAssertGreaterThan(top.r, top.b, "Top half stays red (row order and channels preserved)")
+        XCTAssertGreaterThan(bottom.b, bottom.r)
+    }
+
     // MARK: Envio
 
     func testRemoteFolderTemplate() {
@@ -141,20 +176,19 @@ final class EngineTests: XCTestCase {
     }
 
     func testCurlArgumentsPerProtocolKeepPasswordOutOfArguments() {
-        var endpoint = TransferEndpoint(transferProtocol: .sftp, host: "example.com", port: 22, username: "vidi", password: "p@ss\"word",
+        var endpoint = TransferEndpoint(transferProtocol: .ftp, host: "example.com", port: 21, username: "vidi", password: "p@ss\"word",
                                         bucket: "", region: "eu-west-1", trustUnknownHostKey: true)
         let file = URL(fileURLWithPath: "/tmp/foto 1.jpg")
 
-        let sftp = CurlCommand.uploadArguments(endpoint, file: file, remotePath: "/2026/foto 1.jpg", resume: true)
-        XCTAssertEqual(sftp.last, "sftp://example.com:22/2026/foto%201.jpg")
-        XCTAssertTrue(sftp.contains("--insecure"))
-        XCTAssertTrue(sftp.contains("--ftp-create-dirs"))
-        XCTAssertTrue(sftp.contains("-C"))
-        XCTAssertFalse(sftp.joined().contains("p@ss"))
+        let ftp = CurlCommand.uploadArguments(endpoint, file: file, remotePath: "/2026/foto 1.jpg", resume: true)
+        XCTAssertEqual(ftp.last, "ftp://example.com:21/2026/foto%201.jpg")
+        XCTAssertTrue(ftp.contains("--ftp-create-dirs"))
+        XCTAssertTrue(ftp.contains("-C"))
+        XCTAssertFalse(ftp.joined().contains("p@ss"))
         XCTAssertEqual(CurlCommand.config(endpoint), "user = \"vidi:p@ss\\\"word\"\n")
+        XCTAssertEqual(TransferCommand.upload(endpoint, file: file, remotePath: "/a.jpg", resume: false).executable, "/usr/bin/curl")
 
         endpoint.transferProtocol = .ftps
-        endpoint.port = 21
         XCTAssertTrue(CurlCommand.uploadArguments(endpoint, file: file, remotePath: "/a.jpg", resume: false).contains("--ssl-reqd"))
 
         endpoint.transferProtocol = .s3
@@ -165,6 +199,23 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(s3.last, "https://s3.eu-west-1.amazonaws.com:443/fotos/a.jpg")
         XCTAssertTrue(s3.contains("aws:amz:eu-west-1:s3"))
         XCTAssertFalse(s3.contains("-C"))
+    }
+
+    func testSFTPUsesSystemOpenSSHWithBatchAndAskpass() throws {
+        let endpoint = TransferEndpoint(transferProtocol: .sftp, host: "example.com", port: 2222, username: "vidi", password: "segredo",
+                                        bucket: "", region: "", trustUnknownHostKey: true)
+        let command = TransferCommand.upload(endpoint, file: URL(fileURLWithPath: "/tmp/a \"b\".jpg"), remotePath: "/up/2026/a.jpg", resume: false)
+        XCTAssertEqual(command.executable, "/usr/bin/sftp")
+        XCTAssertEqual(command.arguments.last, "vidi@example.com")
+        XCTAssertLessThan(try XCTUnwrap(command.arguments.firstIndex(of: "BatchMode=no")), try XCTUnwrap(command.arguments.firstIndex(of: "-b")))
+        XCTAssertTrue(command.arguments.contains("StrictHostKeyChecking=accept-new"))
+        XCTAssertFalse(command.arguments.joined().contains("segredo"))
+        XCTAssertEqual(command.input, "-mkdir \"/up\"\n-mkdir \"/up/2026\"\nput \"/tmp/a \\\"b\\\".jpg\" \"/up/2026/a.jpg\"\n")
+
+        let environment = try XCTUnwrap(command.environment)
+        XCTAssertEqual(environment["SSH_ASKPASS_REQUIRE"], "force")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: try XCTUnwrap(environment["SSH_ASKPASS"])))
+        XCTAssertNil(SFTPCommand.environment(password: ""), "Key-based auth needs no askpass")
     }
 
     func testCurlProgressParsingAndRetryableErrors() {

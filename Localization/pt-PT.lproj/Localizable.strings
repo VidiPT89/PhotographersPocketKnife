@@ -5,6 +5,7 @@
 "module.editing" = "Edição";
 "module.upload" = "Envio";
 "menu.view" = "Módulos";
+"menu.checkUpdates" = "Procurar atualizações…";
 "toolbar.language" = "Idioma";
 "toolbar.theme" = "Tema";
 "theme.dark" = "Escuro";

@@ -54,7 +54,9 @@ final class AppState {
         }
     }
 
-    var module: AppModule = .culling
+    var module: AppModule {
+        didSet { defaults.set(module.rawValue, forKey: Keys.module) }
+    }
     var isSplashVisible = true
     /// Ficheiros à espera de escolher destino no módulo de envio.
     var pendingUploadURLs: [URL] = []
@@ -72,6 +74,7 @@ final class AppState {
         theme = AppTheme(rawValue: defaults.string(forKey: Keys.theme) ?? "") ?? .dark
         let lang = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .pt
         language = lang
+        module = AppModule(rawValue: defaults.string(forKey: Keys.module) ?? "") ?? .culling
         bundle = Self.bundle(for: lang)
         shortcuts = ShortcutStore(defaults: defaults)
         transfers.localize = { [weak self] key in self?.t(key) ?? key }
@@ -91,5 +94,6 @@ final class AppState {
     private enum Keys {
         static let theme = "app.theme"
         static let language = "app.language"
+        static let module = "app.module"
     }
 }

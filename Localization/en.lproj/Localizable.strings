@@ -5,6 +5,7 @@
 "module.editing" = "Editing";
 "module.upload" = "Upload";
 "menu.view" = "Modules";
+"menu.checkUpdates" = "Check for Updates…";
 "toolbar.language" = "Language";
 "toolbar.theme" = "Theme";
 "theme.dark" = "Dark";

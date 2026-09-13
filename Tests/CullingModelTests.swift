@@ -52,6 +52,38 @@ final class CullingModelTests: XCTestCase {
         XCTAssertEqual(model.visible(photos).map(\.fileName), ["IMG_6.jpg", "IMG_4.jpg", "IMG_2.jpg"])
     }
 
+    /// Catálogo de 10 mil fotos: inserir, ler e filtrar tem de continuar rápido.
+    func testLargeCatalogStaysFast() throws {
+        let context = container.mainContext
+        let infos = (0..<10_000).map { i in
+            ImportedPhotoInfo(url: URL(fileURLWithPath: "/tmp/big/IMG_\(i).CR3"), captureDate: Date(timeIntervalSince1970: Double(i)),
+                              camera: i % 3 == 0 ? "Canon R5" : "Nikon Z8", lens: "50mm", width: 8192, height: 5464, fileSize: 45_000_000)
+        }
+        var start = Date()
+        XCTAssertEqual(CatalogService.insert(infos, session: "Grande", into: context), 10_000)
+        let insertTime = Date().timeIntervalSince(start)
+
+        start = Date()
+        let all = try context.fetch(FetchDescriptor<Photo>())
+        let fetchTime = Date().timeIntervalSince(start)
+        for (index, photo) in all.enumerated() where index % 7 == 0 { photo.rating = 4 }
+
+        let model = CullingModel()
+        model.session = "Grande"
+        model.minRating = 3
+        model.camera = "Canon R5"
+        start = Date()
+        let visible = model.visible(all)
+        let filterTime = Date().timeIntervalSince(start)
+
+        XCTAssertEqual(visible.count, all.filter { $0.rating >= 3 && $0.camera == "Canon R5" }.count)
+        XCTAssertGreaterThan(visible.count, 0)
+        print("PPK perf 10k — insert: \(insertTime)s, fetch: \(fetchTime)s, filter+sort: \(filterTime)s")
+        XCTAssertLessThan(insertTime, 10)
+        XCTAssertLessThan(fetchTime, 3)
+        XCTAssertLessThan(filterTime, 0.5)
+    }
+
     func testKeyboardNavigationAndCompare() {
         let model = CullingModel()
         model.move(by: 1, in: photos, extend: false)

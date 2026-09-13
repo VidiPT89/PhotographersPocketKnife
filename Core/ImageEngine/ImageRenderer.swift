@@ -5,7 +5,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum ExportFormat: String, CaseIterable, Identifiable, Codable, Sendable {
-    case jpeg, tiff, png, heic
+    case jpeg, tiff, png, heic, dng
     var id: String { rawValue }
 
     var utType: UTType {
@@ -14,6 +14,7 @@ enum ExportFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .tiff: .tiff
         case .png: .png
         case .heic: .heic
+        case .dng: UTType("com.adobe.raw-image") ?? .tiff
         }
     }
 
@@ -273,17 +274,31 @@ final class ImageRenderer: @unchecked Sendable {
                 f.scale = Float(CGFloat(settings.longEdge) / longest)
                 f.aspectRatio = 1
                 image = f.outputImage ?? image
+                // O Lanczos deixa bordas fracionárias: corta para o tamanho exato pedido.
+                let e = image.extent
+                let scale = CGFloat(settings.longEdge) / longest
+                let size = CGSize(width: (source.extent.width * scale).rounded(), height: (source.extent.height * scale).rounded())
+                let fitted = e.width >= e.height
+                    ? CGSize(width: CGFloat(settings.longEdge), height: min(size.height, e.height.rounded(.down)))
+                    : CGSize(width: min(size.width, e.width.rounded(.down)), height: CGFloat(settings.longEdge))
+                image = image.cropped(to: CGRect(origin: CGPoint(x: e.minX.rounded(.up), y: e.minY.rounded(.up)), size: fitted))
             }
         }
         image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
+
+        let baseName = url.deletingPathExtension().lastPathComponent + settings.suffix
+        let target = PhotoImporter.uniqueURL(folder.appendingPathComponent(baseName).appendingPathExtension(settings.format.fileExtension))
+
+        if settings.format == .dng {
+            try DNGWriter.write(image, context: context, to: target, camera: MetadataReader.basicInfo(for: url).camera)
+            return target
+        }
 
         let format: CIFormat = settings.sixteenBit && settings.format.supports16Bit ? .RGBA16 : .RGBA8
         guard let cgImage = context.createCGImage(image, from: image.extent.integral, format: format, colorSpace: sRGB) else {
             throw ExportError.cannotWrite(url.lastPathComponent)
         }
 
-        let baseName = url.deletingPathExtension().lastPathComponent + settings.suffix
-        let target = PhotoImporter.uniqueURL(folder.appendingPathComponent(baseName).appendingPathExtension(settings.format.fileExtension))
         guard let destination = CGImageDestinationCreateWithURL(target as CFURL, settings.format.utType.identifier as CFString, 1, nil) else {
             throw ExportError.cannotWrite(url.lastPathComponent)
         }

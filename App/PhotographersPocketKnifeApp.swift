@@ -1,10 +1,13 @@
 import SwiftUI
 import SwiftData
+import Sparkle
 
 @main
 struct PhotographersPocketKnifeApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState = AppState()
     private let container: ModelContainer
+    private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     init() {
         do {
@@ -22,10 +25,14 @@ struct PhotographersPocketKnifeApp: App {
                 .preferredColorScheme(appState.theme.colorScheme)
                 .tint(Brand.orange)
                 .frame(minWidth: 1100, minHeight: 680)
-                .onAppear { appState.transfers.attach(context: container.mainContext) }
+                .onAppear {
+                    appState.transfers.attach(context: container.mainContext)
+                    appDelegate.attach { urls in openFromFinder(urls) }
+                }
         }
+        .handlesExternalEvents(matching: [])
         .windowStyle(.hiddenTitleBar)
-        .commands { AppCommands(app: appState) }
+        .commands { AppCommands(app: appState, updater: updater.updater) }
 
         Settings {
             SettingsView()
@@ -35,12 +42,51 @@ struct PhotographersPocketKnifeApp: App {
                 .tint(Brand.orange)
         }
     }
+
+    /// Pastas ou fotos abertas pelo Finder ("Abrir com") ou largadas no ícone da Dock são importadas no sítio.
+    @MainActor
+    private func openFromFinder(_ urls: [URL]) {
+        let context = container.mainContext
+        let culling = appState.culling
+        let folders = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        let files = urls.filter { PhotoImporter.isSupported($0) }
+        appState.module = .culling
+        Task {
+            for folder in folders {
+                await culling.importFolder(folder, options: .init(copyDestination: nil), session: folder.lastPathComponent, context: context)
+            }
+            if let first = files.first {
+                await culling.importFiles(files, options: .init(copyDestination: nil), session: first.deletingLastPathComponent().lastPathComponent, context: context)
+            }
+        }
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var handler: (([URL]) -> Void)?
+    private var pending: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let handler { handler(urls) } else { pending += urls }
+    }
+
+    func attach(_ handler: @escaping ([URL]) -> Void) {
+        self.handler = handler
+        guard !pending.isEmpty else { return }
+        handler(pending)
+        pending = []
+    }
 }
 
 struct AppCommands: Commands {
     let app: AppState
+    let updater: SPUUpdater
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button(app.t("menu.checkUpdates")) { updater.checkForUpdates() }
+        }
         CommandGroup(after: .newItem) {
             Button(app.t("culling.import")) { FilePanels.chooseImportFolder(app) }
                 .keyboardShortcut("i")

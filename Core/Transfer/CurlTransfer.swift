@@ -53,7 +53,100 @@ enum TransferError: LocalizedError, Equatable {
     /// Erros de rede/timeout que valem a pena repetir (não inclui login recusado).
     var isRetryable: Bool {
         guard case .curl(let code, _) = self else { return false }
-        return [5, 6, 7, 18, 23, 28, 35, 52, 55, 56, 79].contains(code)
+        // 255 = falha de ligação do ssh/sftp.
+        return [5, 6, 7, 18, 23, 28, 35, 52, 55, 56, 79, 255].contains(code)
+    }
+}
+
+/// Comando a executar para um envio ou teste de ligação, consoante o protocolo.
+struct TransferCommand: Sendable {
+    let executable: String
+    let arguments: [String]
+    let input: String
+    let environment: [String: String]?
+
+    static func upload(_ endpoint: TransferEndpoint, file: URL, remotePath: String, resume: Bool) -> TransferCommand {
+        if endpoint.transferProtocol == .sftp {
+            return TransferCommand(
+                executable: SFTPCommand.executable,
+                arguments: SFTPCommand.arguments(endpoint),
+                input: SFTPCommand.uploadBatch(file: file, remotePath: remotePath, resume: resume),
+                environment: SFTPCommand.environment(password: endpoint.password)
+            )
+        }
+        return TransferCommand(
+            executable: "/usr/bin/curl",
+            arguments: CurlCommand.uploadArguments(endpoint, file: file, remotePath: remotePath, resume: resume),
+            input: CurlCommand.config(endpoint),
+            environment: nil
+        )
+    }
+
+    static func test(_ endpoint: TransferEndpoint) -> TransferCommand {
+        if endpoint.transferProtocol == .sftp {
+            return TransferCommand(
+                executable: SFTPCommand.executable,
+                arguments: SFTPCommand.arguments(endpoint),
+                input: "pwd\n",
+                environment: SFTPCommand.environment(password: endpoint.password)
+            )
+        }
+        return TransferCommand(executable: "/usr/bin/curl", arguments: CurlCommand.testArguments(endpoint), input: CurlCommand.config(endpoint), environment: nil)
+    }
+}
+
+/// SFTP com o OpenSSH do sistema (o curl da Apple não inclui SFTP).
+/// Usa as chaves e o ~/.ssh/config do utilizador; com password, entrega-a por SSH_ASKPASS (nunca nos argumentos).
+enum SFTPCommand {
+    static let executable = "/usr/bin/sftp"
+
+    static func arguments(_ endpoint: TransferEndpoint) -> [String] {
+        var args = [
+            // BatchMode tem de vir antes de -b, que de outra forma o força a "yes" e desliga a password.
+            "-o", "BatchMode=\(endpoint.password.isEmpty ? "yes" : "no")",
+            "-o", "StrictHostKeyChecking=\(endpoint.trustUnknownHostKey ? "accept-new" : "yes")",
+            "-o", "ConnectTimeout=20",
+            "-o", "NumberOfPasswordPrompts=1",
+        ]
+        if !endpoint.password.isEmpty {
+            args += ["-o", "PreferredAuthentications=password,keyboard-interactive"]
+        }
+        args += ["-P", String(endpoint.port), "-b", "-", "\(endpoint.username)@\(endpoint.host)"]
+        return args
+    }
+
+    /// Cria as pastas remotas (ignorando as que já existem) e envia o ficheiro.
+    static func uploadBatch(file: URL, remotePath: String, resume: Bool) -> String {
+        var lines: [String] = []
+        var current = remotePath.hasPrefix("/") ? "" : "."
+        for component in remotePath.split(separator: "/").dropLast() {
+            current += "/" + component
+            lines.append("-mkdir \(quote(current))")
+        }
+        lines.append("\(resume ? "reput" : "put") \(quote(file.path)) \(quote(remotePath))")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    static func quote(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    static func environment(password: String) -> [String: String]? {
+        guard !password.isEmpty, let askpass = askpassScript() else { return nil }
+        return ["SSH_ASKPASS": askpass.path, "SSH_ASKPASS_REQUIRE": "force", "PPK_SSH_PASSWORD": password, "DISPLAY": ":0"]
+    }
+
+    private static func askpassScript() -> URL? {
+        let fm = FileManager.default
+        let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("PhotographersPocketKnife", isDirectory: true)
+        let url = dir.appendingPathComponent("askpass.sh")
+        if !fm.isExecutableFile(atPath: url.path) {
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            guard (try? Data("#!/bin/sh\nprintf '%s\\n' \"$PPK_SSH_PASSWORD\"\n".utf8).write(to: url)) != nil else { return nil }
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        }
+        return url
     }
 }
 
@@ -68,7 +161,13 @@ enum CurlCommand {
         switch endpoint.transferProtocol {
         case .ftp, .ftps: return "ftp://\(endpoint.host):\(endpoint.port)\(path)"
         case .sftp: return "sftp://\(endpoint.host):\(endpoint.port)\(path)"
-        case .s3: return "https://\(endpoint.host):\(endpoint.port)/\(endpoint.bucket)\(path)"
+        case .s3:
+            // Endpoints com esquema explícito (ex. MinIO local em http://) são usados tal como estão.
+            if endpoint.host.hasPrefix("http://") || endpoint.host.hasPrefix("https://") {
+                let base = endpoint.host.hasSuffix("/") ? String(endpoint.host.dropLast()) : endpoint.host
+                return "\(base)/\(endpoint.bucket)\(path)"
+            }
+            return "https://\(endpoint.host):\(endpoint.port)/\(endpoint.bucket)\(path)"
         }
     }
 
@@ -130,10 +229,21 @@ final class CurlProcess: @unchecked Sendable {
     private let process = Process()
     private let lock = NSLock()
     private var cancelled = false
+    private let executable: String
+    private let environment: [String: String]?
 
+    init(executable: String = "/usr/bin/curl", environment: [String: String]? = nil) {
+        self.executable = executable
+        self.environment = environment
+    }
+
+    /// `config` é escrito no stdin (configuração do curl ou comandos batch do sftp).
     func run(arguments: [String], config: String, onProgress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        if let environment {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+        }
         let input = Pipe(), errors = Pipe()
         process.standardInput = input
         process.standardOutput = FileHandle.nullDevice
@@ -187,9 +297,10 @@ private final class OutputLog: @unchecked Sendable {
     /// Última linha de erro do curl, sem as barras de progresso.
     var errorMessage: String {
         lock.withLock {
-            text.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+            let lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
                 .map { $0.trimmingCharacters(in: .whitespaces) }
-                .last { $0.hasPrefix("curl:") } ?? ""
+                .filter { !$0.isEmpty && !$0.contains("#") && !$0.hasSuffix("%") }
+            return lines.last { $0.hasPrefix("curl:") } ?? lines.last ?? ""
         }
     }
 }

@@ -157,17 +157,16 @@ final class TransferQueue {
         )
         // A partir da 2.ª tentativa retoma o ficheiro parcial (FTP/SFTP).
         let resume = item.attempts > 0 && item.progress > 0 && endpoint.transferProtocol != .s3
-        let arguments = CurlCommand.uploadArguments(endpoint, file: item.fileURL, remotePath: item.remotePath, resume: resume)
-        let config = CurlCommand.config(endpoint)
+        let command = TransferCommand.upload(endpoint, file: item.fileURL, remotePath: item.remotePath, resume: resume)
 
         item.status = .running
         item.attempts += 1
-        let process = CurlProcess()
+        let process = CurlProcess(executable: command.executable, environment: command.environment)
         running[item.id] = process
 
         Task {
             do {
-                try await process.run(arguments: arguments, config: config) { progress in
+                try await process.run(arguments: command.arguments, config: command.input) { progress in
                     Task { @MainActor in item.progress = max(item.progress, progress) }
                 }
                 item.progress = 1

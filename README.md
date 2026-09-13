@@ -29,9 +29,12 @@ Tudo com uma interface cuidada, animada, com suporte a **Dark/Light/System mode*
 
 | Módulo | O que faz |
 |---|---|
-| **Culling** | Importação de cartões/pastas (com cópia por data), grid de thumbnails com cache, lupa, comparação de 2–4 fotos, rating, flags, cores, filtros e ordenação, renomeação em lote com templates, IPTC em lote (sidecar XMP para RAW), deteção de duplicados, atalhos configuráveis |
-| **Edição** | Non-destructive (Core Image + Metal): exposição, contraste, realces/sombras, brancos/pretos, temperatura/tinta, vibrância/saturação, nitidez, ruído, vinheta, curvas RGB e por canal, HSL, crop com terços/espiral dourada, endireitar, perspetiva, correção de lente RAW, histórico com undo/redo, presets, copiar/colar definições, antes/depois, exportação JPEG/TIFF/PNG/HEIC com presets |
-| **Envio** | Perfis FTP, FTPS, SFTP e S3 com passwords no Keychain, teste de ligação, pastas remotas por data/evento, fila com progresso, pausa/retoma, retry automático, notificações e histórico, "exportar + enviar" |
+| **Culling** | Importação de cartões/pastas (com cópia por data) ou "Abrir com" no Finder, grid de thumbnails com cache, lupa, comparação de 2–4 fotos, rating, flags, cores, filtros e ordenação, renomeação em lote com templates, IPTC em lote (sidecar XMP para RAW), deteção de duplicados, atalhos configuráveis |
+| **Edição** | Non-destructive (Core Image + Metal): exposição, contraste, realces/sombras, brancos/pretos, temperatura/tinta, vibrância/saturação, nitidez, ruído, vinheta, curvas RGB e por canal, HSL, crop com terços/espiral dourada, endireitar, perspetiva, correção de lente RAW, histórico com undo/redo, presets, copiar/colar definições, antes/depois, exportação JPEG/TIFF/PNG/HEIC/DNG com presets |
+| **Envio** | Perfis FTP, FTPS, SFTP (OpenSSH do sistema, com chaves ou password) e S3-compatible, passwords no Keychain, teste de ligação, pastas remotas por data/evento, fila com progresso, pausa/retoma, retry automático, notificações e histórico, "exportar + enviar" |
+| **App** | Atualizações automáticas (Sparkle), PT-PT/EN em tempo real, Dark/Light/System, lembra o último módulo aberto |
+
+Testado com RAWs reais de Canon (CR3), Nikon (NEF), Sony (ARW) e Fujifilm (RAF), e com catálogos de 10 000 fotos.
 
 ---
 
@@ -53,9 +56,35 @@ xcodegen generate   # brew install xcodegen
 open PhotographersPocketKnife.xcodeproj
 ```
 
-Testes: `xcodebuild test -scheme PhotographersPocketKnife -destination 'platform=macOS'`
-
 Escolhe o scheme `PhotographersPocketKnife` e corre (⌘R). Requer macOS 14+, Xcode 15+ e [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+
+---
+
+## 🧪 Testing
+
+```bash
+# Testes unitários
+xcodebuild test -scheme PhotographersPocketKnife -destination 'platform=macOS'
+
+# Integração: servidores locais em Docker + pasta com RAWs reais
+docker run -d --name ppk-sftp -p 2222:22 atmoz/sftp ppk:ppkpass:::upload
+docker run -d --name ppk-ftp -p 2121:21 -p 21000-21010:21000-21010 -e USERS="ppk|ppkpass" -e ADDRESS=localhost delfer/alpine-ftp-server
+docker run -d --name ppk-s3 -p 9100:9000 -e MINIO_ROOT_USER=ppkadmin -e MINIO_ROOT_PASSWORD=ppkpass123 quay.io/minio/minio server /data
+curl -X PUT --user ppkadmin:ppkpass123 --aws-sigv4 "aws:amz:us-east-1:s3" http://localhost:9100/ppk-bucket
+
+TEST_RUNNER_PPK_INTEGRATION=1 TEST_RUNNER_PPK_RAW_DIR=/caminho/para/raws \
+  xcodebuild test -scheme PhotographersPocketKnife -destination 'platform=macOS'
+```
+
+---
+
+## 📦 Release
+
+```bash
+scripts/release.sh 0.2.0 "Notas da versão"
+```
+
+Corre os testes, compila em Release, assina a atualização com a chave EdDSA do Sparkle, atualiza o `appcast.xml` e publica a release no GitHub.
 
 ---
 

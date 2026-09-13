@@ -32,8 +32,12 @@ enum PhotoImporter {
 
     /// Lê (e opcionalmente copia) todas as fotos de uma pasta ou cartão.
     static func run(folder: URL, options: Options, progress: @Sendable (Int, Int) -> Void) throws -> [ImportedPhotoInfo] {
+        try run(files: imageFiles(in: folder), options: options, progress: progress)
+    }
+
+    static func run(files: [URL], options: Options, progress: @Sendable (Int, Int) -> Void) throws -> [ImportedPhotoInfo] {
         let fm = FileManager.default
-        let files = imageFiles(in: folder)
+        let files = files.filter(isSupported)
         var result: [ImportedPhotoInfo] = []
         result.reserveCapacity(files.count)
 
