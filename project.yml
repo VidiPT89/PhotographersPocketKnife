@@ -27,6 +27,11 @@ targets:
       - Localization
     dependencies:
       - package: Sparkle
+    entitlements:
+      path: App/PhotographersPocketKnife.entitlements
+      properties:
+        # Build sem Developer ID: o Sparkle vem assinado por outra equipa e o hardened runtime recusa-o sem isto.
+        com.apple.security.cs.disable-library-validation: true
     info:
       path: App/Info.plist
       properties:
