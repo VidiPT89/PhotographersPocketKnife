@@ -136,8 +136,22 @@ struct MasksPanel: View {
                 AdjustmentSlider(labelKey: "adjust.saturation", value: \EditRecipe.masks[index].saturation, range: -1...1)
                 AdjustmentSlider(labelKey: "adjust.temperature", value: \EditRecipe.masks[index].temperature, range: -1...1)
                 AdjustmentSlider(labelKey: "adjust.clarity", value: \EditRecipe.masks[index].clarity, range: -1...1)
-                if editing.recipe.masks[index].kind == .radial {
+                switch editing.recipe.masks[index].kind {
+                case .radial:
                     AdjustmentSlider(labelKey: "mask.feather", value: \EditRecipe.masks[index].feather, range: 0...1, defaultValue: 0.5)
+                case .brush:
+                    AdjustmentSlider(labelKey: "mask.brushSize", value: \EditRecipe.masks[index].brushSize, range: 0.01...0.3, defaultValue: 0.06)
+                    AdjustmentSlider(labelKey: "mask.feather", value: \EditRecipe.masks[index].feather, range: 0...1, defaultValue: 0.5)
+                    Text(app.t("mask.brushHint"))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecondary)
+                    Button(app.t("mask.clearStrokes")) {
+                        editing.recipe.masks[index].strokes = []
+                        editing.commit("history.mask")
+                    }
+                    .disabled(editing.recipe.masks[index].strokes.isEmpty)
+                case .linear:
+                    EmptyView()
                 }
             }
             .id(editing.selectedMaskID)
@@ -150,6 +164,8 @@ struct MaskOverlay: View {
     @Environment(AppState.self) private var app
     let size: CGSize
     @State private var dragStart: LocalMask?
+    @State private var painting = false
+    @State private var brushHover: CGPoint?
 
     var body: some View {
         let editing = app.editing
@@ -196,6 +212,43 @@ struct MaskOverlay: View {
                         m.radiusY = max(start.radiusY + t.height / size.height, 0.02)
                         return m
                     }
+                case .brush:
+                    Canvas { context, canvasSize in
+                        let side = min(canvasSize.width, canvasSize.height)
+                        for stroke in mask.strokes where !stroke.points.isEmpty {
+                            var path = Path()
+                            for (offset, point) in stroke.points.enumerated() {
+                                let location = CGPoint(x: point.x * canvasSize.width, y: point.y * canvasSize.height)
+                                if offset == 0 { path.move(to: location) } else { path.addLine(to: location) }
+                            }
+                            if stroke.points.count == 1, let point = stroke.points.first {
+                                path.addLine(to: CGPoint(x: point.x * canvasSize.width + 0.1, y: point.y * canvasSize.height))
+                            }
+                            context.stroke(
+                                path,
+                                with: .color(stroke.erase ? Color.white.opacity(0.2) : Brand.orange.opacity(0.3)),
+                                style: StrokeStyle(lineWidth: stroke.size * side, lineCap: .round, lineJoin: .round)
+                            )
+                        }
+                    }
+                    .frame(width: size.width, height: size.height)
+                    .allowsHitTesting(false)
+                    Color.clear
+                        .frame(width: size.width, height: size.height)
+                        .contentShape(Rectangle())
+                        .gesture(paintGesture)
+                        .onContinuousHover { phase in
+                            if case .active(let location) = phase { brushHover = location } else { brushHover = nil }
+                        }
+                    if let brushHover {
+                        let diameter = mask.brushSize * min(size.width, size.height)
+                        Circle()
+                            .stroke(Color.black.opacity(0.45), lineWidth: 2.5)
+                            .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: 1))
+                            .frame(width: diameter, height: diameter)
+                            .position(brushHover)
+                            .allowsHitTesting(false)
+                    }
                 case .linear:
                     let start = CGPoint(x: mask.startX * size.width, y: mask.startY * size.height)
                     let end = CGPoint(x: mask.endX * size.width, y: mask.endY * size.height)
@@ -225,7 +278,41 @@ struct MaskOverlay: View {
         switch mask.kind {
         case .radial: CGPoint(x: mask.centerX * size.width, y: mask.centerY * size.height)
         case .linear: CGPoint(x: mask.startX * size.width, y: mask.startY * size.height)
+        case .brush:
+            mask.strokes.first?.points.first.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+                ?? CGPoint(x: size.width / 2, y: size.height / 2)
         }
+    }
+
+    /// Pintar arrastando; com ⌥ carregado a pincelada apaga.
+    private var paintGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                guard let index = app.editing.selectedMaskIndex else { return }
+                brushHover = value.location
+                let point = CurvePoint(
+                    x: min(max(value.location.x / size.width, 0), 1),
+                    y: min(max(value.location.y / size.height, 0), 1)
+                )
+                var mask = app.editing.recipe.masks[index]
+                if !painting {
+                    painting = true
+                    mask.strokes.append(BrushStroke(points: [point], erase: NSEvent.modifierFlags.contains(.option), size: mask.brushSize))
+                } else if var stroke = mask.strokes.popLast() {
+                    if let previous = stroke.points.last, hypot(previous.x - point.x, previous.y - point.y) < 0.004 {
+                        mask.strokes.append(stroke)
+                        return
+                    }
+                    stroke.points.append(point)
+                    mask.strokes.append(stroke)
+                }
+                app.editing.recipe.masks[index] = mask
+                app.editing.scheduleRender()
+            }
+            .onEnded { _ in
+                painting = false
+                app.editing.commit("history.mask")
+            }
     }
 
     private func handle(at point: CGPoint, update: @escaping (CGSize, LocalMask) -> LocalMask) -> some View {

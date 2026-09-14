@@ -7,7 +7,7 @@ final class CullingModelTests: XCTestCase {
     private var container: ModelContainer!
     private var photos: [Photo] = []
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
                                        configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let infos = (1...6).map { i in
@@ -16,7 +16,8 @@ final class CullingModelTests: XCTestCase {
         }
         CatalogService.insert(infos, session: "Jogo", into: container.mainContext)
         // Reimportar os mesmos caminhos não duplica.
-        XCTAssertEqual(CatalogService.insert(infos, session: "Jogo", into: container.mainContext), 0)
+        let duplicates = CatalogService.insert(infos, session: "Jogo", into: container.mainContext)
+        XCTAssertEqual(duplicates, 0)
         photos = try container.mainContext.fetch(FetchDescriptor<Photo>(sortBy: [SortDescriptor(\.captureDate)]))
     }
 

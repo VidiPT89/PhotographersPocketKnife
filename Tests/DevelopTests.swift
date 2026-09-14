@@ -118,6 +118,34 @@ final class DevelopTests: XCTestCase {
         XCTAssertNil(model.selectedMaskIndex)
     }
 
+    func testBrushMaskPaintsAndErases() throws {
+        let gray = CIImage(color: CIColor(red: 0.3, green: 0.3, blue: 0.3)).cropped(to: CGRect(x: 0, y: 0, width: 400, height: 300))
+        var mask = LocalMask(kind: .brush)
+        mask.exposure = 2
+        mask.feather = 0.1
+        mask.strokes = [BrushStroke(points: [CurvePoint(x: 0.3, y: 0.5), CurvePoint(x: 0.7, y: 0.5)], size: 0.15)]
+        var recipe = EditRecipe()
+        recipe.masks = [mask]
+
+        let painted = ImageRenderer.shared.apply(recipe, to: gray)
+        XCTAssertGreaterThan(try pixel(painted, at: CGPoint(x: 200, y: 150)).r, 0.5, "Stroke brightens where it was painted")
+        XCTAssertEqual(try pixel(painted, at: CGPoint(x: 10, y: 10)).r, 0.3, accuracy: 0.02, "Unpainted corner untouched")
+
+        recipe.masks[0].strokes.append(BrushStroke(points: [CurvePoint(x: 0.5, y: 0.5)], erase: true, size: 0.1))
+        let erased = ImageRenderer.shared.apply(recipe, to: gray)
+        XCTAssertEqual(try pixel(erased, at: CGPoint(x: 200, y: 150)).r, 0.3, accuracy: 0.05, "Eraser removes the effect")
+        XCTAssertGreaterThan(try pixel(erased, at: CGPoint(x: 140, y: 150)).r, 0.5, "The rest of the stroke stays")
+    }
+
+    func testMasksFromVersionFourStillDecode() throws {
+        let legacy = Data(#"{"kind":"radial","centerX":0.4,"exposure":1}"#.utf8)
+        let mask = try JSONDecoder().decode(LocalMask.self, from: legacy)
+        XCTAssertEqual(mask.centerX, 0.4)
+        XCTAssertEqual(mask.exposure, 1)
+        XCTAssertTrue(mask.strokes.isEmpty)
+        XCTAssertEqual(mask.brushSize, 0.06)
+    }
+
     private func pixel(_ image: CIImage, at point: CGPoint) throws -> (r: Float, g: Float, b: Float) {
         var bytes = [Float](repeating: 0, count: 4)
         ImageRenderer.shared.context.render(image, toBitmap: &bytes, rowBytes: 16, bounds: CGRect(origin: point, size: CGSize(width: 1, height: 1)),

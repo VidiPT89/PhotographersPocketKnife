@@ -318,11 +318,53 @@ final class ImageRenderer: @unchecked Sendable {
             f.color0 = CIColor(red: 1, green: 1, blue: 1)
             f.color1 = CIColor(red: 0, green: 0, blue: 0)
             gradient = f.outputImage ?? CIImage.empty()
+        case .brush:
+            gradient = brushMask(mask, extent: e)
         }
         if mask.invert {
             gradient = gradient.applyingFilter("CIColorInvert")
         }
         return gradient.cropped(to: e)
+    }
+
+    /// Rasteriza as pinceladas (até 1024 px) e suaviza as bordas com `feather`; depois escala para a imagem.
+    private func brushMask(_ mask: LocalMask, extent e: CGRect) -> CIImage {
+        let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: e)
+        guard !mask.strokes.isEmpty, e.width > 0, e.height > 0 else { return black }
+        let scale = min(1024 / max(e.width, e.height), 1)
+        let width = max(Int(e.width * scale), 1), height = max(Int(e.height * scale), 1)
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return black }
+        context.setFillColor(gray: 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        let side = CGFloat(min(width, height))
+        var widest: CGFloat = 1
+        for stroke in mask.strokes where !stroke.points.isEmpty {
+            let lineWidth = max(CGFloat(stroke.size) * side, 1)
+            widest = max(widest, lineWidth)
+            context.setStrokeColor(gray: stroke.erase ? 0 : 1, alpha: 1)
+            context.setLineWidth(lineWidth)
+            let points = stroke.points.map { CGPoint(x: $0.x * Double(width), y: (1 - $0.y) * Double(height)) }
+            context.move(to: points[0])
+            if points.count == 1 {
+                context.addLine(to: CGPoint(x: points[0].x + 0.01, y: points[0].y))
+            } else {
+                points.dropFirst().forEach { context.addLine(to: $0) }
+            }
+            context.strokePath()
+        }
+        guard let raster = context.makeImage() else { return black }
+        var image = CIImage(cgImage: raster)
+        let sigma = Double(widest) * mask.feather * 0.35
+        if sigma > 0.5 {
+            image = image.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: image.extent)
+        }
+        return image
+            .transformed(by: CGAffineTransform(scaleX: e.width / CGFloat(width), y: e.height / CGFloat(height)))
+            .transformed(by: CGAffineTransform(translationX: e.minX, y: e.minY))
+            .cropped(to: e)
     }
 
     func applyGeometry(_ r: EditRecipe, to input: CIImage) -> CIImage {

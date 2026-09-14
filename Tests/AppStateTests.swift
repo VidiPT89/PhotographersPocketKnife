@@ -3,12 +3,12 @@ import XCTest
 
 @MainActor
 final class AppStateTests: XCTestCase {
-    private var defaults: UserDefaults!
-
-    override func setUp() {
-        defaults = UserDefaults(suiteName: "AppStateTests")
+    // O XCTest cria uma instância por teste, por isso cada teste parte de preferências limpas.
+    private let defaults: UserDefaults = {
+        let defaults = UserDefaults(suiteName: "AppStateTests")!
         defaults.removePersistentDomain(forName: "AppStateTests")
-    }
+        return defaults
+    }()
 
     func testDefaultsAreDarkAndPortuguese() {
         let state = AppState(defaults: defaults)

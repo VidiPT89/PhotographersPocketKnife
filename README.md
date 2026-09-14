@@ -29,7 +29,7 @@
 - ✅ Exposure, contrast, highlights, shadows, whites, blacks, texture, clarity, temperature, tint, vibrance and saturation
 - ✅ Tone curve (RGB + per channel), HSL across eight colour bands and colour grading wheels for shadows, midtones and highlights
 - ✅ Sharpening with radius and edge masking, luminance and colour noise reduction, chromatic aberration correction, vignette and grain
-- ✅ Local adjustments with linear and radial gradient masks, edited directly on the image
+- ✅ Local adjustments with linear and radial gradient masks and a brush mask (hold ⌥ to erase), edited directly on the image
 - ✅ Crop with aspect presets and rule-of-thirds or golden-spiral overlays, straighten, rotate, flip, perspective and automatic lens correction for RAW
 - ✅ Clipping warnings on the histogram and on the image
 - ✅ Visual history with undo/redo, named snapshots, presets with live hover preview, and copy/paste settings across a selection

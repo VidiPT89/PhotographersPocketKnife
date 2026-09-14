@@ -37,10 +37,26 @@ struct CropRect: Codable, Equatable, Sendable {
 }
 
 enum MaskKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case linear, radial
+    case linear, radial, brush
     var id: String { rawValue }
     var labelKey: String { "mask.\(rawValue)" }
-    var icon: String { self == .linear ? "rectangle.lefthalf.inset.filled" : "circle.dashed.inset.filled" }
+
+    var icon: String {
+        switch self {
+        case .linear: "rectangle.lefthalf.inset.filled"
+        case .radial: "circle.dashed.inset.filled"
+        case .brush: "paintbrush.pointed.fill"
+        }
+    }
+}
+
+/// Uma pincelada da máscara de pincel: pontos normalizados (0…1, origem no canto superior esquerdo).
+struct BrushStroke: Codable, Equatable, Sendable {
+    var points: [CurvePoint]
+    /// Pinceladas de borracha tiram área à máscara.
+    var erase = false
+    /// Diâmetro como fração do lado menor da imagem.
+    var size = 0.06
 }
 
 /// Ajuste local com máscara de gradiente. Coordenadas normalizadas na imagem final (depois do recorte).
@@ -59,6 +75,9 @@ struct LocalMask: Codable, Equatable, Identifiable, Sendable {
     var endY = 0.55
     var feather = 0.5
     var invert = false
+    // Pincel
+    var strokes: [BrushStroke] = []
+    var brushSize = 0.06
     // Ajustes
     var exposure = 0.0
     var contrast = 0.0
@@ -68,6 +87,42 @@ struct LocalMask: Codable, Equatable, Identifiable, Sendable {
 
     var isNeutral: Bool {
         exposure == 0 && contrast == 0 && saturation == 0 && temperature == 0 && clarity == 0
+    }
+}
+
+extension LocalMask {
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, centerX, centerY, radiusX, radiusY, startX, startY, endX, endY, feather, invert
+        case strokes, brushSize, exposure, contrast, saturation, temperature, clarity
+    }
+
+    /// Máscaras de versões anteriores (sem pincel) continuam a abrir.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try container.decode(MaskKind.self, forKey: .kind)
+        let defaults = LocalMask(kind: kind)
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            (try? container.decodeIfPresent(T.self, forKey: key)) ?? fallback
+        }
+        self.kind = kind
+        id = value(.id, defaults.id)
+        centerX = value(.centerX, defaults.centerX)
+        centerY = value(.centerY, defaults.centerY)
+        radiusX = value(.radiusX, defaults.radiusX)
+        radiusY = value(.radiusY, defaults.radiusY)
+        startX = value(.startX, defaults.startX)
+        startY = value(.startY, defaults.startY)
+        endX = value(.endX, defaults.endX)
+        endY = value(.endY, defaults.endY)
+        feather = value(.feather, defaults.feather)
+        invert = value(.invert, defaults.invert)
+        strokes = value(.strokes, defaults.strokes)
+        brushSize = value(.brushSize, defaults.brushSize)
+        exposure = value(.exposure, defaults.exposure)
+        contrast = value(.contrast, defaults.contrast)
+        saturation = value(.saturation, defaults.saturation)
+        temperature = value(.temperature, defaults.temperature)
+        clarity = value(.clarity, defaults.clarity)
     }
 }
 

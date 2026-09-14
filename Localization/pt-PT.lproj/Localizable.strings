@@ -62,6 +62,10 @@
 "grading.reset" = "Repor gradação";
 "mask.linear" = "Linear";
 "mask.radial" = "Radial";
+"mask.brush" = "Pincel";
+"mask.brushSize" = "Tamanho do pincel";
+"mask.brushHint" = "Arrasta na imagem para pintar. Com ⌥ carregado, a pincelada apaga.";
+"mask.clearStrokes" = "Limpar pinceladas";
 "mask.hint" = "Arrasta as pegas na imagem para posicionar a máscara. Tecla M abre este painel.";
 "mask.empty" = "Ainda não há máscaras nesta foto.";
 "mask.invert" = "Inverter máscara";
@@ -163,7 +167,6 @@
 "import.session" = "Sessão / evento";
 "import.copy" = "Copiar ficheiros para outra pasta";
 "import.destination" = "Destino";
-"import.byDate" = "Criar subpastas por data";
 "import.importing" = "A importar";
 "filter.title" = "Filtros";
 "filter.minRating" = "Rating mínimo";
@@ -338,7 +341,6 @@
 "export.resize" = "Redimensionar";
 "export.longEdge" = "Lado maior (px)";
 "export.suffix" = "Sufixo do nome";
-"export.metadata" = "Incluir metadados";
 "export.folder" = "Pasta";
 "export.andUpload" = "Exportar e enviar";
 "export.uploadAfter" = "Enviar depois de exportar";
