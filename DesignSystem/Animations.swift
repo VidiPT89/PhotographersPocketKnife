@@ -6,8 +6,9 @@ enum Motion {
     static let smooth = Animation.easeInOut(duration: 0.35)
     static let pop = Animation.spring(response: 0.25, dampingFraction: 0.5)
 
+    /// Sem escala: sliders, seletores e campos de texto (AppKit) inundam a consola quando são escalados a meio de uma animação.
     @MainActor static let moduleTransition = AnyTransition.asymmetric(
-        insertion: .opacity.combined(with: .offset(y: 14)).combined(with: .scale(scale: 0.985)),
+        insertion: .opacity.combined(with: .offset(y: 14)),
         removal: .opacity
     )
 }
@@ -61,7 +62,6 @@ private struct AppearModifier: ViewModifier {
         content
             .opacity(visible ? 1 : 0)
             .offset(y: visible || reduceMotion ? 0 : 10)
-            .scaleEffect(visible || reduceMotion ? 1 : 0.97)
             .onAppear {
                 withAnimation(reduceMotion ? .easeOut(duration: 0.15) : Motion.snappy.delay(delay)) { visible = true }
             }

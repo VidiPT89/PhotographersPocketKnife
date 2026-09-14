@@ -12,7 +12,7 @@ struct RootView: View {
                 .transition(.opacity)
             } else {
                 MainWindowView()
-                    .transition(.opacity.combined(with: .scale(scale: 1.015)))
+                    .transition(.opacity)
             }
         }
     }

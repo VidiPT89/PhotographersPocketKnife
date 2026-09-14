@@ -40,7 +40,9 @@ final class ThumbnailCache: @unchecked Sendable {
             return SendableImage(cgImage: image)
         }
         let file = directory.appendingPathComponent(key).appendingPathExtension("jpg")
-        if let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+        // Verificar antes: abrir um ficheiro que não existe enche a consola de erros do ImageIO.
+        if FileManager.default.fileExists(atPath: file.path),
+           let source = CGImageSourceCreateWithURL(file as CFURL, nil),
            let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
             store(image, forKey: key)
             return SendableImage(cgImage: image)
