@@ -20,6 +20,7 @@
 - ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
 - ✅ `.ppk` sidecars keep ratings and edits next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
 - ✅ Duplicate and near-duplicate detection using perceptual hashing
+- ✅ Smart selection, assisted or automatic: every photo is checked for focus, closed eyes, face quality and exposure, shots are grouped into moments, and the best of each moment is highlighted — or picked, starred and the flawed ones rejected for you, with one-click undo. All on-device
 - ✅ Client presentation mode in full screen
 - ✅ Live histogram and EXIF panel
 

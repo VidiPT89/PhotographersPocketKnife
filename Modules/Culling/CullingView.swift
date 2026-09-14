@@ -36,6 +36,9 @@ struct CullingView: View {
             case .importFolder(let url): ImportSheet(folder: url)
             case .rename: RenameSheet(photos: culling.targets(in: list))
             case .metadata: MetadataSheet(photos: culling.targets(in: list))
+            case .smartCull:
+                let selected = culling.targets(in: list)
+                SmartCullSheet(photos: selected.count > 1 ? selected : list)
             }
         }
     }
@@ -164,6 +167,9 @@ struct CullingToolbar: View {
                     Text(app.t("filter.any")).tag(Double?.none)
                     ForEach(focalLengths, id: \.self) { Text("\(Int($0)) mm").tag(Optional($0)) }
                 }
+                if c.cullReport != nil {
+                    Toggle(app.t("filter.issuesOnly"), isOn: $c.showIssuesOnly)
+                }
                 Divider()
                 Button(app.t("filter.clear")) { c.clearFilters() }
             } label: {
@@ -186,6 +192,27 @@ struct CullingToolbar: View {
                 .frame(width: 140)
 
             Spacer()
+
+            Button { c.activeSheet = .smartCull } label: {
+                if c.isAnalyzing {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Label(app.t("cull.title"), systemImage: "wand.and.stars")
+                        .labelStyle(.titleAndIcon)
+                        .lineLimit(1)
+                        .foregroundStyle(Brand.orange)
+                }
+            }
+            .fixedSize()
+            .help(app.t("cull.title"))
+            .disabled(photos.isEmpty)
+
+            if c.cullReport != nil {
+                Button { withAnimation(Motion.smooth) { c.showCullBadges.toggle() } } label: {
+                    Image(systemName: c.showCullBadges ? "gauge.with.dots.needle.67percent" : "gauge.with.dots.needle.0percent")
+                }
+                .help(app.t("cull.badges"))
+            }
 
             Button {
                 if c.showDuplicatesOnly {

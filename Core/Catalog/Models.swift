@@ -32,6 +32,8 @@ final class Photo {
     var perceptualHash: Int64?
     var recipeData: Data?
     var historyData: Data?
+    /// Medições da seleção inteligente (JSON de `PhotoAssessment`), para não repetir a análise.
+    var assessmentData: Data?
     var importedAt: Date
 
     init(info: ImportedPhotoInfo, sessionName: String) {

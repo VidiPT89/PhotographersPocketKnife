@@ -8,7 +8,7 @@ enum FlagFilter: String, CaseIterable, Identifiable {
 }
 
 enum PhotoSort: String, CaseIterable, Identifiable {
-    case captureDate, fileName, rating, camera
+    case captureDate, fileName, rating, camera, score
     var id: String { rawValue }
     var labelKey: String { "sort.\(rawValue)" }
 }
@@ -27,13 +27,14 @@ enum CullingViewMode: String, CaseIterable, Identifiable {
 }
 
 enum CullingSheet: Identifiable {
-    case importFolder(URL), rename, metadata
+    case importFolder(URL), rename, metadata, smartCull
 
     var id: String {
         switch self {
         case .importFolder(let url): "import-\(url.path)"
         case .rename: "rename"
         case .metadata: "metadata"
+        case .smartCull: "smartCull"
         }
     }
 }
@@ -85,9 +86,19 @@ final class CullingModel {
     var lastImportCount: Int?
     var lastImportFailures = 0
 
+    // Seleção inteligente
+    var cullReport: CullReport?
+    var showCullBadges = false
+    var showIssuesOnly = false
+    var isAnalyzing = false
+    var analysisDone = 0
+    var analysisTotal = 0
+    private(set) var cullUndo: [UUID: (rating: Int, flag: Int)] = [:]
+    var canUndoAutomaticCull: Bool { !cullUndo.isEmpty }
+
     var hasActiveFilters: Bool {
         minRating > 0 || flagFilter != .all || colorFilter != nil || camera != nil || lens != nil
-            || minISO > 0 || focalLength != nil || showDuplicatesOnly
+            || minISO > 0 || focalLength != nil || showDuplicatesOnly || showIssuesOnly
     }
 
     func clearFilters() {
@@ -99,6 +110,7 @@ final class CullingModel {
         minISO = 0
         focalLength = nil
         showDuplicatesOnly = false
+        showIssuesOnly = false
         searchText = ""
     }
 
@@ -121,6 +133,7 @@ final class CullingModel {
             if minISO > 0, (photo.iso ?? 0) < minISO { return false }
             if let focalLength, photo.focalLength?.rounded() != focalLength { return false }
             if showDuplicatesOnly, duplicateGroups[photo.id] == nil { return false }
+            if showIssuesOnly, (cullReport?.issues[photo.id] ?? []).isEmpty { return false }
             if !query.isEmpty, !photo.fileName.lowercased().contains(query) { return false }
             return true
         }
@@ -138,6 +151,7 @@ final class CullingModel {
         case .fileName: a.fileName.localizedStandardCompare(b.fileName) == .orderedAscending
         case .rating: (a.rating, a.fileName) < (b.rating, b.fileName)
         case .camera: (a.camera ?? "", a.fileName) < (b.camera ?? "", b.fileName)
+        case .score: (cullReport?.scores[a.id] ?? -1, a.fileName) < (cullReport?.scores[b.id] ?? -1, b.fileName)
         }
     }
 
@@ -252,6 +266,82 @@ final class CullingModel {
         lastImportCount = CatalogService.insert(result.infos, session: session, into: context)
         self.session = session
         isImporting = false
+    }
+
+    // MARK: Seleção inteligente
+
+    func cullBadge(for id: UUID) -> CullBadge? {
+        guard let report = cullReport, let score = report.scores[id] else { return nil }
+        return CullBadge(score: score, issues: report.issues[id] ?? [], isBest: report.best.contains(id), moment: report.moments[id] ?? 0)
+    }
+
+    static func assessment(of photo: Photo) -> PhotoAssessment? {
+        guard let data = photo.assessmentData,
+              let assessment = try? JSONDecoder().decode(PhotoAssessment.self, from: data),
+              assessment.version == PhotoAssessment.currentVersion else { return nil }
+        return assessment
+    }
+
+    private static func candidate(_ photo: Photo) -> CullCandidate? {
+        assessment(of: photo).map {
+            CullCandidate(id: photo.id, date: photo.captureDate, fileName: photo.fileName, rating: photo.rating, flag: photo.flag, assessment: $0)
+        }
+    }
+
+    /// Analisa (4 fotos de cada vez) as que ainda não têm medições e avalia o conjunto.
+    func analyze(_ photos: [Photo], options: CullOptions) async {
+        isAnalyzing = true
+        let byID = Dictionary(photos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let pending = photos.filter { Self.assessment(of: $0) == nil }.map { (id: $0.id, url: $0.url) }
+        analysisTotal = photos.count
+        analysisDone = photos.count - pending.count
+
+        var remaining = pending.makeIterator()
+        await withTaskGroup(of: (UUID, PhotoAssessment?).self) { group in
+            func addNext() {
+                guard let item = remaining.next() else { return }
+                group.addTask { (item.id, await PhotoAssessor.assess(url: item.url)) }
+            }
+            for _ in 0..<4 { addNext() }
+            for await (id, assessment) in group {
+                if let assessment { byID[id]?.assessmentData = try? JSONEncoder().encode(assessment) }
+                analysisDone += 1
+                addNext()
+            }
+        }
+
+        let candidates = photos.compactMap(Self.candidate)
+        cullReport = await Task.detached(priority: .userInitiated) {
+            SmartCull.evaluate(candidates, options: options, distance: FeaturePrintDistances().distance)
+        }.value
+        showCullBadges = true
+        isAnalyzing = false
+    }
+
+    /// Aplica a classificação automática e guarda o estado anterior para poder desfazer.
+    @discardableResult
+    func applyAutomatic(to photos: [Photo], options: CullOptions) -> (picks: Int, rejects: Int) {
+        guard let report = cullReport else { return (0, 0) }
+        let decisions = SmartCull.decisions(for: photos.compactMap(Self.candidate), report: report, options: options)
+        cullUndo = [:]
+        var picks = 0, rejects = 0
+        for photo in photos {
+            guard let decision = decisions[photo.id] else { continue }
+            cullUndo[photo.id] = (photo.rating, photo.flagRaw)
+            photo.rating = decision.rating
+            photo.flag = decision.flag
+            if decision.flag == .pick { picks += 1 } else if decision.flag == .reject { rejects += 1 }
+        }
+        return (picks, rejects)
+    }
+
+    func undoAutomaticCull(in photos: [Photo]) {
+        for photo in photos {
+            guard let previous = cullUndo[photo.id] else { continue }
+            photo.rating = previous.rating
+            photo.flagRaw = previous.flag
+        }
+        cullUndo = [:]
     }
 
     func findDuplicates(in photos: [Photo]) async {

@@ -14,6 +14,12 @@ struct InfoPanel: View {
                 HistogramView(data: histogram)
                     .frame(height: 90)
 
+                if let photo, let badge = app.culling.cullBadge(for: photo.id) {
+                    PanelHeader(title: app.t("cull.analysis"))
+                    CullAnalysisView(badge: badge)
+                        .transition(.opacity)
+                }
+
                 PanelHeader(title: app.t("info.metadata"))
                 if photo == nil {
                     Text(app.t("info.noSelection"))

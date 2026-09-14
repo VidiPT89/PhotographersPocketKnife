@@ -18,7 +18,8 @@ struct PhotoGridView: View {
                                 size: culling.thumbnailSize,
                                 isSelected: culling.selection.contains(photo.id),
                                 isFocused: culling.focusedID == photo.id,
-                                duplicateGroup: culling.showDuplicatesOnly ? culling.duplicateGroups[photo.id] : nil
+                                duplicateGroup: culling.showDuplicatesOnly ? culling.duplicateGroups[photo.id] : nil,
+                                cull: culling.showCullBadges ? culling.cullBadge(for: photo.id) : nil
                             )
                             .id(photo.id)
                             .appearAnimation(delay: index < 40 ? Double(index) * 0.018 : 0)
@@ -63,6 +64,7 @@ struct PhotoCell: View {
     let isSelected: Bool
     let isFocused: Bool
     let duplicateGroup: Int?
+    var cull: CullBadge?
 
     /// Contorno verde/vermelho que pulsa uma vez ao marcar pick/reject.
     @State private var flagPulse = 0.0
@@ -84,6 +86,14 @@ struct PhotoCell: View {
                             .padding(5)
                     }
                 }
+                .overlay(alignment: .bottomLeading) {
+                    if let cull {
+                        CullBadgeView(badge: cull)
+                            .padding(5)
+                            .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    }
+                }
+                .animation(Motion.smooth, value: cull)
             HStack(spacing: 4) {
                 StarRating(rating: photo.rating, size: 9)
                 Spacer(minLength: 2)
