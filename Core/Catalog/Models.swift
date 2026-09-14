@@ -34,6 +34,8 @@ final class Photo {
     var historyData: Data?
     /// Medições da seleção inteligente (JSON de `PhotoAssessment`), para não repetir a análise.
     var assessmentData: Data?
+    /// Palavras-chave (separadas por vírgulas), também usadas na pesquisa.
+    var keywords: String?
     var importedAt: Date
 
     init(info: ImportedPhotoInfo, sessionName: String) {

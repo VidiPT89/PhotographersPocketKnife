@@ -64,6 +64,7 @@ struct PresetsPanel: View {
                 }
             }
         }
+        StylePanel(list: list)
     }
 
     private func importPresets() {

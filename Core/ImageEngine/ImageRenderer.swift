@@ -156,6 +156,7 @@ final class ImageRenderer: @unchecked Sendable {
 
         // As remoções e o sujeito são calculados sobre a foto sem ajustes: os sliders não obrigam a repetir a análise.
         let needsReference = !r.removals.isEmpty || r.masks.contains { $0.kind == .subject && !$0.isNeutral }
+            || r.skinSmoothing > 0 || r.backgroundBlur > 0
         let reference = needsReference ? referenceImage(r, input: input, applyCrop: applyCrop) : nil
 
         image = applyGeometry(r, to: image)
@@ -164,6 +165,9 @@ final class ImageRenderer: @unchecked Sendable {
         }
         if let reference, !r.removals.isEmpty {
             image = ObjectRemover.shared.apply(r.removals, to: image, reference: reference)
+        }
+        if let reference, r.skinSmoothing > 0 || r.backgroundBlur > 0 {
+            image = Retouch.apply(r, to: image, reference: reference)
         }
         for mask in r.masks where !mask.isNeutral {
             image = applyMask(mask, to: image, scale: scale, reference: reference)

@@ -39,6 +39,9 @@ struct CullingView: View {
             case .smartCull:
                 let selected = culling.targets(in: list)
                 SmartCullSheet(photos: selected.count > 1 ? selected : list)
+            case .gallery:
+                let selected = culling.targets(in: list)
+                GallerySheet(photos: selected.count > 1 ? selected : list)
             }
         }
     }
@@ -243,6 +246,9 @@ struct CullingToolbar: View {
                 Divider()
                 Button(app.t("culling.saveSidecars"), systemImage: "doc.badge.gearshape") { saveSidecars() }
                 Button(app.t("culling.exportXMP"), systemImage: "arrow.up.doc") { exportXMP() }
+                Button(app.t("keywords.auto"), systemImage: "text.badge.star") { autoKeywords() }
+                Divider()
+                Button(app.t("gallery.create"), systemImage: "photo.on.rectangle.angled") { c.activeSheet = .gallery }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -281,6 +287,25 @@ struct CullingToolbar: View {
                 items.filter { (try? $0.sidecar.write(for: $0.url)) != nil }.count
             }.value
             app.showToast(String(format: app.t("toast.sidecars"), written), icon: "doc.badge.gearshape")
+        }
+    }
+
+    private func autoKeywords() {
+        let targets = actionTargets
+        let jobs = targets.map { (id: $0.id, url: $0.url) }
+        let app = app
+        Task {
+            let results = await Task.detached(priority: .userInitiated) {
+                jobs.compactMap { job -> (UUID, [String])? in
+                    guard let keywords = try? AutoKeywords.apply(to: job.url), !keywords.isEmpty else { return nil }
+                    return (job.id, keywords)
+                }
+            }.value
+            let byID = Dictionary(results, uniquingKeysWith: { first, _ in first })
+            for photo in targets {
+                if let keywords = byID[photo.id] { photo.keywords = keywords.joined(separator: ", ") }
+            }
+            app.showToast(String(format: app.t("toast.keywords"), results.count), icon: "text.badge.star")
         }
     }
 

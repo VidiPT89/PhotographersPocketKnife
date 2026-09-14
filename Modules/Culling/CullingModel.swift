@@ -27,7 +27,7 @@ enum CullingViewMode: String, CaseIterable, Identifiable {
 }
 
 enum CullingSheet: Identifiable {
-    case importFolder(URL), rename, metadata, smartCull
+    case importFolder(URL), rename, metadata, smartCull, gallery
 
     var id: String {
         switch self {
@@ -35,6 +35,7 @@ enum CullingSheet: Identifiable {
         case .rename: "rename"
         case .metadata: "metadata"
         case .smartCull: "smartCull"
+        case .gallery: "gallery"
         }
     }
 }
@@ -134,7 +135,9 @@ final class CullingModel {
             if let focalLength, photo.focalLength?.rounded() != focalLength { return false }
             if showDuplicatesOnly, duplicateGroups[photo.id] == nil { return false }
             if showIssuesOnly, (cullReport?.issues[photo.id] ?? []).isEmpty { return false }
-            if !query.isEmpty, !photo.fileName.lowercased().contains(query) { return false }
+            if !query.isEmpty, !photo.fileName.lowercased().contains(query), !(photo.keywords?.lowercased().contains(query) ?? false) {
+                return false
+            }
             return true
         }
         return list.sorted { a, b in

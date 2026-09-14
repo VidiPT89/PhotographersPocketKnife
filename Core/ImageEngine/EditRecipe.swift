@@ -166,6 +166,9 @@ struct EditRecipe: Equatable, Sendable {
     var vignette = 0.0
     var grain = 0.0
     var grainSize = 0.5
+    // Retoque de retratos
+    var skinSmoothing = 0.0
+    var backgroundBlur = 0.0
     // Curvas e HSL
     var curveMaster = linearCurve
     var curveRed = linearCurve
@@ -279,7 +282,7 @@ extension EditRecipe: Codable {
         case exposure, contrast, highlights, shadows, whites, blacks, texture, clarity
         case temperature, tint, vibrance, saturation
         case sharpness, sharpenRadius, sharpenMasking, noiseReduction, colorNoiseReduction
-        case chromaticAberration, vignette, grain, grainSize
+        case chromaticAberration, vignette, grain, grainSize, skinSmoothing, backgroundBlur
         case curveMaster, curveRed, curveGreen, curveBlue, hsl
         case shadowsHue, shadowsSaturation, midtonesHue, midtonesSaturation, highlightsHue, highlightsSaturation, gradingBalance
         case masks, removals
@@ -314,6 +317,8 @@ extension EditRecipe: Codable {
         vignette = value(.vignette, defaults.vignette)
         grain = value(.grain, defaults.grain)
         grainSize = value(.grainSize, defaults.grainSize)
+        skinSmoothing = value(.skinSmoothing, defaults.skinSmoothing)
+        backgroundBlur = value(.backgroundBlur, defaults.backgroundBlur)
         curveMaster = value(.curveMaster, defaults.curveMaster)
         curveRed = value(.curveRed, defaults.curveRed)
         curveGreen = value(.curveGreen, defaults.curveGreen)

@@ -42,6 +42,10 @@ struct AdjustmentSpec: Identifiable {
             AdjustmentSpec(labelKey: "adjust.grain", keyPath: \.grain, range: 0...1),
             AdjustmentSpec(labelKey: "adjust.grainSize", keyPath: \.grainSize, range: 0...1, defaultValue: 0.5),
         ]),
+        ("adjust.retouch", [
+            AdjustmentSpec(labelKey: "adjust.skinSmoothing", keyPath: \.skinSmoothing, range: 0...1),
+            AdjustmentSpec(labelKey: "adjust.backgroundBlur", keyPath: \.backgroundBlur, range: 0...1),
+        ]),
     ]
 }
 

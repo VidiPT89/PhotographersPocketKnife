@@ -20,6 +20,7 @@
 - ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
 - ✅ `.ppk` sidecars keep ratings and edits next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
 - ✅ Duplicate and near-duplicate detection using perceptual hashing
+- ✅ Automatic scene keywords written to IPTC/XMP and searchable in the catalog
 - ✅ Smart selection, assisted or automatic: every photo is checked for focus, closed eyes, face quality and exposure, shots are grouped into moments, and the best of each moment is highlighted — or picked, starred and the flawed ones rejected for you, with one-click undo. All on-device
 - ✅ Client presentation mode in full screen
 - ✅ Live histogram and EXIF panel
@@ -35,7 +36,9 @@
 - ✅ Object removal: click a person or object to select it automatically, or paint over any distraction, and the area is filled with the surrounding texture — on-device, no internet needed
 - ✅ Crop with aspect presets and rule-of-thirds or golden-spiral overlays, straighten, rotate, flip, perspective and automatic lens correction for RAW
 - ✅ Clipping warnings on the histogram and on the image
-- ✅ Visual history with undo/redo, named snapshots, presets with live hover preview that can be shared as `.ppkpreset` files, and copy/paste settings across a selection
+- ✅ Visual history with undo/redo, named snapshots, presets with live hover preview that can be shared as `.ppkpreset` files, Lightroom `.xmp` preset import, and copy/paste settings across a selection
+- ✅ Personal style: learns from the photos you have already edited and applies your look to new shoots, adapting exposure and colour to each frame
+- ✅ Portrait retouch: skin smoothing and background blur, with people detected automatically
 - ✅ Before/after toggle (`\`) and a draggable split view
 
 ### 📤 Deliver — export and upload
@@ -48,6 +51,7 @@
 - ✅ Remote folders built from templates (`{date}`, `{year}`, `{month}`, `{day}`, `{event}`)
 - ✅ Transfer queue with per-file and overall progress, speed, time remaining, pause/resume, automatic retries with back-off and native notifications
 - ✅ Hot folder mode — anything given the chosen colour label is exported and uploaded automatically
+- ✅ Client galleries: a self-contained web page with lightbox, keyword search, favourites the client can send back by email, and optional downloads — saved locally or uploaded to any destination, no server or subscription needed
 - ✅ Upload history with CSV report export, and drag photos onto a destination in the sidebar to send them straight away
 
 ### 🎨 Everywhere
