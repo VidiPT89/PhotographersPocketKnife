@@ -113,6 +113,15 @@ enum MetadataReader {
         return fields
     }
 
+    /// Estrelas e etiqueta gravadas pelo Lightroom/Bridge (`xmp:Rating`, `xmp:Label`). Rating -1 é "rejeitada".
+    static func xmpClassification(for url: URL) -> PPKSidecar? {
+        guard let xmp = MetadataWriter.readMetadata(for: url) else { return nil }
+        let rating = xmpString(xmp, "xmp:Rating").flatMap { Int($0) } ?? 0
+        let label = xmpString(xmp, "xmp:Label").map(ColorLabel.init(name:)) ?? .none
+        guard rating != 0 || label != .none else { return nil }
+        return PPKSidecar(file: url.lastPathComponent, rating: max(rating, 0), label: "\(label)", flag: rating < 0 ? -1 : 0, develop: nil)
+    }
+
     static func xmpString(_ metadata: CGImageMetadata, _ path: String) -> String? {
         guard let tag = CGImageMetadataCopyTagWithPath(metadata, nil, path as CFString) else { return nil }
         return stringValue(of: tag)
@@ -126,6 +135,7 @@ enum MetadataReader {
             return stringValue(of: value)
         }
         if let string = object as? String { return string }
+        if let number = object as? NSNumber { return number.stringValue }
         if let array = object as? [AnyObject] {
             let parts = array.compactMap { stringValue(of: $0) }
             return parts.isEmpty ? nil : parts.joined(separator: ", ")

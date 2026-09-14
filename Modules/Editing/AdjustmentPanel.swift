@@ -365,64 +365,6 @@ struct GeometryPanel: View {
     }
 }
 
-struct PresetsPanel: View {
-    @Environment(AppState.self) private var app
-    @Environment(\.modelContext) private var context
-    @Query(sort: \EditPreset.name) private var presets: [EditPreset]
-    let list: [Photo]
-    @State private var newName = ""
-
-    var body: some View {
-        let editing = app.editing
-        HStack {
-            TextField(app.t("presets.name"), text: $newName)
-                .textFieldStyle(.roundedBorder)
-            Button(app.t("presets.save")) {
-                guard let data = try? JSONEncoder().encode(editing.recipe) else { return }
-                context.insert(EditPreset(name: newName.trimmingCharacters(in: .whitespaces), recipeData: data))
-                try? context.save()
-                newName = ""
-            }
-            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        Text(app.t("presets.hint"))
-            .font(Typography.caption)
-            .foregroundStyle(Palette.textSecondary)
-
-        if presets.isEmpty {
-            Text(app.t("presets.empty")).foregroundStyle(Palette.textSecondary)
-        }
-        ForEach(presets) { preset in
-            HStack {
-                Text(preset.name)
-                Spacer()
-                Button(app.t("presets.apply")) {
-                    guard let recipe = try? JSONDecoder().decode(EditRecipe.self, from: preset.recipeData) else { return }
-                    editing.hoverPreview = nil
-                    let targets = app.culling.targets(in: list)
-                    editing.applySettings(recipe, labelKey: "history.preset", to: targets.isEmpty ? list.filter { $0.id == editing.photo?.id } : targets)
-                    editing.flashPreset()
-                }
-                Button(role: .destructive) {
-                    context.delete(preset)
-                    try? context.save()
-                } label: { Image(systemName: "trash") }
-            }
-            .padding(8)
-            .background(Palette.background, in: RoundedRectangle(cornerRadius: 6))
-            .hoverLift(scale: 1.01, glow: true)
-            // Pré-visualização do preset na foto enquanto o rato está por cima.
-            .onHover { hovering in
-                if hovering, let recipe = try? JSONDecoder().decode(EditRecipe.self, from: preset.recipeData) {
-                    editing.hoverPreview = editing.recipe.applyingSettings(from: recipe)
-                } else {
-                    editing.hoverPreview = nil
-                }
-            }
-        }
-    }
-}
-
 struct HistoryPanel: View {
     @Environment(AppState.self) private var app
     @State private var snapshotName = ""

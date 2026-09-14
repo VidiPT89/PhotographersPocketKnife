@@ -53,43 +53,44 @@ enum PhotoImporter {
         return files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
     }
 
-    /// Lê (e opcionalmente copia) todas as fotos de uma pasta ou cartão.
-    static func run(folder: URL, options: Options, progress: @Sendable (Int, Int) -> Void) throws -> [ImportedPhotoInfo] {
-        try run(files: imageFiles(in: folder), options: options, progress: progress)
-    }
-
-    static func run(files: [URL], options: Options, progress: @Sendable (Int, Int) -> Void) throws -> [ImportedPhotoInfo] {
-        try runReporting(files: files, options: options, progress: progress).infos
-    }
-
+    /// Lê (e opcionalmente copia) as fotos. A cópia é sequencial (evita corridas nos nomes únicos);
+    /// a leitura de metadados corre em paralelo e mantém a ordem original.
     static func runReporting(files: [URL], options: Options, progress: @Sendable (Int, Int) -> Void) throws -> Result {
         let files = files.filter(isSupported)
-        var infos: [ImportedPhotoInfo] = []
+        var targets: [URL] = []
         var failures: [String] = []
-        infos.reserveCapacity(files.count)
+        targets.reserveCapacity(files.count)
 
-        for (index, file) in files.enumerated() {
-            defer { progress(index + 1, files.count) }
-            var target = file
-            if let destination = options.copyDestination {
+        if let destination = options.copyDestination {
+            for (index, file) in files.enumerated() {
+                defer { progress(index + 1, files.count) }
                 let relative = options.subfolderByDate
                     ? IngestTemplate.path(options.folderTemplate, date: MetadataReader.basicInfo(for: file).captureDate ?? Date(), event: options.event, isRaw: isRaw(file))
                     : ""
                 do {
-                    target = try copy(file, into: destination.appendingPathComponent(relative, isDirectory: true), verify: options.verifyChecksum)
+                    targets.append(try copy(file, into: destination.appendingPathComponent(relative, isDirectory: true), verify: options.verifyChecksum))
                     if let backup = options.backupDestination {
                         _ = try copy(file, into: backup.appendingPathComponent(relative, isDirectory: true), verify: options.verifyChecksum)
                     }
                 } catch {
                     failures.append(file.lastPathComponent)
-                    continue
                 }
             }
-            var info = Diagnostics.shared.measure(.importFile) { MetadataReader.basicInfo(for: target) }
-            info.sidecar = PPKSidecar.read(for: target)
-            infos.append(info)
+        } else {
+            targets = files
         }
-        return Result(infos: infos, failures: failures)
+
+        let copied = options.copyDestination != nil
+        let inputs = targets
+        let results = OrderedResults<ImportedPhotoInfo>(count: inputs.count)
+        DispatchQueue.concurrentPerform(iterations: inputs.count) { index in
+            let target = inputs[index]
+            var info = Diagnostics.shared.measure(.importFile) { MetadataReader.basicInfo(for: target) }
+            info.sidecar = PPKSidecar.read(for: target) ?? MetadataReader.xmpClassification(for: target)
+            let done = results.set(info, at: index)
+            if !copied { progress(done, inputs.count) }
+        }
+        return Result(infos: results.values, failures: failures)
     }
 
     private static func copy(_ file: URL, into directory: URL, verify: Bool) throws -> URL {
@@ -139,6 +140,30 @@ enum PhotoImporter {
         guard let a = try? source.resourceValues(forKeys: keys).fileSize,
               let b = try? target.resourceValues(forKeys: keys).fileSize else { return false }
         return a == b
+    }
+}
+
+/// Resultados escritos por várias threads, cada uma na sua posição.
+private final class OrderedResults<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var slots: [Value?]
+    private var filled = 0
+
+    init(count: Int) {
+        slots = Array(repeating: nil, count: count)
+    }
+
+    /// Devolve quantas posições já estão preenchidas.
+    func set(_ value: Value, at index: Int) -> Int {
+        lock.withLock {
+            slots[index] = value
+            filled += 1
+            return filled
+        }
+    }
+
+    var values: [Value] {
+        lock.withLock { slots.compactMap { $0 } }
     }
 }
 

@@ -14,12 +14,20 @@ final class ThumbnailCache: @unchecked Sendable {
 
     private let memory = NSCache<NSString, CGImage>()
     private let directory: URL
+    private let memoryPressure = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .global(qos: .utility))
 
     init(directory: URL? = nil) {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         self.directory = directory ?? caches.appendingPathComponent("PhotographersPocketKnife/Thumbnails", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
-        memory.countLimit = 800
+        // Limite por bytes: 800 pré-visualizações de 1600 px passariam dos 6 GB.
+        memory.totalCostLimit = 512 << 20
+        memoryPressure.setEventHandler { [weak self] in self?.memory.removeAllObjects() }
+        memoryPressure.resume()
+    }
+
+    private func store(_ image: CGImage, forKey key: String) {
+        memory.setObject(image, forKey: key as NSString, cost: image.bytesPerRow * image.height)
     }
 
     func memoryHit(for url: URL, maxPixel: Int) -> SendableImage? {
@@ -34,11 +42,11 @@ final class ThumbnailCache: @unchecked Sendable {
         let file = directory.appendingPathComponent(key).appendingPathExtension("jpg")
         if let source = CGImageSourceCreateWithURL(file as CFURL, nil),
            let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
-            memory.setObject(image, forKey: key as NSString)
+            store(image, forKey: key)
             return SendableImage(cgImage: image)
         }
         guard let image = Diagnostics.shared.measure(.thumbnail, { Self.generate(url: url, maxPixel: maxPixel) }) else { return nil }
-        memory.setObject(image, forKey: key as NSString)
+        store(image, forKey: key)
         if let destination = CGImageDestinationCreateWithURL(file as CFURL, UTType.jpeg.identifier as CFString, 1, nil) {
             CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
             CGImageDestinationFinalize(destination)

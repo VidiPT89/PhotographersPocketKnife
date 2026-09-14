@@ -319,6 +319,11 @@
 "presets.apply" = "Apply";
 "presets.empty" = "You don't have any presets yet.";
 "presets.hint" = "Presets apply to the selected photos and keep each photo's crop.";
+"presets.import" = "Import";
+"presets.export" = "Export as .ppkpreset file";
+"toast.presetsImported" = "Presets imported";
+"toast.presetsInvalid" = "No valid preset in the chosen files";
+"toast.presetExported" = "Preset exported";
 "history.original" = "Original";
 "history.reset" = "Reset all";
 "history.crop" = "Crop";

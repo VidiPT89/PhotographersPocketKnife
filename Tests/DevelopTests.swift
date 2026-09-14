@@ -137,6 +137,16 @@ final class DevelopTests: XCTestCase {
         XCTAssertGreaterThan(try pixel(erased, at: CGPoint(x: 140, y: 150)).r, 0.5, "The rest of the stroke stays")
     }
 
+    func testPresetFilesRoundTripAndRejectGarbage() throws {
+        var recipe = EditRecipe()
+        recipe.exposure = 0.7
+        recipe.masks = [LocalMask(kind: .brush)]
+        let file = PresetFile(name: "Estádio noturno", recipe: recipe)
+        XCTAssertEqual(try PresetFile.decode(file.encoded()), file)
+        XCTAssertThrowsError(try PresetFile.decode(Data("{}".utf8)))
+        XCTAssertEqual(PresetFile.contentType.preferredFilenameExtension, "ppkpreset")
+    }
+
     func testMasksFromVersionFourStillDecode() throws {
         let legacy = Data(#"{"kind":"radial","centerX":0.4,"exposure":1}"#.utf8)
         let mask = try JSONDecoder().decode(LocalMask.self, from: legacy)

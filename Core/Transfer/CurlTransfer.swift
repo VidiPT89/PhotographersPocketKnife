@@ -200,7 +200,7 @@ enum SFTPCommand {
     }
 }
 
-/// Construção de comandos para o `curl` do sistema, que suporta FTP, FTPS, SFTP e assinatura S3.
+/// Construção de comandos para o `curl` do sistema: FTP, FTPS, WebDAV e S3 (o SFTP passa pelo `SFTPCommand`).
 enum CurlCommand {
     static func url(_ endpoint: TransferEndpoint, remotePath: String) -> String {
         let encodedPath = remotePath
@@ -231,10 +231,10 @@ enum CurlCommand {
         var args = commonArguments(endpoint)
         args += ["--progress-bar", "-T", file.path]
         switch endpoint.transferProtocol {
-        case .ftp, .ftps, .sftp:
+        case .ftp, .ftps:
             args.append("--ftp-create-dirs")
             if resume { args += ["-C", "-"] }
-        case .s3, .webdav:
+        case .s3, .webdav, .sftp:
             break
         }
         args.append(url(endpoint, remotePath: remotePath))
@@ -244,10 +244,8 @@ enum CurlCommand {
     static func testArguments(_ endpoint: TransferEndpoint) -> [String] {
         var args = commonArguments(endpoint) + ["--silent"]
         switch endpoint.transferProtocol {
-        case .ftp, .ftps:
+        case .ftp, .ftps, .sftp:
             args += ["--list-only", url(endpoint, remotePath: "/")]
-        case .sftp:
-            args += ["--list-only", "sftp://\(endpoint.host):\(endpoint.port)/~/"]
         case .s3:
             args += ["-I", url(endpoint, remotePath: "/")]
         case .webdav:
@@ -275,9 +273,8 @@ enum CurlCommand {
         var args = ["--show-error", "--fail", "--connect-timeout", "20", "--config", "-"]
         switch endpoint.transferProtocol {
         case .ftps: args.append("--ssl-reqd")
-        case .sftp: if endpoint.trustUnknownHostKey { args.append("--insecure") }
         case .s3: args += ["--aws-sigv4", "aws:amz:\(endpoint.region):s3"]
-        case .ftp, .webdav: break
+        case .ftp, .webdav, .sftp: break
         }
         return args
     }

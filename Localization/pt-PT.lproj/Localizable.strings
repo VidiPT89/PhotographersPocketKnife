@@ -319,6 +319,11 @@
 "presets.apply" = "Aplicar";
 "presets.empty" = "Ainda não tens presets.";
 "presets.hint" = "Os presets aplicam-se às fotos selecionadas e mantêm o recorte de cada uma.";
+"presets.import" = "Importar";
+"presets.export" = "Exportar como ficheiro .ppkpreset";
+"toast.presetsImported" = "Presets importados";
+"toast.presetsInvalid" = "Nenhum preset válido nos ficheiros escolhidos";
+"toast.presetExported" = "Preset exportado";
 "history.original" = "Original";
 "history.reset" = "Repor tudo";
 "history.crop" = "Recorte";

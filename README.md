@@ -10,7 +10,7 @@
 ### 🗂️ Cull — pick the keepers, fast
 - ✅ Ingest from a card or folder with a configurable folder structure (`{year}/{date}_{event}/{type}`), SHA-256 checksum verification and a simultaneous backup to a second destination
 - ✅ Or simply open a folder from Finder or drop it onto the Dock icon
-- ✅ Thumbnail grid in 5 sizes (`-` / `+`), backed by a memory + disk cache that reads the camera's embedded preview first
+- ✅ Thumbnail grid in 5 sizes (`-` / `+`), backed by a memory-bounded + disk cache that reads the camera's embedded preview first; metadata is read in parallel on import
 - ✅ Predictive prefetching of the next and previous frames, weighted by the direction you are moving in
 - ✅ Loupe with 100 % zoom and a magnifier that follow the cursor, plus a filmstrip
 - ✅ Side-by-side compare of 2 or 4 frames with synced zoom and pan
@@ -18,7 +18,7 @@
 - ✅ Filter and sort by rating, flag, colour label, camera, lens, ISO, focal length, file name and capture time
 - ✅ Batch rename with templates and conflict detection
 - ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
-- ✅ `.ppk` sidecars keep ratings and edits next to the originals, and XMP rating/label export for Lightroom and Bridge
+- ✅ `.ppk` sidecars keep ratings and edits next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
 - ✅ Duplicate and near-duplicate detection using perceptual hashing
 - ✅ Client presentation mode in full screen
 - ✅ Live histogram and EXIF panel
@@ -32,7 +32,7 @@
 - ✅ Local adjustments with linear and radial gradient masks and a brush mask (hold ⌥ to erase), edited directly on the image
 - ✅ Crop with aspect presets and rule-of-thirds or golden-spiral overlays, straighten, rotate, flip, perspective and automatic lens correction for RAW
 - ✅ Clipping warnings on the histogram and on the image
-- ✅ Visual history with undo/redo, named snapshots, presets with live hover preview, and copy/paste settings across a selection
+- ✅ Visual history with undo/redo, named snapshots, presets with live hover preview that can be shared as `.ppkpreset` files, and copy/paste settings across a selection
 - ✅ Before/after toggle (`\`) and a draggable split view
 
 ### 📤 Deliver — export and upload

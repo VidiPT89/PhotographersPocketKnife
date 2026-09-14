@@ -1,6 +1,7 @@
 import XCTest
 import ImageIO
 import UniformTypeIdentifiers
+import os
 @testable import PhotographersPocketKnife
 
 final class CatalogTests: XCTestCase {
@@ -59,7 +60,8 @@ final class CatalogTests: XCTestCase {
         try Data("not an image".utf8).write(to: source.appendingPathComponent("notes.txt"))
 
         let destination = folder.appendingPathComponent("library")
-        let infos = try PhotoImporter.run(folder: source, options: .init(copyDestination: destination, subfolderByDate: true)) { _, _ in }
+        let options = PhotoImporter.Options(copyDestination: destination, subfolderByDate: true)
+        let infos = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }.infos
 
         XCTAssertEqual(infos.count, 1)
         XCTAssertTrue(infos[0].url.path.hasPrefix(destination.path))
@@ -67,8 +69,38 @@ final class CatalogTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: infos[0].url.path))
 
         // Reimportar não duplica o ficheiro copiado.
-        let again = try PhotoImporter.run(folder: source, options: .init(copyDestination: destination, subfolderByDate: true)) { _, _ in }
+        let again = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }.infos
         XCTAssertEqual(again[0].url, infos[0].url)
+    }
+
+    func testParallelImportKeepsOrderAndReportsProgress() throws {
+        let files = try (0..<24).map { index -> URL in
+            let url = folder.appendingPathComponent(String(format: "IMG_%02d.jpg", index))
+            try writeJPEG(to: url)
+            return url
+        }
+        let maxDone = OSAllocatedUnfairLock(initialState: 0)
+        let result = try PhotoImporter.runReporting(files: files, options: .init()) { done, total in
+            XCTAssertEqual(total, 24)
+            maxDone.withLock { $0 = max($0, done) }
+        }
+        XCTAssertEqual(result.infos.map(\.url), files)
+        XCTAssertEqual(maxDone.withLock { $0 }, 24)
+    }
+
+    func testImportPicksUpLightroomRatingAndLabel() throws {
+        let file = folder.appendingPathComponent("lightroom.jpg")
+        try writeJPEG(to: file)
+        try MetadataWriter.writeRating(4, label: .green, to: file)
+
+        let info = try XCTUnwrap(PhotoImporter.runReporting(files: [file], options: .init()) { _, _ in }.infos.first)
+        XCTAssertEqual(info.sidecar?.rating, 4)
+        XCTAssertEqual(info.sidecar?.label, "green")
+
+        // Um `.ppk` do próprio programa tem prioridade sobre o XMP.
+        try PPKSidecar(file: file.lastPathComponent, rating: 2, label: "red", flag: 1, develop: nil).write(for: file)
+        let again = try XCTUnwrap(PhotoImporter.runReporting(files: [file], options: .init()) { _, _ in }.infos.first)
+        XCTAssertEqual(again.sidecar?.rating, 2)
     }
 
     func testIPTCWriteIsReadBack() throws {

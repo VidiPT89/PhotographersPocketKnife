@@ -12,7 +12,7 @@ final class TransferIntegrationTests: XCTestCase {
     private var container: ModelContainer!
     private var file: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PPK_INTEGRATION"] == "1", "Integration servers not enabled")
         container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
                                        configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -26,7 +26,7 @@ final class TransferIntegrationTests: XCTestCase {
         XCTAssertTrue(CGImageDestinationFinalize(destination))
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         if let file { try? FileManager.default.removeItem(at: file) }
     }
 

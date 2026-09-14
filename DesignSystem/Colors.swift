@@ -21,7 +21,6 @@ enum Brand {
 enum Palette {
     static let background = Color(light: 0xFAFAF7, dark: 0x0A0A0F)
     static let panel = Color(light: 0xFFFFFF, dark: 0x1A1A22)
-    static let elevated = Color(light: 0xF1F0EC, dark: 0x24242E)
     /// Fundo neutro atrás das fotos: nenhum tom da marca, para não falsear a leitura de cor.
     static let canvas = Color(light: 0xE8E8E8, dark: 0x1A1A1A)
     static let separator = Color(light: 0xE2E0DA, dark: 0x33333F)
