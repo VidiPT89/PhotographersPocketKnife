@@ -18,6 +18,9 @@ struct PhotographersPocketKnifeApp: App {
         return defaults
     }
 
+    /// Erro ao abrir o catálogo guardado; a app abre na mesma, com um catálogo temporário, e avisa.
+    private static var catalogError: String?
+
     init() {
         do {
             container = try ModelContainer(
@@ -25,8 +28,28 @@ struct PhotographersPocketKnifeApp: App {
                 configurations: ModelConfiguration(isStoredInMemoryOnly: Self.isUITesting)
             )
         } catch {
-            fatalError("Catalog unavailable: \(error)")
+            // O ficheiro do catálogo fica intacto no disco; só não é usado nesta sessão.
+            Self.catalogError = error.localizedDescription
+            do {
+                container = try ModelContainer(
+                    for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                    configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+                )
+            } catch {
+                fatalError("Catalog unavailable: \(error)")
+            }
         }
+    }
+
+    @MainActor
+    private func warnIfCatalogFailed() {
+        guard let message = Self.catalogError else { return }
+        Self.catalogError = nil
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = appState.t("catalog.unavailableTitle")
+        alert.informativeText = appState.t("catalog.unavailableMessage") + "\n\n" + message
+        alert.runModal()
     }
 
     var body: some Scene {
@@ -41,6 +64,7 @@ struct PhotographersPocketKnifeApp: App {
                     appState.transfers.attach(context: container.mainContext)
                     appState.hotFolder.attach(context: container.mainContext)
                     appDelegate.attach { urls in openFromFinder(urls) }
+                    warnIfCatalogFailed()
                 }
         }
         .handlesExternalEvents(matching: [])

@@ -518,3 +518,7 @@
 "style.fromFinals" = "Aprender com fotos entregues…";
 "style.default" = "Usar este estilo no botão Automático";
 "style.noPairs" = "Nenhuma foto do catálogo corresponde aos ficheiros dessa pasta";
+
+/* Catálogo */
+"catalog.unavailableTitle" = "Não foi possível abrir o catálogo";
+"catalog.unavailableMessage" = "A app abriu com um catálogo temporário. O ficheiro do catálogo continua intacto no disco; fecha a app e volta a abri-la. Se o problema continuar, contacta o suporte.";

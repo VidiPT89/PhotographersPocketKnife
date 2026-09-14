@@ -518,3 +518,7 @@
 "style.fromFinals" = "Learn from delivered photos…";
 "style.default" = "Use this style for the Auto button";
 "style.noPairs" = "No catalog photo matches the files in that folder";
+
+/* Catalog */
+"catalog.unavailableTitle" = "The catalog could not be opened";
+"catalog.unavailableMessage" = "The app opened with a temporary catalog. Your catalog file is still intact on disk; quit and reopen the app. If the problem persists, contact support.";
