@@ -1,0 +1,206 @@
+import XCTest
+import CoreImage
+import ImageIO
+@testable import PhotographersPocketKnife
+
+final class SmartEditTests: XCTestCase {
+
+    // MARK: Remoção de objetos
+
+    func testInpainterFillsHoleWithSurroundingTexture() throws {
+        let width = 96, height = 96
+        var pixels = [Float](repeating: 0, count: width * height * 3)
+        var hole = [Bool](repeating: false, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                let i = y * width + x
+                let stripe: Float = ((x + y) / 6) % 2 == 0 ? 0.3 : 0.6
+                pixels[i * 3] = stripe * 0.5; pixels[i * 3 + 1] = stripe; pixels[i * 3 + 2] = stripe * 0.7
+                if abs(x - 48) < 12, abs(y - 48) < 12 {
+                    hole[i] = true
+                    pixels[i * 3] = 1; pixels[i * 3 + 1] = 0; pixels[i * 3 + 2] = 0
+                }
+            }
+        }
+        let image = Inpainter.Image(width: width, height: height, pixels: pixels)
+        let field = Inpainter.solve(image, hole: hole)
+        XCTAssertFalse(field.targets.isEmpty)
+        let filled = Inpainter.fill(image, hole: hole, field: field)
+
+        var red: Float = 0, green: Float = 0, count: Float = 0
+        for i in 0..<(width * height) where hole[i] {
+            red += filled.pixels[i * 3]; green += filled.pixels[i * 3 + 1]; count += 1
+        }
+        XCTAssertLessThan(red / count, 0.35, "The red square is gone")
+        XCTAssertEqual(green / count, 0.45, accuracy: 0.12, "Filled with the stripes' colours")
+        XCTAssertEqual(filled.pixels[0], pixels[0], "Pixels outside the hole stay untouched")
+    }
+
+    func testRemovalErasesPaintedObjectThroughThePipeline() throws {
+        let photo = CIImage(cgImage: try stripedImage(square: CGRect(x: 60, y: 110, width: 40, height: 40)))
+        var recipe = EditRecipe()
+        // Centro do quadrado em coordenadas normalizadas com origem em cima: (80/240, 1 - 130/180).
+        recipe.removals = [Removal(strokes: [BrushStroke(points: [CurvePoint(x: 80.0 / 240, y: 1 - 130.0 / 180)], size: 0.38)])]
+
+        let output = ImageRenderer.shared.apply(recipe, to: photo)
+        let centre = try pixel(output, at: CGPoint(x: 80, y: 130))
+        XCTAssertLessThan(centre.r, centre.g, "The red square was replaced by the green background")
+        let far = try pixel(output, at: CGPoint(x: 200, y: 20))
+        let original = try pixel(photo, at: CGPoint(x: 200, y: 20))
+        XCTAssertEqual(far.g, original.g, accuracy: 0.01, "Outside the removal nothing changes")
+
+        // Mexer num slider reaproveita as correspondências e continua sem o objeto.
+        recipe.exposure = 0.5
+        let brighter = try pixel(ImageRenderer.shared.apply(recipe, to: photo), at: CGPoint(x: 80, y: 130))
+        XCTAssertLessThan(brighter.r, brighter.g)
+    }
+
+    func testRemovalsAndSubjectMasksSurviveCodableAndPresets() throws {
+        var recipe = EditRecipe()
+        recipe.removals = [Removal(objectPoint: CurvePoint(x: 0.4, y: 0.6)), Removal(strokes: [BrushStroke(points: [CurvePoint(x: 0.1, y: 0.1)])])]
+        recipe.masks = [LocalMask(kind: .subject)]
+        XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: JSONEncoder().encode(recipe)), recipe)
+
+        var preset = EditRecipe()
+        preset.exposure = 1
+        preset.removals = [Removal(objectPoint: CurvePoint(x: 0.9, y: 0.9))]
+        let applied = recipe.applyingSettings(from: preset)
+        XCTAssertEqual(applied.removals, recipe.removals, "A preset never brings removals from another photo")
+        XCTAssertEqual(applied.exposure, 1)
+    }
+
+    func testSubjectMaskWithoutSubjectLeavesThePhotoAlone() throws {
+        let gray = CIImage(color: CIColor(red: 0.4, green: 0.4, blue: 0.4)).cropped(to: CGRect(x: 0, y: 0, width: 200, height: 150))
+        var mask = LocalMask(kind: .subject)
+        mask.exposure = 2
+        var recipe = EditRecipe()
+        recipe.masks = [mask]
+        let output = ImageRenderer.shared.apply(recipe, to: gray)
+        XCTAssertEqual(try pixel(output, at: CGPoint(x: 100, y: 75)).r, 0.4, accuracy: 0.02)
+    }
+
+    // MARK: Edição automática
+
+    func testAutoEnhanceBrightensDarkPhotoAndNeutralisesColourCast() throws {
+        // Riscas cinzentas (neutras de verdade), escuras e com dominante azul.
+        let dark = try stripedImage(square: nil, brightness: 0.35, cast: (0.8, 0.9, 1.2), gray: true)
+        let photo = CIImage(cgImage: dark)
+        var recipe = EditRecipe()
+        recipe.crop = CropRect(x: 0.1, y: 0, width: 0.8, height: 1)
+        recipe.masks = [LocalMask(kind: .radial)]
+
+        let enhanced = AutoEnhance.enhance(recipe, image: photo)
+        XCTAssertGreaterThan(enhanced.exposure, 0.3)
+        XCTAssertEqual(enhanced.crop, recipe.crop, "Framing is left alone")
+        XCTAssertEqual(enhanced.masks, recipe.masks)
+
+        let before = try displayed(photo)
+        let after = try displayed(ImageRenderer.shared.apply(enhanced, to: photo, applyCrop: false))
+        XCTAssertGreaterThan(after.luminance, before.luminance + 0.1, "The photo gets brighter")
+        XCTAssertLessThan(abs(after.blueCast), abs(before.blueCast), "The blue cast is reduced")
+    }
+
+    func testAutoEnhanceStraightensATiltedHorizon() throws {
+        let tilted = try horizonImage(degrees: 4)
+        guard let detected = AutoEnhance.horizonAngle(tilted) else {
+            throw XCTSkip("Vision did not detect a horizon in the synthetic image")
+        }
+        let enhanced = AutoEnhance.enhance(EditRecipe(), image: CIImage(cgImage: tilted))
+        XCTAssertEqual(enhanced.straighten, -detected, accuracy: 0.4)
+
+        let straightened = ImageRenderer.shared.apply(enhanced, to: CIImage(cgImage: tilted))
+        let rendered = try XCTUnwrap(ImageRenderer.shared.context.createCGImage(straightened, from: straightened.extent))
+        let remaining = AutoEnhance.horizonAngle(rendered) ?? 0
+        XCTAssertLessThan(abs(remaining), abs(detected), "Applying the suggestion levels the horizon")
+    }
+
+    // MARK: Foto real (opcional)
+
+    /// `TEST_RUNNER_PPK_SMART_PHOTO=/caminho/foto.jpg` para ver o Vision e a remoção numa foto verdadeira.
+    func testRealPhotoSubjectAndRemoval() throws {
+        guard let path = ProcessInfo.processInfo.environment["PPK_SMART_PHOTO"] else { throw XCTSkip("No real photo configured") }
+        let url = URL(fileURLWithPath: path)
+        let base = try XCTUnwrap(ImageRenderer.shared.previewBase(url: url, maxPixel: 2000, lensCorrection: false))
+        let input = CIImage(cgImage: base)
+
+        var start = Date()
+        let subject = SmartSelection.shared.subjectMask(for: input)
+        print("PPK subject mask:", subject != nil, String(format: "%.0f ms", Date().timeIntervalSince(start) * 1000))
+
+        var recipe = AutoEnhance.enhance(EditRecipe(), image: input)
+        print("PPK auto:", recipe.exposure, recipe.temperature, recipe.tint, recipe.contrast, recipe.highlights, recipe.shadows, recipe.vibrance, recipe.straighten)
+
+        recipe.removals = [Removal(objectPoint: CurvePoint(x: 0.5, y: 0.5))]
+        start = Date()
+        let output = ImageRenderer.shared.apply(recipe, to: input)
+        let image = try XCTUnwrap(ImageRenderer.shared.context.createCGImage(output, from: output.extent))
+        print("PPK removal render:", String(format: "%.0f ms", Date().timeIntervalSince(start) * 1000))
+        if let out = ProcessInfo.processInfo.environment["PPK_SMART_OUTPUT"],
+           let destination = CGImageDestinationCreateWithURL(URL(fileURLWithPath: out) as CFURL, "public.jpeg" as CFString, 1, nil) {
+            CGImageDestinationAddImage(destination, image, nil)
+            CGImageDestinationFinalize(destination)
+        }
+    }
+
+    // MARK: Utilitários
+
+    /// Fundo com riscas diagonais verdes e, opcionalmente, um quadrado vermelho (coordenadas com origem em baixo).
+    private func stripedImage(square: CGRect?, brightness: CGFloat = 1, cast: (CGFloat, CGFloat, CGFloat) = (1, 1, 1), gray: Bool = false) throws -> CGImage {
+        let width = 240, height = 180
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        for (index, start) in stride(from: -height, to: width + height, by: 12).enumerated() {
+            let base: (CGFloat, CGFloat, CGFloat) = gray
+                ? (index % 2 == 0 ? (0.35, 0.35, 0.35) : (0.7, 0.7, 0.7))
+                : (index % 2 == 0 ? (0.25, 0.5, 0.3) : (0.45, 0.75, 0.5))
+            context.setFillColor(CGColor(red: min(base.0 * brightness * cast.0, 1), green: min(base.1 * brightness * cast.1, 1),
+                                         blue: min(base.2 * brightness * cast.2, 1), alpha: 1))
+            context.move(to: CGPoint(x: start, y: 0))
+            context.addLine(to: CGPoint(x: start + 12, y: 0))
+            context.addLine(to: CGPoint(x: start + 12 + height, y: height))
+            context.addLine(to: CGPoint(x: start + height, y: height))
+            context.fillPath()
+        }
+        if let square {
+            context.setFillColor(CGColor(red: 0.95, green: 0.05, blue: 0.05, alpha: 1))
+            context.fill(square)
+        }
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    /// Céu claro em cima, mar escuro em baixo, com a linha do horizonte rodada.
+    private func horizonImage(degrees: CGFloat) throws -> CGImage {
+        let width = 480, height = 320
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0.55, green: 0.75, blue: 0.95, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.translateBy(x: CGFloat(width) / 2, y: CGFloat(height) / 2)
+        context.rotate(by: degrees * .pi / 180)
+        context.setFillColor(CGColor(red: 0.05, green: 0.2, blue: 0.35, alpha: 1))
+        context.fill(CGRect(x: -CGFloat(width), y: -CGFloat(height) * 1.5, width: CGFloat(width) * 2, height: CGFloat(height) * 1.5))
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    private func pixel(_ image: CIImage, at point: CGPoint) throws -> (r: Float, g: Float, b: Float) {
+        var bytes = [Float](repeating: 0, count: 4)
+        ImageRenderer.shared.context.render(image, toBitmap: &bytes, rowBytes: 16, bounds: CGRect(origin: point, size: CGSize(width: 1, height: 1)),
+                                            format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        return (bytes[0], bytes[1], bytes[2])
+    }
+
+    /// Médias como aparecem no ecrã (sRGB, cada píxel limitado a 0…1). O azul é relativo ao brilho.
+    private func displayed(_ image: CIImage) throws -> (luminance: Float, blueCast: Float) {
+        let e = image.extent.integral
+        let width = Int(e.width), height = Int(e.height)
+        var rgba = [Float](repeating: 0, count: width * height * 4)
+        ImageRenderer.shared.context.render(image, toBitmap: &rgba, rowBytes: width * 16, bounds: e, format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        var r: Float = 0, g: Float = 0, b: Float = 0
+        for i in 0..<(width * height) {
+            r += min(max(rgba[i * 4], 0), 1); g += min(max(rgba[i * 4 + 1], 0), 1); b += min(max(rgba[i * 4 + 2], 0), 1)
+        }
+        let n = Float(width * height)
+        r /= n; g /= n; b /= n
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b, 3 * (b - r) / max(r + g + b, 1e-4))
+    }
+}

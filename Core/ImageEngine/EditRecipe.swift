@@ -38,6 +38,8 @@ struct CropRect: Codable, Equatable, Sendable {
 
 enum MaskKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case linear, radial, brush
+    /// Sujeito principal detetado automaticamente pelo Vision.
+    case subject
     var id: String { rawValue }
     var labelKey: String { "mask.\(rawValue)" }
 
@@ -46,8 +48,17 @@ enum MaskKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .linear: "rectangle.lefthalf.inset.filled"
         case .radial: "circle.dashed.inset.filled"
         case .brush: "paintbrush.pointed.fill"
+        case .subject: "person.crop.square"
         }
     }
+}
+
+/// Zona a remover da foto: pintada à mão ou um objeto escolhido com um clique (detetado pelo Vision).
+/// Coordenadas normalizadas na imagem final, como as máscaras.
+struct Removal: Codable, Equatable, Identifiable, Sendable {
+    var id = UUID()
+    var strokes: [BrushStroke] = []
+    var objectPoint: CurvePoint?
 }
 
 /// Uma pincelada da máscara de pincel: pontos normalizados (0…1, origem no canto superior esquerdo).
@@ -169,8 +180,9 @@ struct EditRecipe: Equatable, Sendable {
     var highlightsHue = 45.0
     var highlightsSaturation = 0.0
     var gradingBalance = 0.0
-    // Ajustes locais
+    // Ajustes locais e remoção de objetos
     var masks: [LocalMask] = []
+    var removals: [Removal] = []
     // Geometria e lente
     var crop = CropRect()
     var straighten = 0.0
@@ -247,9 +259,10 @@ struct EditRecipe: Equatable, Sendable {
         return recipe
     }
 
-    /// Copia os ajustes de `other` mas mantém o enquadramento e as máscaras desta foto (presets e sincronização).
+    /// Copia os ajustes de `other` mas mantém o enquadramento, as máscaras e as remoções desta foto (presets e sincronização).
     func applyingSettings(from other: EditRecipe) -> EditRecipe {
         var result = other
+        result.removals = removals
         result.crop = crop
         result.straighten = straighten
         result.quarterTurns = quarterTurns
@@ -269,7 +282,7 @@ extension EditRecipe: Codable {
         case chromaticAberration, vignette, grain, grainSize
         case curveMaster, curveRed, curveGreen, curveBlue, hsl
         case shadowsHue, shadowsSaturation, midtonesHue, midtonesSaturation, highlightsHue, highlightsSaturation, gradingBalance
-        case masks
+        case masks, removals
         case crop, straighten, quarterTurns, flipHorizontal, perspectiveVertical, perspectiveHorizontal, lensCorrection
     }
 
@@ -314,6 +327,7 @@ extension EditRecipe: Codable {
         highlightsSaturation = value(.highlightsSaturation, defaults.highlightsSaturation)
         gradingBalance = value(.gradingBalance, defaults.gradingBalance)
         masks = value(.masks, defaults.masks)
+        removals = value(.removals, defaults.removals)
         crop = value(.crop, defaults.crop)
         straighten = value(.straighten, defaults.straighten)
         quarterTurns = value(.quarterTurns, defaults.quarterTurns)

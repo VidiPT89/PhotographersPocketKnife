@@ -28,7 +28,7 @@ final class ImageRenderer: @unchecked Sendable {
     }
 
     /// Imagem base já descodificada e reduzida, em cache, para os sliders responderem depressa.
-    private func previewBase(url: URL, maxPixel: Int, lensCorrection: Bool) -> CGImage? {
+    func previewBase(url: URL, maxPixel: Int, lensCorrection: Bool) -> CGImage? {
         let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970 ?? 0
         let key = "\(url.path)|\(maxPixel)|\(lensCorrection)|\(modified)"
         lock.lock()
@@ -154,20 +154,19 @@ final class ImageRenderer: @unchecked Sendable {
             image = r.sharpenMasking > 0 ? blend(sharpened, over: image, mask: edgeMask(image, masking: r.sharpenMasking)) : sharpened
         }
 
-        image = applyGeometry(r, to: image)
+        // As remoções e o sujeito são calculados sobre a foto sem ajustes: os sliders não obrigam a repetir a análise.
+        let needsReference = !r.removals.isEmpty || r.masks.contains { $0.kind == .subject && !$0.isNeutral }
+        let reference = needsReference ? referenceImage(r, input: input, applyCrop: applyCrop) : nil
 
-        if applyCrop, !r.crop.isFull {
-            let e = image.extent
-            let rect = CGRect(
-                x: e.minX + r.crop.x * e.width,
-                y: e.minY + (1 - r.crop.y - r.crop.height) * e.height,
-                width: r.crop.width * e.width,
-                height: r.crop.height * e.height
-            ).integral
-            image = image.cropped(to: rect)
+        image = applyGeometry(r, to: image)
+        if applyCrop {
+            image = cropped(image, to: r.crop)
+        }
+        if let reference, !r.removals.isEmpty {
+            image = ObjectRemover.shared.apply(r.removals, to: image, reference: reference)
         }
         for mask in r.masks where !mask.isNeutral {
-            image = applyMask(mask, to: image, scale: scale)
+            image = applyMask(mask, to: image, scale: scale, reference: reference)
         }
         if r.vignette != 0 {
             let e = image.extent
@@ -266,7 +265,25 @@ final class ImageRenderer: @unchecked Sendable {
 
     // MARK: Máscaras locais
 
-    func applyMask(_ mask: LocalMask, to image: CIImage, scale: CGFloat) -> CIImage {
+    func cropped(_ image: CIImage, to crop: CropRect) -> CIImage {
+        guard !crop.isFull else { return image }
+        let e = image.extent
+        let rect = CGRect(
+            x: e.minX + crop.x * e.width,
+            y: e.minY + (1 - crop.y - crop.height) * e.height,
+            width: crop.width * e.width,
+            height: crop.height * e.height
+        ).integral
+        return image.cropped(to: rect)
+    }
+
+    /// A foto só com geometria e recorte, sem ajustes: base estável para as seleções automáticas e as remoções.
+    func referenceImage(_ r: EditRecipe, input: CIImage, applyCrop: Bool) -> CIImage {
+        let geometry = applyGeometry(r, to: input)
+        return applyCrop ? cropped(geometry, to: r.crop) : geometry
+    }
+
+    func applyMask(_ mask: LocalMask, to image: CIImage, scale: CGFloat, reference: CIImage? = nil) -> CIImage {
         let e = image.extent
         var adjusted = image
         if mask.exposure != 0 {
@@ -293,10 +310,10 @@ final class ImageRenderer: @unchecked Sendable {
         if mask.clarity != 0 {
             adjusted = localContrast(adjusted, amount: mask.clarity * 0.8, radius: 22 * scale)
         }
-        return blend(adjusted.cropped(to: e), over: image, mask: maskImage(mask, extent: e))
+        return blend(adjusted.cropped(to: e), over: image, mask: maskImage(mask, extent: e, reference: reference))
     }
 
-    func maskImage(_ mask: LocalMask, extent e: CGRect) -> CIImage {
+    func maskImage(_ mask: LocalMask, extent e: CGRect, reference: CIImage? = nil) -> CIImage {
         var gradient: CIImage
         switch mask.kind {
         case .radial:
@@ -320,6 +337,14 @@ final class ImageRenderer: @unchecked Sendable {
             gradient = f.outputImage ?? CIImage.empty()
         case .brush:
             gradient = brushMask(mask, extent: e)
+        case .subject:
+            let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: e)
+            if let subject = reference.flatMap({ SmartSelection.shared.subjectMask(for: $0) }) {
+                let sigma = Double(max(e.width, e.height)) * 0.006 * mask.feather
+                gradient = sigma > 0.5 ? subject.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: e) : subject
+            } else {
+                gradient = black
+            }
         }
         if mask.invert {
             gradient = gradient.applyingFilter("CIColorInvert")
@@ -327,21 +352,31 @@ final class ImageRenderer: @unchecked Sendable {
         return gradient.cropped(to: e)
     }
 
-    /// Rasteriza as pinceladas (até 1024 px) e suaviza as bordas com `feather`; depois escala para a imagem.
+    /// Pinceladas com as bordas suavizadas por `feather`.
     private func brushMask(_ mask: LocalMask, extent e: CGRect) -> CIImage {
-        let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: e)
-        guard !mask.strokes.isEmpty, e.width > 0, e.height > 0 else { return black }
+        guard let raster = Self.rasterizeStrokes(mask.strokes, extent: e) else {
+            return CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: e)
+        }
+        let sigma = Double(raster.widest) * mask.feather * 0.35
+        guard sigma > 0.5 else { return raster.image }
+        return raster.image.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: e)
+    }
+
+    /// Desenha as pinceladas numa máscara em tons de cinzento (até 1024 px) já com a extensão `e`.
+    /// Devolve também a largura do traço mais grosso, nas mesmas unidades.
+    static func rasterizeStrokes(_ strokes: [BrushStroke], extent e: CGRect) -> (image: CIImage, widest: CGFloat)? {
+        guard !strokes.isEmpty, e.width > 0, e.height > 0, !e.isInfinite else { return nil }
         let scale = min(1024 / max(e.width, e.height), 1)
         let width = max(Int(e.width * scale), 1), height = max(Int(e.height * scale), 1)
         guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
-                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return black }
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
         context.setFillColor(gray: 0, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.setLineCap(.round)
         context.setLineJoin(.round)
         let side = CGFloat(min(width, height))
         var widest: CGFloat = 1
-        for stroke in mask.strokes where !stroke.points.isEmpty {
+        for stroke in strokes where !stroke.points.isEmpty {
             let lineWidth = max(CGFloat(stroke.size) * side, 1)
             widest = max(widest, lineWidth)
             context.setStrokeColor(gray: stroke.erase ? 0 : 1, alpha: 1)
@@ -355,16 +390,12 @@ final class ImageRenderer: @unchecked Sendable {
             }
             context.strokePath()
         }
-        guard let raster = context.makeImage() else { return black }
-        var image = CIImage(cgImage: raster)
-        let sigma = Double(widest) * mask.feather * 0.35
-        if sigma > 0.5 {
-            image = image.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: image.extent)
-        }
-        return image
+        guard let raster = context.makeImage() else { return nil }
+        let image = CIImage(cgImage: raster)
             .transformed(by: CGAffineTransform(scaleX: e.width / CGFloat(width), y: e.height / CGFloat(height)))
             .transformed(by: CGAffineTransform(translationX: e.minX, y: e.minY))
             .cropped(to: e)
+        return (image, widest * e.width / CGFloat(width))
     }
 
     func applyGeometry(_ r: EditRecipe, to input: CIImage) -> CIImage {

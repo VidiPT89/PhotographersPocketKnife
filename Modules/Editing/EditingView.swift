@@ -160,6 +160,10 @@ struct EditCanvas: View {
                             MaskOverlay(size: rect)
                                 .transition(.opacity)
                         }
+                        if editing.tab == .remove, editing.compareMode == .off {
+                            RemovalOverlay(size: rect)
+                                .transition(.opacity)
+                        }
                     }
                     .frame(width: rect.width, height: rect.height)
                     .shadow(color: .black.opacity(0.35), radius: 12)

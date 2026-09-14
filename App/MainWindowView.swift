@@ -54,19 +54,13 @@ struct MainWindowView: View {
                         .font(.system(size: 12, weight: .semibold))
                 }
             }
-            ToolbarItemGroup(placement: .primaryAction) {
-                PillPicker(selection: $app.language, options: AppLanguage.allCases, compact: true) { language, _ in
-                    Text(language.shortLabel).font(.system(size: 11, weight: .bold))
+            // Idioma e tema vivem nas Definições (⌘,); aqui fica só o atalho.
+            ToolbarItem(placement: .primaryAction) {
+                SettingsLink {
+                    Image(systemName: "gearshape")
+                        .accessibilityLabel(app.t("toolbar.settings"))
                 }
-                .help(app.t("toolbar.language"))
-
-                PillPicker(selection: $app.theme, options: AppTheme.allCases, compact: true) { theme, _ in
-                    Image(systemName: theme.icon)
-                        .font(.system(size: 11, weight: .semibold))
-                        .help(app.t(theme.labelKey))
-                        .accessibilityLabel(app.t(theme.labelKey))
-                }
-                .help(app.t("toolbar.theme"))
+                .help(app.t("toolbar.settings"))
             }
         }
     }

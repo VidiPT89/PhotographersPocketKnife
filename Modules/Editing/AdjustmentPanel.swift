@@ -90,6 +90,7 @@ struct AdjustmentPanel: View {
                     case .hsl: HSLPanel()
                     case .grading: ColorGradingPanel()
                     case .masks: MasksPanel()
+                    case .remove: RemovalPanel()
                     case .geometry: GeometryPanel()
                     case .presets: PresetsPanel(list: list)
                     case .history: HistoryPanel()
@@ -103,7 +104,24 @@ struct AdjustmentPanel: View {
         .controlSize(.small)
     }
 
+    @ViewBuilder
     private var basic: some View {
+        Button { app.editing.autoEnhance() } label: {
+            HStack(spacing: 6) {
+                if app.editing.isAutoEnhancing {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "wand.and.stars")
+                }
+                Text(app.t("auto.button"))
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(Brand.orange)
+        .controlSize(.regular)
+        .disabled(app.editing.isAutoEnhancing)
+        .help(app.t("auto.help"))
         ForEach(Array(AdjustmentSpec.sections.enumerated()), id: \.element.titleKey) { index, section in
             CollapsibleSection(title: app.t(section.titleKey)) {
                 ForEach(section.specs) { spec in

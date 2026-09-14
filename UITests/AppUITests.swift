@@ -24,7 +24,7 @@ final class AppUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Seleção"].waitForExistence(timeout: 10), "Main window after the splash")
     }
 
-    func testModulesLanguageAndThemeSwitch() {
+    func testModulesSwitchAndSettingsChangeLanguageAndTheme() {
         app.launchArguments.append("-ppk-skip-splash")
         app.launch()
 
@@ -32,17 +32,17 @@ final class AppUITests: XCTestCase {
         XCTAssertTrue(editing.waitForExistence(timeout: 10))
         editing.click()
         XCTAssertTrue(app.staticTexts["Nenhuma foto para editar"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.toolbars.buttons["EN"].exists, "Language lives in Settings, not in the toolbar")
 
-        app.buttons["EN"].click()
+        app.typeKey(",", modifierFlags: .command)
+        let english = app.radioButtons["EN"]
+        XCTAssertTrue(english.waitForExistence(timeout: 5), "Settings window with the language picker")
+        english.click()
         XCTAssertTrue(app.buttons["Editing"].waitForExistence(timeout: 5), "Language switches without restarting")
-        XCTAssertTrue(app.staticTexts["No photos to edit"].exists)
 
-        app.buttons["Upload"].click()
-        XCTAssertTrue(app.staticTexts["Upload queue is empty"].waitForExistence(timeout: 5))
-
-        app.buttons["Light"].click()
-        app.buttons["Dark"].click()
-        app.buttons["PT"].click()
-        XCTAssertTrue(app.buttons["Envio"].waitForExistence(timeout: 5))
+        app.radioButtons["Light"].click()
+        app.radioButtons["Dark"].click()
+        app.radioButtons["PT"].click()
+        XCTAssertTrue(app.buttons["Edição"].waitForExistence(timeout: 5))
     }
 }

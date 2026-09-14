@@ -29,7 +29,9 @@
 - ✅ Exposure, contrast, highlights, shadows, whites, blacks, texture, clarity, temperature, tint, vibrance and saturation
 - ✅ Tone curve (RGB + per channel), HSL across eight colour bands and colour grading wheels for shadows, midtones and highlights
 - ✅ Sharpening with radius and edge masking, luminance and colour noise reduction, chromatic aberration correction, vignette and grain
-- ✅ Local adjustments with linear and radial gradient masks and a brush mask (hold ⌥ to erase), edited directly on the image
+- ✅ Local adjustments with linear and radial gradient masks, a brush mask (hold ⌥ to erase) and an automatic subject mask, edited directly on the image
+- ✅ One-click Auto edit: exposure metered on what draws attention in the frame, white balance, contrast and horizon straightening, all as regular sliders you can tweak
+- ✅ Object removal: click a person or object to select it automatically, or paint over any distraction, and the area is filled with the surrounding texture — on-device, no internet needed
 - ✅ Crop with aspect presets and rule-of-thirds or golden-spiral overlays, straighten, rotate, flip, perspective and automatic lens correction for RAW
 - ✅ Clipping warnings on the histogram and on the image
 - ✅ Visual history with undo/redo, named snapshots, presets with live hover preview that can be shared as `.ppkpreset` files, and copy/paste settings across a selection
@@ -48,7 +50,7 @@
 - ✅ Upload history with CSV report export, and drag photos onto a destination in the sidebar to send them straight away
 
 ### 🎨 Everywhere
-- ✅ Runtime language switch — Português (PT-PT) and English, no restart needed
+- ✅ Runtime language switch — Português (PT-PT) and English, no restart needed (Settings, `⌘,`)
 - ✅ Dark mode, Light mode and System mode
 - ✅ Colour identity from [ividi.dev](https://ividi.dev/) — burnt orange, amber and near-black, with a neutral grey canvas behind photos so nothing skews colour judgement
 - ✅ Animated splash screen with developer credits, then straight into the app
@@ -106,7 +108,7 @@ Prefer a ready-made build? Download the latest version from [Releases](https://g
 6. Press `⌘E` to export, or `⌘⇧E` to export and upload in one go
 7. Watch the queue in **Deliver** (`⌘3`) — speed, time remaining, pause, resume or retry failed files at any time
 8. Turn on the hot folder in Settings to send every photo you label green straight to the client
-9. Change language and appearance at any time from the top bar
+9. Change language and appearance at any time in Settings (`⌘,`)
 
 ## 🧪 Testing
 

@@ -1,7 +1,14 @@
 import SwiftUI
 
+enum RemovalMode: String, CaseIterable, Identifiable {
+    case object, brush
+    var id: String { rawValue }
+    var labelKey: String { "removal.mode.\(rawValue)" }
+    var icon: String { self == .object ? "cursorarrow.rays" : "paintbrush.pointed" }
+}
+
 enum EditTab: String, CaseIterable, Identifiable {
-    case basic, curve, hsl, grading, masks, geometry, presets, history
+    case basic, curve, hsl, grading, masks, remove, geometry, presets, history
     var id: String { rawValue }
     var labelKey: String { "editTab.\(rawValue)" }
 
@@ -12,6 +19,7 @@ enum EditTab: String, CaseIterable, Identifiable {
         case .hsl: "paintpalette"
         case .grading: "circle.lefthalf.striped.horizontal"
         case .masks: "circle.dashed.inset.filled"
+        case .remove: "eraser.line.dashed"
         case .geometry: "crop.rotate"
         case .presets: "square.stack"
         case .history: "clock.arrow.circlepath"
@@ -102,6 +110,9 @@ final class EditingModel {
     var cropAspect: CropAspect = .free
     var cropGuide: CropGuide = .thirds
     var clipboard: EditRecipe?
+    var removalMode: RemovalMode = .object
+    var removalBrushSize = 0.05
+    private(set) var isAutoEnhancing = false
 
     @ObservationIgnored private(set) weak var photo: Photo?
     @ObservationIgnored private var url: URL?
@@ -159,6 +170,52 @@ final class EditingModel {
 
     var selectedMaskIndex: Int? {
         recipe.masks.firstIndex { $0.id == selectedMaskID }
+    }
+
+    // MARK: Remoção de objetos e edição automática
+
+    func addRemoval(_ removal: Removal) {
+        recipe.removals.append(removal)
+        commit("history.remove")
+    }
+
+    func deleteRemoval(_ id: UUID) {
+        recipe.removals.removeAll { $0.id == id }
+        commit("history.remove")
+    }
+
+    func clearRemovals() {
+        recipe.removals = []
+        commit("history.remove")
+    }
+
+    /// Só acrescenta a remoção se o Vision encontrar um objeto no ponto; devolve se encontrou.
+    func pickObject(at point: CurvePoint) async -> Bool {
+        guard let url else { return false }
+        let recipe = recipe
+        let maxPixel = previewMaxPixel
+        let found = await Task.detached(priority: .userInitiated) {
+            ImageRenderer.shared.hasObject(url: url, recipe: recipe, at: point, maxPixel: maxPixel)
+        }.value
+        guard found, self.url == url else { return false }
+        addRemoval(Removal(objectPoint: point))
+        return true
+    }
+
+    func autoEnhance() {
+        guard let url, !isAutoEnhancing else { return }
+        isAutoEnhancing = true
+        let recipe = recipe
+        Task {
+            let enhanced = await Task.detached(priority: .userInitiated) {
+                ImageRenderer.shared.autoEnhanced(url: url, recipe: recipe, maxPixel: 1024)
+            }.value
+            isAutoEnhancing = false
+            guard self.url == url, let enhanced else { return }
+            self.recipe = enhanced
+            commit("history.auto")
+            flashPreset()
+        }
     }
 
     func flashPreset() {

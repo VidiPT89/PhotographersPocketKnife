@@ -150,6 +150,11 @@ struct MasksPanel: View {
                         editing.commit("history.mask")
                     }
                     .disabled(editing.recipe.masks[index].strokes.isEmpty)
+                case .subject:
+                    AdjustmentSlider(labelKey: "mask.feather", value: \EditRecipe.masks[index].feather, range: 0...1, defaultValue: 0.5)
+                    Text(app.t("mask.subjectHint"))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecondary)
                 case .linear:
                     EmptyView()
                 }
@@ -249,6 +254,8 @@ struct MaskOverlay: View {
                             .position(brushHover)
                             .allowsHitTesting(false)
                     }
+                case .subject:
+                    EmptyView()
                 case .linear:
                     let start = CGPoint(x: mask.startX * size.width, y: mask.startY * size.height)
                     let end = CGPoint(x: mask.endX * size.width, y: mask.endY * size.height)
@@ -278,6 +285,7 @@ struct MaskOverlay: View {
         switch mask.kind {
         case .radial: CGPoint(x: mask.centerX * size.width, y: mask.centerY * size.height)
         case .linear: CGPoint(x: mask.startX * size.width, y: mask.startY * size.height)
+        case .subject: CGPoint(x: size.width / 2, y: size.height / 2)
         case .brush:
             mask.strokes.first?.points.first.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
                 ?? CGPoint(x: size.width / 2, y: size.height / 2)

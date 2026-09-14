@@ -72,9 +72,11 @@ private struct GeneralSettings: View {
             Picker(app.t("toolbar.language"), selection: $app.language) {
                 ForEach(AppLanguage.allCases) { Text($0.shortLabel).tag($0) }
             }
+            .pickerStyle(.segmented)
             Picker(app.t("toolbar.theme"), selection: $app.theme) {
-                ForEach(AppTheme.allCases) { Text(app.t($0.labelKey)).tag($0) }
+                ForEach(AppTheme.allCases) { Label(app.t($0.labelKey), systemImage: $0.icon).tag($0) }
             }
+            .pickerStyle(.segmented)
             HStack {
                 Button(app.t("settings.clearCache")) {
                     ThumbnailCache.shared.clearDisk()
