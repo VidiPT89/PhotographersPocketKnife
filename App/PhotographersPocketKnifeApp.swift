@@ -5,13 +5,25 @@ import Sparkle
 @main
 struct PhotographersPocketKnifeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var appState = AppState()
+    @State private var appState = AppState(defaults: Self.makeDefaults())
     private let container: ModelContainer
-    private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private let updater = SPUStandardUpdaterController(startingUpdater: !Self.isUITesting, updaterDelegate: nil, userDriverDelegate: nil)
+
+    /// Nos testes de interface a app usa preferências próprias e um catálogo em memória (não toca nos dados reais).
+    static let isUITesting = ProcessInfo.processInfo.arguments.contains("-ppk-ui-testing")
+
+    private static func makeDefaults() -> UserDefaults {
+        guard isUITesting, let defaults = UserDefaults(suiteName: "PPKUITests") else { return .standard }
+        defaults.removePersistentDomain(forName: "PPKUITests")
+        return defaults
+    }
 
     init() {
         do {
-            container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self)
+            container = try ModelContainer(
+                for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: Self.isUITesting)
+            )
         } catch {
             fatalError("Catalog unavailable: \(error)")
         }
@@ -130,6 +142,11 @@ struct AppCommands: Commands {
                 Button(app.t(module.labelKey)) { app.module = module }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
             }
+            Divider()
+            Button(app.t("diagnostics.title")) {
+                withAnimation(Motion.snappy) { app.showDiagnostics.toggle() }
+            }
+            .keyboardShortcut("d", modifiers: [.command, .option])
         }
     }
 }

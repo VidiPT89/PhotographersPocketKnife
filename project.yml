@@ -36,7 +36,13 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Photographer's Pocket Knife
-        CFBundleName: Photographer's Pocket Knife
+        CFBundleName: PhotographersPocketKnife
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.photography
+        NSHumanReadableCopyright: "© 2026 David Arsénio Martins"
+        NSPrincipalClass: NSApplication
         CFBundleDocumentTypes:
           - CFBundleTypeName: Folder
             CFBundleTypeRole: Viewer
@@ -53,9 +59,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.ividi.PhotographersPocketKnife
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: "Photographer's Pocket Knife"
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
-        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 David Arsénio Martins"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: YES
@@ -71,6 +74,17 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PhotographersPocketKnife.app/Contents/MacOS/PhotographersPocketKnife"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  PhotographersPocketKnifeUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - UITests
+    dependencies:
+      - target: PhotographersPocketKnife
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PhotographersPocketKnife
 schemes:
   PhotographersPocketKnife:
     build:
@@ -79,3 +93,12 @@ schemes:
     test:
       targets:
         - PhotographersPocketKnifeTests
+  # Testes de interface à parte: precisam de permissão de Acessibilidade para controlar a app.
+  PhotographersPocketKnifeUITests:
+    build:
+      targets:
+        PhotographersPocketKnife: all
+        PhotographersPocketKnifeUITests: [test]
+    test:
+      targets:
+        - PhotographersPocketKnifeUITests

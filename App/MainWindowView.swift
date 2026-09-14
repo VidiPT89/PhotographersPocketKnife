@@ -28,6 +28,14 @@ struct MainWindowView: View {
             .overlay(alignment: .bottom) {
                 ToastOverlay().padding(.bottom, 46)
             }
+            .overlay(alignment: .topTrailing) {
+                if app.showDiagnostics {
+                    DiagnosticsPanel()
+                        .padding(14)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .animation(Motion.snappy, value: app.showDiagnostics)
         }
         .overlay {
             if app.culling.presenting {
@@ -56,6 +64,7 @@ struct MainWindowView: View {
                     Image(systemName: theme.icon)
                         .font(.system(size: 11, weight: .semibold))
                         .help(app.t(theme.labelKey))
+                        .accessibilityLabel(app.t(theme.labelKey))
                 }
                 .help(app.t("toolbar.theme"))
             }

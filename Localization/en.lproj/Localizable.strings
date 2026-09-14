@@ -116,6 +116,20 @@
 "hotFolder.exportFolder" = "Export folder";
 "hotFolder.settingsHint" = "Uses your last export settings (format, size, watermark, metadata).";
 "hotFolder.status" = "Hot folder on · %@ label → %@";
+"diagnostics.title" = "Diagnostics";
+"diagnostics.photos" = "Photos in catalog";
+"diagnostics.memory" = "Memory in use";
+"diagnostics.cache" = "Thumbnail cache";
+"diagnostics.queue" = "Files in queue";
+"diagnostics.thumbnail" = "Thumbnail";
+"diagnostics.preview" = "Develop render";
+"diagnostics.export" = "Export";
+"diagnostics.importFile" = "Metadata read";
+"diagnostics.last" = "Last";
+"diagnostics.average" = "Average";
+"diagnostics.max" = "Max";
+"diagnostics.reset" = "Reset";
+"diagnostics.hint" = "⌥⌘D shows or hides · red is above target";
 "toolbar.language" = "Language";
 "toolbar.theme" = "Theme";
 "theme.dark" = "Dark";
@@ -331,7 +345,7 @@
 
 /* Upload */
 "upload.empty.title" = "Upload queue is empty";
-"upload.empty.subtitle" = "Add an FTP/SFTP/S3 destination and drop your final photos here.";
+"upload.empty.subtitle" = "Add an FTP, SFTP, WebDAV or S3 destination and drop your final photos here.";
 "upload.tab.queue" = "Queue";
 "upload.tab.destinations" = "Destinations";
 "upload.tab.history" = "History";

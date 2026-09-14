@@ -19,10 +19,12 @@ final class ImageRenderer: @unchecked Sendable {
     // MARK: Preview
 
     func renderPreview(url: URL, recipe: EditRecipe, maxPixel: Int, applyCrop: Bool = true) -> SendableImage? {
-        guard let base = previewBase(url: url, maxPixel: maxPixel, lensCorrection: recipe.lensCorrection) else { return nil }
-        let output = apply(recipe, to: CIImage(cgImage: base), applyCrop: applyCrop)
-        guard let image = context.createCGImage(output, from: output.extent.integral, format: .RGBA8, colorSpace: sRGB) else { return nil }
-        return SendableImage(cgImage: image)
+        Diagnostics.shared.measure(.preview) {
+            guard let base = previewBase(url: url, maxPixel: maxPixel, lensCorrection: recipe.lensCorrection) else { return nil }
+            let output = apply(recipe, to: CIImage(cgImage: base), applyCrop: applyCrop)
+            guard let image = context.createCGImage(output, from: output.extent.integral, format: .RGBA8, colorSpace: sRGB) else { return nil }
+            return SendableImage(cgImage: image)
+        }
     }
 
     /// Imagem base já descodificada e reduzida, em cache, para os sliders responderem depressa.

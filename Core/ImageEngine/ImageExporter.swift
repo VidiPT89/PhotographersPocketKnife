@@ -155,6 +155,12 @@ enum ExportError: LocalizedError {
 extension ImageRenderer {
     /// Render à resolução total → redimensionar (Lanczos) → nitidez de saída → marca de água → perfil de cor → ficheiro.
     func export(url: URL, recipe: EditRecipe, settings: ExportSettings, to folder: URL) throws -> URL {
+        try Diagnostics.shared.measure(.export) {
+            try exportMeasured(url: url, recipe: recipe, settings: settings, to: folder)
+        }
+    }
+
+    private func exportMeasured(url: URL, recipe: EditRecipe, settings: ExportSettings, to folder: URL) throws -> URL {
         let source: CIImage?
         if PhotoImporter.isRaw(url) {
             source = decodeRAW(url, maxPixel: nil, lensCorrection: recipe.lensCorrection)

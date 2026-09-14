@@ -85,7 +85,7 @@ enum PhotoImporter {
                     continue
                 }
             }
-            var info = MetadataReader.basicInfo(for: target)
+            var info = Diagnostics.shared.measure(.importFile) { MetadataReader.basicInfo(for: target) }
             info.sidecar = PPKSidecar.read(for: target)
             infos.append(info)
         }

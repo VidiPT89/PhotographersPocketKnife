@@ -71,7 +71,8 @@ final class AppState {
     var module: AppModule {
         didSet { defaults.set(module.rawValue, forKey: Keys.module) }
     }
-    var isSplashVisible = true
+    var isSplashVisible = !ProcessInfo.processInfo.arguments.contains("-ppk-skip-splash")
+    var showDiagnostics = false
     /// Ficheiros à espera de escolher destino no módulo de envio.
     var pendingUploadURLs: [URL] = []
     /// Pedido de exportação vindo do menu: `false` = exportar, `true` = exportar e enviar.

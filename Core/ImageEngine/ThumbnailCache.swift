@@ -37,13 +37,22 @@ final class ThumbnailCache: @unchecked Sendable {
             memory.setObject(image, forKey: key as NSString)
             return SendableImage(cgImage: image)
         }
-        guard let image = Self.generate(url: url, maxPixel: maxPixel) else { return nil }
+        guard let image = Diagnostics.shared.measure(.thumbnail, { Self.generate(url: url, maxPixel: maxPixel) }) else { return nil }
         memory.setObject(image, forKey: key as NSString)
         if let destination = CGImageDestinationCreateWithURL(file as CFURL, UTType.jpeg.identifier as CFString, 1, nil) {
             CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
             CGImageDestinationFinalize(destination)
         }
         return SendableImage(cgImage: image)
+    }
+
+    func diskUsage() -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let file as URL in enumerator {
+            total += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        return total
     }
 
     func clearDisk() {

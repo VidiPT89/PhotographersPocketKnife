@@ -116,6 +116,20 @@
 "hotFolder.exportFolder" = "Pasta de exportação";
 "hotFolder.settingsHint" = "Usa as últimas definições de exportação (formato, tamanho, marca de água, metadados).";
 "hotFolder.status" = "Hot folder ativo · etiqueta %@ → %@";
+"diagnostics.title" = "Diagnóstico";
+"diagnostics.photos" = "Fotos no catálogo";
+"diagnostics.memory" = "Memória em uso";
+"diagnostics.cache" = "Cache de miniaturas";
+"diagnostics.queue" = "Ficheiros na fila";
+"diagnostics.thumbnail" = "Miniatura";
+"diagnostics.preview" = "Render da edição";
+"diagnostics.export" = "Exportação";
+"diagnostics.importFile" = "Leitura de metadados";
+"diagnostics.last" = "Último";
+"diagnostics.average" = "Média";
+"diagnostics.max" = "Máx.";
+"diagnostics.reset" = "Repor";
+"diagnostics.hint" = "⌥⌘D mostra ou esconde · a vermelho acima da meta";
 "toolbar.language" = "Idioma";
 "toolbar.theme" = "Tema";
 "theme.dark" = "Escuro";
@@ -331,7 +345,7 @@
 
 /* Envio */
 "upload.empty.title" = "Fila de envio vazia";
-"upload.empty.subtitle" = "Adiciona um destino FTP/SFTP/S3 e larga aqui as fotos finais.";
+"upload.empty.subtitle" = "Adiciona um destino FTP, SFTP, WebDAV ou S3 e larga aqui as fotos finais.";
 "upload.tab.queue" = "Fila";
 "upload.tab.destinations" = "Destinos";
 "upload.tab.history" = "Histórico";
