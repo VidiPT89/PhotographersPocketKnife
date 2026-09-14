@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.3.0"
-    CURRENT_PROJECT_VERSION: "9"
+    MARKETING_VERSION: "0.4.0"
+    CURRENT_PROJECT_VERSION: "14"
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
