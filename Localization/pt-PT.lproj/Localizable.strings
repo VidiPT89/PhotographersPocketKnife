@@ -460,7 +460,7 @@
 "keywords.auto" = "Palavras-chave automáticas";
 "toast.keywords" = "Palavras-chave adicionadas a %d fotos";
 "style.title" = "Estilo pessoal";
-"style.hint" = "Aprende com as tuas fotos editadas (%d visíveis) e aplica o mesmo estilo a fotos novas, adaptado à luz de cada uma.";
+"style.hint" = "Aprende com as tuas edições (%d fotos editadas visíveis), com as revelações do Lightroom guardadas nos .xmp e com pastas de fotos já entregues. Depois edita fotos novas no teu estilo, adaptado à luz de cada uma.";
 "style.name" = "Nome do estilo";
 "style.learn" = "Aprender";
 "style.examples" = "%d fotos de exemplo";
@@ -501,3 +501,20 @@
 "gallery.web.next" = "Seguinte";
 "gallery.web.empty" = "Nenhuma foto encontrada";
 "gallery.web.by" = "por";
+
+/* Gosto do fotógrafo */
+"taste.title" = "Gosto do fotógrafo";
+"taste.use" = "Perfil";
+"taste.none" = "Só critérios técnicos";
+"taste.noneHint" = "Sem perfil, a escolha usa só critérios técnicos (foco, olhos, exposição). Cria um perfil para a app escolher como tu.";
+"taste.useHint" = "A escolha junta os critérios técnicos ao que este perfil aprendeu com as tuas escolhas.";
+"taste.create" = "Criar perfil de gosto";
+"taste.name" = "Nome do perfil";
+"taste.fromDecisionsHint" = "No catálogo há %d fotos que escolheste (pick ou 3★ ou mais) e %d que rejeitaste.";
+"taste.fromDecisions" = "Aprender com as minhas escolhas";
+"taste.fromFolder" = "Aprender com uma pasta de fotos entregues…";
+"taste.learned" = "Perfil criado com %d escolhidas e %d rejeitadas";
+"taste.notEnough" = "São precisas pelo menos %d fotos escolhidas e outras tantas rejeitadas";
+"style.fromFinals" = "Aprender com fotos entregues…";
+"style.default" = "Usar este estilo no botão Automático";
+"style.noPairs" = "Nenhuma foto do catálogo corresponde aos ficheiros dessa pasta";

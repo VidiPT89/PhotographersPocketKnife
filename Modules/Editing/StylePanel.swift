@@ -2,12 +2,14 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
-/// Estilo pessoal (aprendido com as fotos já editadas) e importação de presets do Lightroom.
+/// Estilo pessoal: aprende com as edições feitas aqui, com as revelações do Lightroom (.xmp)
+/// e com pastas de fotos já entregues. Também importa presets do Lightroom.
 struct StylePanel: View {
     @Environment(AppState.self) private var app
     @Environment(\.modelContext) private var context
     let list: [Photo]
 
+    @AppStorage("style.default") private var defaultStyleID = ""
     @State private var profiles: [StyleProfile] = []
     @State private var newName = ""
     @State private var isLearning = false
@@ -21,17 +23,24 @@ struct StylePanel: View {
         Text(String(format: app.t("style.hint"), edited.count))
             .font(Typography.caption)
             .foregroundStyle(Palette.textSecondary)
+        TextField(app.t("style.name"), text: $newName)
+            .textFieldStyle(.roundedBorder)
         HStack {
-            TextField(app.t("style.name"), text: $newName)
-                .textFieldStyle(.roundedBorder)
-            Button { learn(from: edited) } label: {
+            Button { learnFromEdits() } label: {
                 if isLearning { ProgressView().controlSize(.mini) } else { Text(app.t("style.learn")) }
             }
-            .disabled(isLearning || edited.count < PersonalStyle.minimumExamples || newName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button(app.t("style.fromFinals")) { learnFromDelivered() }
         }
+        .disabled(isLearning || newName.trimmingCharacters(in: .whitespaces).isEmpty)
+
         ForEach(profiles) { profile in
+            let isDefault = defaultStyleID == profile.id.uuidString
             HStack(spacing: 8) {
-                Image(systemName: "sparkles").foregroundStyle(Brand.orange)
+                Button { defaultStyleID = isDefault ? "" : profile.id.uuidString } label: {
+                    Image(systemName: isDefault ? "star.fill" : "star").foregroundStyle(Brand.amber)
+                }
+                .buttonStyle(.borderless)
+                .help(app.t("style.default"))
                 VStack(alignment: .leading, spacing: 0) {
                     Text(profile.name)
                     Text(String(format: app.t("style.examples"), profile.examples.count))
@@ -45,6 +54,7 @@ struct StylePanel: View {
                 .disabled(applyingID != nil)
                 Button(role: .destructive) {
                     store.delete(profile.id)
+                    if isDefault { defaultStyleID = "" }
                     profiles = store.all()
                 } label: { Image(systemName: "trash") }
             }
@@ -57,17 +67,42 @@ struct StylePanel: View {
         }
     }
 
-    private func learn(from photos: [Photo]) {
-        let jobs = Array(photos.prefix(300)).compactMap { photo -> (URL, EditRecipe)? in
-            photo.recipeData.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) }.map { (photo.url, $0) }
+    /// Edições feitas nesta app e, nas fotos sem edição, a revelação do Lightroom no `.xmp` ao lado.
+    private func learnFromEdits() {
+        let jobs = Array(list.prefix(500)).map { photo in
+            (url: photo.url, recipe: photo.recipeData.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) })
         }
+        learn {
+            jobs.compactMap { job in
+                (job.recipe ?? LightroomPreset.sidecarRecipe(for: job.url)).flatMap { ImageRenderer.shared.styleExample(url: job.url, recipe: $0) }
+            }
+        }
+    }
+
+    /// Originais do catálogo emparelhados com as versões finais entregues (editadas noutro programa).
+    private func learnFromDelivered() {
+        guard let folder = FilePanels.chooseFolder(prompt: app.t("common.choose")) else { return }
+        let delivered = PhotoImporter.imageFiles(in: folder)
+        let pairs = list.compactMap { photo -> (URL, URL)? in
+            delivered.first { TasteLearner.isMatch(original: photo.fileName, deliveredBase: $0.deletingPathExtension().lastPathComponent) }
+                .map { (photo.url, $0) }
+        }
+        guard !pairs.isEmpty else {
+            app.showToast(app.t("style.noPairs"), icon: "exclamationmark.triangle.fill")
+            return
+        }
+        let limited = Array(pairs.prefix(300))
+        learn {
+            limited.compactMap { ImageRenderer.shared.fittedStyleExample(original: $0.0, final: $0.1) }
+        }
+    }
+
+    private func learn(_ makeExamples: @escaping @Sendable () -> [StyleExample]) {
         let name = newName.trimmingCharacters(in: .whitespaces)
         let store = store
         isLearning = true
         Task {
-            let examples = await Task.detached(priority: .userInitiated) {
-                jobs.compactMap { ImageRenderer.shared.styleExample(url: $0.0, recipe: $0.1) }
-            }.value
+            let examples = await Task.detached(priority: .userInitiated) { makeExamples() }.value
             isLearning = false
             guard examples.count >= PersonalStyle.minimumExamples else {
                 app.showToast(app.t("style.notEnough"), icon: "exclamationmark.triangle.fill")

@@ -16,6 +16,13 @@ enum LightroomPreset {
         return Parsed(name: name, recipe: recipe(values: collector.values, lists: collector.lists))
     }
 
+    /// Revelação guardada pelo Lightroom/Camera Raw no `.xmp` ao lado do RAW (sidecars só com estrelas não contam).
+    static func sidecarRecipe(for url: URL) -> EditRecipe? {
+        guard let data = try? Data(contentsOf: MetadataWriter.sidecarURL(for: url)), let parsed = parse(data),
+              parsed.recipe != EditRecipe() else { return nil }
+        return parsed.recipe
+    }
+
     static func recipe(values: [String: String], lists: [String: [String]]) -> EditRecipe {
         var r = EditRecipe()
         func number(_ key: String) -> Double? {

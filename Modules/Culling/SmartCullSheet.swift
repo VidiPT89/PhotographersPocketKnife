@@ -20,6 +20,7 @@ struct SmartCullSheet: View {
     @AppStorage("cull.assignStars") private var assignStars = true
     @AppStorage("cull.keepManual") private var keepManual = true
     @AppStorage("cull.blurTolerance") private var blurTolerance = 0.5
+    @AppStorage("cull.taste") private var tasteID = ""
     @State private var finished = false
     @State private var applied: (picks: Int, rejects: Int)?
 
@@ -49,6 +50,8 @@ struct SmartCullSheet: View {
                         .foregroundStyle(Palette.textSecondary)
                 }
                 if !finished {
+                    TasteProfileSection(selectedID: $tasteID)
+                        .disabled(culling.isAnalyzing)
                     Section {
                         LabeledContent(app.t("cull.blurTolerance")) {
                             Slider(value: $blurTolerance, in: 0...1).tint(Brand.orange).frame(width: 180)
@@ -124,8 +127,9 @@ struct SmartCullSheet: View {
         let options = options
         let culling = app.culling
         let mode = mode
+        let taste = UUID(uuidString: tasteID).flatMap { TasteProfileStore().profile(id: $0) }
         Task {
-            await culling.analyze(photos, options: options)
+            await culling.analyze(photos, options: options, taste: taste)
             if mode == .automatic {
                 applied = culling.applyAutomatic(to: photos, options: options)
             } else {

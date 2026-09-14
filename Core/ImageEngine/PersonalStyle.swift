@@ -14,7 +14,8 @@ struct StyleExample: Codable, Sendable {
     var look: EditRecipe
 }
 
-struct StyleProfile: Codable, Identifiable, Sendable {
+struct StyleProfile: StoredProfile {
+    static let folderName = "Styles"
     var id = UUID()
     var name: String
     var examples: [StyleExample]
@@ -154,38 +155,16 @@ enum PersonalStyle {
     }
 }
 
-/// Estilos guardados como ficheiros JSON em Application Support (fáceis de copiar para outro Mac).
-struct StyleProfileStore: Sendable {
-    let directory: URL
-
-    init(directory: URL? = nil) {
-        self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("PhotographersPocketKnife/Styles", isDirectory: true)
-    }
-
-    func all() -> [StyleProfile] {
-        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-        return files
-            .filter { $0.pathExtension == "json" }
-            .compactMap { try? JSONDecoder().decode(StyleProfile.self, from: Data(contentsOf: $0)) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    func save(_ profile: StyleProfile) {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? JSONEncoder().encode(profile).write(to: url(for: profile.id), options: .atomic)
-    }
-
-    func delete(_ id: UUID) {
-        try? FileManager.default.removeItem(at: url(for: id))
-    }
-
-    private func url(for id: UUID) -> URL {
-        directory.appendingPathComponent(id.uuidString).appendingPathExtension("json")
-    }
-}
-
 extension ImageRenderer {
+    /// Exemplo a partir de um original e da versão final entregue (editada noutro programa).
+    func fittedStyleExample(original url: URL, final: URL) -> StyleExample? {
+        guard let base = previewBase(url: url, maxPixel: 1024, lensCorrection: false),
+              let target = CIImage(contentsOf: final, options: [.applyOrientationProperty: true]) else { return nil }
+        let image = CIImage(cgImage: base)
+        guard let recipe = StyleFitter.fit(original: image, final: target, renderer: self) else { return nil }
+        return PersonalStyle.example(image: image, recipe: recipe, renderer: self)
+    }
+
     func styleExample(url: URL, recipe: EditRecipe) -> StyleExample? {
         guard let base = previewBase(url: url, maxPixel: 1024, lensCorrection: recipe.lensCorrection) else { return nil }
         return PersonalStyle.example(image: CIImage(cgImage: base), recipe: recipe, renderer: self)

@@ -460,7 +460,7 @@
 "keywords.auto" = "Automatic keywords";
 "toast.keywords" = "Keywords added to %d photos";
 "style.title" = "Personal style";
-"style.hint" = "Learns from your edited photos (%d visible) and applies the same look to new photos, adapted to each one's light.";
+"style.hint" = "Learns from your edits (%d edited photos visible), from Lightroom develop settings saved in .xmp files and from folders of delivered photos. Then edits new photos in your style, adapted to each one's light.";
 "style.name" = "Style name";
 "style.learn" = "Learn";
 "style.examples" = "%d example photos";
@@ -501,3 +501,20 @@
 "gallery.web.next" = "Next";
 "gallery.web.empty" = "No photos found";
 "gallery.web.by" = "by";
+
+/* Photographer's taste */
+"taste.title" = "Photographer's taste";
+"taste.use" = "Profile";
+"taste.none" = "Technical criteria only";
+"taste.noneHint" = "Without a profile, only technical criteria are used (focus, eyes, exposure). Create a profile so the app picks like you do.";
+"taste.useHint" = "Selection combines technical criteria with what this profile learned from your choices.";
+"taste.create" = "Create a taste profile";
+"taste.name" = "Profile name";
+"taste.fromDecisionsHint" = "The catalog has %d photos you kept (pick or 3★ and up) and %d you rejected.";
+"taste.fromDecisions" = "Learn from my choices";
+"taste.fromFolder" = "Learn from a folder of delivered photos…";
+"taste.learned" = "Profile created from %d kept and %d rejected photos";
+"taste.notEnough" = "You need at least %d kept photos and as many rejected ones";
+"style.fromFinals" = "Learn from delivered photos…";
+"style.default" = "Use this style for the Auto button";
+"style.noPairs" = "No catalog photo matches the files in that folder";

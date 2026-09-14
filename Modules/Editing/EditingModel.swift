@@ -206,14 +206,19 @@ final class EditingModel {
         guard let url, !isAutoEnhancing else { return }
         isAutoEnhancing = true
         let recipe = recipe
+        // Com um estilo pessoal marcado como predefinido, o Automático edita no estilo do fotógrafo.
+        let style = UserDefaults.standard.string(forKey: "style.default")
+            .flatMap(UUID.init(uuidString:))
+            .flatMap { StyleProfileStore().profile(id: $0) }
         Task {
-            let enhanced = await Task.detached(priority: .userInitiated) {
-                ImageRenderer.shared.autoEnhanced(url: url, recipe: recipe, maxPixel: 1024)
+            let enhanced = await Task.detached(priority: .userInitiated) { () -> EditRecipe? in
+                if let style { return ImageRenderer.shared.styled(url: url, profile: style, current: recipe) }
+                return ImageRenderer.shared.autoEnhanced(url: url, recipe: recipe, maxPixel: 1024)
             }.value
             isAutoEnhancing = false
             guard self.url == url, let enhanced else { return }
             self.recipe = enhanced
-            commit("history.auto")
+            commit(style == nil ? "history.auto" : "history.style")
             flashPreset()
         }
     }

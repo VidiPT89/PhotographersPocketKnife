@@ -291,9 +291,48 @@ final class CullingModel {
         }
     }
 
-    /// Analisa (4 fotos de cada vez) as que ainda não têm medições e avalia o conjunto.
-    func analyze(_ photos: [Photo], options: CullOptions) async {
+    /// Analisa as fotos que ainda não têm medições e avalia o conjunto (com o gosto do fotógrafo, se houver perfil).
+    func analyze(_ photos: [Photo], options: CullOptions, taste: TasteProfile? = nil) async {
         isAnalyzing = true
+        await assessPending(photos)
+        let candidates = photos.compactMap(Self.candidate)
+        cullReport = await Task.detached(priority: .userInitiated) {
+            SmartCull.evaluate(candidates, options: options, distance: FeaturePrintDistances().distance, taste: taste)
+        }.value
+        showCullBadges = true
+        isAnalyzing = false
+    }
+
+    /// Cria um perfil de gosto a partir de fotos que o fotógrafo escolheu e rejeitou.
+    func learnTaste(named name: String, keepers: [Photo], rejects: [Photo]) async -> TasteProfile? {
+        isAnalyzing = true
+        await assessPending(keepers + rejects)
+        let examples = keepers.compactMap(Self.candidate).map { TasteExample(candidate: $0, keeper: true) }
+            + rejects.compactMap(Self.candidate).map { TasteExample(candidate: $0, keeper: false) }
+        let profile = await Task.detached(priority: .userInitiated) { () -> TasteProfile? in
+            let report = SmartCull.evaluate(examples.map(\.candidate), options: CullOptions(), distance: FeaturePrintDistances().distance)
+            return TasteLearner.train(name: name, examples: examples, report: report)
+        }.value
+        isAnalyzing = false
+        return profile
+    }
+
+    /// Escolhas feitas no catálogo: pick ou 3★+ ficam; reject ou 1★ não ficam.
+    static func decisionExamples(_ photos: [Photo]) -> (keepers: [Photo], rejects: [Photo]) {
+        (photos.filter { $0.flag != .reject && ($0.flag == .pick || $0.rating >= 3) },
+         photos.filter { $0.flag == .reject || ($0.rating == 1 && $0.flag != .pick) })
+    }
+
+    /// Fotos entregues numa pasta: as que lá estão ficaram, as outras das mesmas sessões não.
+    static func folderExamples(_ photos: [Photo], delivered: [URL]) -> (keepers: [Photo], rejects: [Photo]) {
+        let names = delivered.map { $0.deletingPathExtension().lastPathComponent }
+        let keepers = photos.filter { TasteLearner.matches($0.fileName, delivered: names) }
+        let keeperIDs = Set(keepers.map(\.id)), sessions = Set(keepers.map(\.sessionName))
+        return (keepers, photos.filter { sessions.contains($0.sessionName) && !keeperIDs.contains($0.id) })
+    }
+
+    /// Mede (4 fotos de cada vez) as que ainda não têm medições guardadas.
+    func assessPending(_ photos: [Photo]) async {
         let byID = Dictionary(photos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let pending = photos.filter { Self.assessment(of: $0) == nil }.map { (id: $0.id, url: $0.url) }
         analysisTotal = photos.count
@@ -312,13 +351,6 @@ final class CullingModel {
                 addNext()
             }
         }
-
-        let candidates = photos.compactMap(Self.candidate)
-        cullReport = await Task.detached(priority: .userInitiated) {
-            SmartCull.evaluate(candidates, options: options, distance: FeaturePrintDistances().distance)
-        }.value
-        showCullBadges = true
-        isAnalyzing = false
     }
 
     /// Aplica a classificação automática e guarda o estado anterior para poder desfazer.

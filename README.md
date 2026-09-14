@@ -21,7 +21,7 @@
 - ✅ `.ppk` sidecars keep ratings and edits next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
 - ✅ Duplicate and near-duplicate detection using perceptual hashing
 - ✅ Automatic scene keywords written to IPTC/XMP and searchable in the catalog
-- ✅ Smart selection, assisted or automatic: every photo is checked for focus, closed eyes, face quality and exposure, shots are grouped into moments, and the best of each moment is highlighted — or picked, starred and the flawed ones rejected for you, with one-click undo. All on-device
+- ✅ Smart selection, assisted or automatic: every photo is checked for focus, closed eyes, face quality and exposure, shots are grouped into moments, and the best of each moment is highlighted — or picked, starred and the flawed ones rejected for you, with one-click undo. Taste profiles learn what you personally keep, from your ratings, picks and rejects or from a folder of photos you delivered, so the selection follows your eye. All on-device
 - ✅ Client presentation mode in full screen
 - ✅ Live histogram and EXIF panel
 
@@ -37,7 +37,7 @@
 - ✅ Crop with aspect presets and rule-of-thirds or golden-spiral overlays, straighten, rotate, flip, perspective and automatic lens correction for RAW
 - ✅ Clipping warnings on the histogram and on the image
 - ✅ Visual history with undo/redo, named snapshots, presets with live hover preview that can be shared as `.ppkpreset` files, Lightroom `.xmp` preset import, and copy/paste settings across a selection
-- ✅ Personal style: learns from the photos you have already edited and applies your look to new shoots, adapting exposure and colour to each frame
+- ✅ Personal style: learns your look from photos edited here, from Lightroom develop settings in `.xmp` sidecars and from folders of photos you already delivered (it works out the adjustments between each original and its final version), then edits new shoots in that style — or straight from the Auto button
 - ✅ Portrait retouch: skin smoothing and background blur, with people detected automatically
 - ✅ Before/after toggle (`\`) and a draggable split view
 

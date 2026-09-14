@@ -46,6 +46,8 @@ struct CullReport: Sendable {
     var moments: [UUID: Int] = [:]
     var best: Set<UUID> = []
     var momentCount = 0
+    /// Probabilidade de o fotógrafo ficar com a foto, quando há um perfil de gosto.
+    var taste: [UUID: Double] = [:]
 }
 
 struct CullDecision: Equatable, Sendable {
@@ -66,7 +68,8 @@ enum SmartCull {
     /// Problemas que impedem uma foto de ser a escolhida do momento.
     static let disqualifying: Set<CullIssue> = [.blurry, .eyesClosed, .document]
 
-    static func evaluate(_ candidates: [CullCandidate], options: CullOptions, distance: (CullCandidate, CullCandidate) -> Float?) -> CullReport {
+    static func evaluate(_ candidates: [CullCandidate], options: CullOptions, distance: (CullCandidate, CullCandidate) -> Float?,
+                         taste: TasteProfile? = nil) -> CullReport {
         var report = CullReport()
         guard !candidates.isEmpty else { return report }
 
@@ -124,7 +127,15 @@ enum SmartCull {
             if !issues.isEmpty { report.issues[candidate.id] = issues }
         }
 
-        // 3. As melhores de cada momento, entre as que não têm problemas graves.
+        // 3. Com um perfil de gosto, o que o fotógrafo costuma escolher pesa mais do que os critérios técnicos.
+        if let taste {
+            report.taste = TasteLearner.probabilities(taste, candidates: candidates, report: report)
+            for (id, probability) in report.taste {
+                report.scores[id] = min(max(0.35 * (report.scores[id] ?? 0) + 0.65 * probability, 0), 1)
+            }
+        }
+
+        // 4. As melhores de cada momento, entre as que não têm problemas graves.
         for group in Dictionary(grouping: candidates, by: { report.moments[$0.id] ?? 0 }).values {
             let eligible = group
                 .filter { Set(report.issues[$0.id] ?? []).isDisjoint(with: disqualifying) }
@@ -145,7 +156,8 @@ enum SmartCull {
             if report.best.contains(candidate.id) {
                 let rating = options.assignStars ? stars(for: report.scores[candidate.id] ?? 0) : candidate.rating
                 result[candidate.id] = CullDecision(rating: rating, flag: .pick)
-            } else if options.rejectProblems, !(report.issues[candidate.id] ?? []).isEmpty {
+            } else if options.rejectProblems,
+                      !(report.issues[candidate.id] ?? []).isEmpty || (report.taste[candidate.id].map { $0 < 0.3 } ?? false) {
                 result[candidate.id] = CullDecision(rating: candidate.rating, flag: .reject)
             }
         }
