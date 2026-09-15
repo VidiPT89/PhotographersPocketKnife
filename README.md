@@ -48,11 +48,12 @@
 - ✅ Saved export presets and one-step export & upload (`⌘⇧E`)
 - ✅ FTP, FTPS, SFTP (system OpenSSH, with keys or password), WebDAV and S3-compatible destinations
 - ✅ Passwords stored in the macOS Keychain, never on disk, with a built-in connection test
-- ✅ Remote folders built from templates (`{date}`, `{year}`, `{month}`, `{day}`, `{event}`)
-- ✅ Transfer queue with per-file and overall progress, speed, time remaining, pause/resume, automatic retries with back-off and native notifications
+- ✅ Organised destinations: search, a default destination, duplicate, test one or all at once with a status dot for each, paste a full address (`sftp://user@server:22/photos`) to fill in the fields, live checks for missing or wrong settings, and per-destination statistics
+- ✅ Remote folders built from templates (`{date}`, `{year}`, `{month}`, `{day}`, `{event}`) with one-click tokens and a preview of the full upload address
+- ✅ Transfer queue grouped by destination, with per-file and overall progress, speed, time remaining, pause/resume, automatic retries with back-off and native notifications
 - ✅ Hot folder mode — anything given the chosen colour label is exported and uploaded automatically
 - ✅ Client galleries: a self-contained web page with lightbox, keyword search, favourites the client can send back by email, and optional downloads — saved locally or uploaded to any destination, no server or subscription needed
-- ✅ Upload history with CSV report export, and drag photos onto a destination in the sidebar to send them straight away
+- ✅ Upload history filtered by file, destination and status, with CSV report export of what you see, and drag photos onto a destination in the sidebar to send them straight away
 
 ### 🎨 Everywhere
 - ✅ Runtime language switch — Português (PT-PT) and English, no restart needed (Settings, `⌘,`)

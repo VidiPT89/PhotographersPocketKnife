@@ -61,6 +61,26 @@ final class TransferItem: Identifiable {
     }
 }
 
+/// Itens da fila agrupados por destino, pela ordem em que cada destino apareceu.
+struct TransferGroup: Identifiable {
+    let id: UUID
+    let name: String
+    let items: [TransferItem]
+
+    @MainActor
+    static func make(_ items: [TransferItem]) -> [TransferGroup] {
+        var order: [UUID] = []
+        var grouped: [UUID: [TransferItem]] = [:]
+        for item in items {
+            if grouped[item.destinationID] == nil { order.append(item.destinationID) }
+            grouped[item.destinationID, default: []].append(item)
+        }
+        return order.compactMap { id in
+            grouped[id].map { TransferGroup(id: id, name: $0[0].destinationName, items: $0) }
+        }
+    }
+}
+
 enum TransferFormat {
     static func speed(_ bytesPerSecond: Double) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .file) + "/s"
@@ -202,16 +222,7 @@ final class TransferQueue {
             item.status = .failed(TransferError.missingDestination.localizedDescription)
             return
         }
-        let endpoint = TransferEndpoint(
-            transferProtocol: destination.transferProtocol,
-            host: destination.host,
-            port: destination.port,
-            username: destination.username,
-            password: Keychain.password(account: destination.id.uuidString) ?? "",
-            bucket: destination.bucket,
-            region: destination.region,
-            trustUnknownHostKey: destination.trustUnknownHostKey
-        )
+        let endpoint = destination.endpoint()
         // A partir da 2.ª tentativa retoma o ficheiro parcial (FTP/SFTP).
         let resume = item.attempts > 0 && item.progress > 0 && [.ftp, .ftps, .sftp].contains(endpoint.transferProtocol)
         let command = TransferCommand.upload(endpoint, file: item.fileURL, remotePath: item.remotePath, resume: resume)
@@ -280,7 +291,8 @@ final class TransferQueue {
             remotePath: item.remotePath,
             success: error == nil,
             errorMessage: error,
-            bytes: item.bytes
+            bytes: item.bytes,
+            destinationID: item.destinationID
         ))
         try? context.save()
     }

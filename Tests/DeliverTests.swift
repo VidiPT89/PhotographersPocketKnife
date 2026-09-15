@@ -96,6 +96,73 @@ final class DeliverTests: XCTestCase {
     }
 
     @MainActor
+    func testDestinationAddressParsingAndValidation() throws {
+        let sftp = try XCTUnwrap(DestinationAddress.parse(" sftp://ana:segredo@fotos.pt:2222/entregas/2026 "))
+        XCTAssertEqual(sftp, ParsedDestination(transferProtocol: .sftp, host: "fotos.pt", port: 2222, username: "ana", password: "segredo", folder: "/entregas/2026"))
+        XCTAssertEqual(DestinationAddress.parse("ftp://srv.pt")?.port, 21)
+        XCTAssertNil(DestinationAddress.parse("ftp://srv.pt")?.folder)
+        let dav = try XCTUnwrap(DestinationAddress.parse("http://localhost:8088/dav"))
+        XCTAssertEqual(dav.transferProtocol, .webdav)
+        XCTAssertEqual(dav.host, "http://localhost:8088")
+        XCTAssertEqual(dav.folder, "/dav")
+        XCTAssertEqual(DestinationAddress.parse("https://cloud.pt")?.host, "https://cloud.pt")
+        XCTAssertNil(DestinationAddress.parse("fotos.pt"))
+        XCTAssertNil(DestinationAddress.parse("mailto:ana@fotos.pt"))
+
+        XCTAssertEqual(DestinationAddress.label(transferProtocol: .sftp, host: "fotos.pt", port: 22, username: "ana", bucket: ""), "ana@fotos.pt")
+        XCTAssertEqual(DestinationAddress.label(transferProtocol: .sftp, host: "fotos.pt", port: 2222, username: "ana", bucket: ""), "ana@fotos.pt:2222")
+        XCTAssertEqual(DestinationAddress.label(transferProtocol: .s3, host: "s3.pt", port: 443, username: "key", bucket: "entregas"), "entregas · s3.pt")
+
+        XCTAssertEqual(DestinationValidation.issues(transferProtocol: .sftp, host: "", port: 0, username: "", bucket: "", template: "/{date}/{cliente}"),
+                       [.init(key: "destination.issue.host"), .init(key: "destination.issue.port"), .init(key: "destination.issue.user"),
+                        .init(key: "destination.issue.token", argument: "{cliente}")])
+        XCTAssertEqual(DestinationValidation.issues(transferProtocol: .s3, host: "http://localhost:9100", port: 443, username: "key", bucket: "", template: "/{year}").map(\.key),
+                       ["destination.issue.bucket"])
+        XCTAssertEqual(DestinationValidation.issues(transferProtocol: .ftp, host: "ftp://srv.pt", port: 21, username: "ana", bucket: "", template: "/").map(\.key),
+                       ["destination.issue.address"])
+        XCTAssertTrue(DestinationValidation.issues(transferProtocol: .webdav, host: "https://cloud.pt", port: 443, username: "", bucket: "", template: "/{event}").isEmpty)
+        XCTAssertEqual(DestinationValidation.unknownTokens(in: "/{x}/{date}/{x}/{y"), ["{x}"])
+    }
+
+    @MainActor
+    func testDestinationStatsDefaultsHistoryFilterAndQueueGroups() {
+        let id = UUID()
+        let now = Date()
+        let entries: [DestinationStats.Entry] = [
+            .init(destinationID: id, destinationName: "Antigo nome", success: true, bytes: 100, date: now),
+            .init(destinationID: nil, destinationName: "Cliente", success: true, bytes: 50, date: now.addingTimeInterval(-60)),
+            .init(destinationID: nil, destinationName: "Cliente", success: false, bytes: 999, date: now),
+            .init(destinationID: UUID(), destinationName: "Cliente", success: true, bytes: 70, date: now),
+        ]
+        XCTAssertEqual(DestinationStats.compute(entries, id: id, name: "Cliente"), DestinationStats(uploaded: 2, failed: 1, bytes: 150, lastUpload: now))
+
+        let a = UUID(), b = UUID()
+        XCTAssertEqual(DestinationDefaults.preferredID(among: [a, b], stored: b), b)
+        XCTAssertEqual(DestinationDefaults.preferredID(among: [a, b], stored: UUID()), a, "A deleted default falls back to the first destination")
+        XCTAssertNil(DestinationDefaults.preferredID(among: [], stored: a))
+        XCTAssertEqual(DestinationDefaults.copyName("Cliente", suffix: "cópia", existing: ["Cliente", "Cliente (cópia)"]), "Cliente (cópia) 2")
+
+        func match(query: String = "", destination: String? = nil, status: UploadHistoryFilter.Status = .all) -> Bool {
+            UploadHistoryFilter.matches(fileName: "IMG_1.jpg", remotePath: "/2026/Casamento/IMG_1.jpg", destinationName: "Cliente",
+                                        success: true, query: query, destination: destination, status: status)
+        }
+        XCTAssertTrue(match(query: "casamento", destination: "Cliente", status: .ok))
+        XCTAssertFalse(match(status: .failed))
+        XCTAssertFalse(match(destination: "Outro"))
+        XCTAssertFalse(match(query: "batizado"))
+
+        let file = URL(fileURLWithPath: "/tmp/1.jpg")
+        let items = [
+            TransferItem(fileURL: file, destinationID: a, destinationName: "A", remotePath: "/1.jpg", bytes: 1),
+            TransferItem(fileURL: file, destinationID: b, destinationName: "B", remotePath: "/1.jpg", bytes: 1),
+            TransferItem(fileURL: file, destinationID: a, destinationName: "A", remotePath: "/2.jpg", bytes: 1),
+        ]
+        let groups = TransferGroup.make(items)
+        XCTAssertEqual(groups.map(\.name), ["A", "B"])
+        XCTAssertEqual(groups[0].items.map(\.remotePath), ["/1.jpg", "/2.jpg"])
+    }
+
+    @MainActor
     func testTransferSpeedAndRemainingTime() {
         let item = TransferItem(fileURL: URL(fileURLWithPath: "/tmp/x.jpg"), destinationID: UUID(), destinationName: "D", remotePath: "/x.jpg", bytes: 10_000_000)
         let start = Date()

@@ -4,39 +4,67 @@ import SwiftData
 struct DestinationsView: View {
     @Environment(AppState.self) private var app
     @Environment(\.modelContext) private var context
-    @Query(sort: \UploadDestination.createdAt) private var destinations: [UploadDestination]
+    @Query(sort: \UploadDestination.name) private var destinations: [UploadDestination]
+    @AppStorage(DestinationDefaults.key) private var defaultIDString = ""
     @State private var selectedID: UUID?
+    @State private var search = ""
+    @State private var pendingDelete: UploadDestination?
+    @State private var testingIDs: Set<UUID> = []
+
+    private var selected: UploadDestination? { destinations.first { $0.id == selectedID } }
+
+    private var filtered: [UploadDestination] {
+        let needle = search.trimmingCharacters(in: .whitespaces)
+        guard !needle.isEmpty else { return destinations }
+        return destinations.filter {
+            $0.name.localizedCaseInsensitiveContains(needle) || $0.host.localizedCaseInsensitiveContains(needle)
+                || $0.transferProtocol.displayName.localizedCaseInsensitiveContains(needle)
+        }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                List(destinations, selection: $selectedID) { destination in
-                    Label(destination.name.isEmpty ? "—" : destination.name, systemImage: "server.rack")
-                        .tag(destination.id)
+                TextField(app.t("destination.search"), text: $search)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .padding(8)
+                List(filtered, selection: $selectedID) { destination in
+                    DestinationListRow(
+                        destination: destination,
+                        isDefault: destination.id.uuidString == defaultIDString,
+                        isTesting: testingIDs.contains(destination.id)
+                    )
+                    .tag(destination.id)
+                    .contextMenu { menu(for: destination) }
                 }
-                HStack {
-                    Button {
-                        let destination = UploadDestination(name: app.t("destination.new"))
-                        context.insert(destination)
-                        try? context.save()
-                        selectedID = destination.id
-                    } label: { Image(systemName: "plus") }
-                    Button {
-                        guard let destination = destinations.first(where: { $0.id == selectedID }) else { return }
-                        Keychain.deletePassword(account: destination.id.uuidString)
-                        context.delete(destination)
-                        try? context.save()
-                        selectedID = nil
-                    } label: { Image(systemName: "minus") }
-                    .disabled(selectedID == nil)
+                Divider()
+                HStack(spacing: 12) {
+                    Menu {
+                        ForEach(TransferProtocol.allCases) { transferProtocol in
+                            Button(transferProtocol.displayName, systemImage: transferProtocol.symbol) { add(transferProtocol) }
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .frame(width: 22)
+                    .help(app.t("destination.new"))
+                    Button { pendingDelete = selected } label: { Image(systemName: "minus") }
+                        .disabled(selected == nil)
+                        .help(app.t("destination.delete"))
                     Spacer()
+                    Button { testAll() } label: { Image(systemName: "bolt.horizontal.circle") }
+                        .disabled(destinations.isEmpty || !testingIDs.isEmpty)
+                        .help(app.t("destination.testAll"))
                 }
                 .buttonStyle(.borderless)
                 .padding(8)
             }
-            .frame(width: 220)
+            .frame(width: 260)
             Divider()
-            if let destination = destinations.first(where: { $0.id == selectedID }) {
+            if let destination = selected {
                 DestinationEditor(destination: destination)
                     .id(destination.id)
             } else {
@@ -44,99 +72,166 @@ struct DestinationsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onAppear { selectedID = selectedID ?? destinations.first?.id }
+        .onAppear { selectedID = selectedID ?? DestinationDefaults.preferredID(among: destinations.map(\.id)) }
+        .confirmationDialog(
+            pendingDelete.map { String(format: app.t("destination.deleteConfirm"), $0.name) } ?? "",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            presenting: pendingDelete
+        ) { destination in
+            Button(app.t("destination.deleteButton"), role: .destructive) { delete(destination) }
+        } message: { _ in
+            Text(app.t("destination.deleteMessage"))
+        }
+    }
+
+    @ViewBuilder
+    private func menu(for destination: UploadDestination) -> some View {
+        Button(app.t("destination.test"), systemImage: "bolt.horizontal") { test(destination) }
+            .disabled(destination.host.isEmpty || testingIDs.contains(destination.id))
+        if destination.id.uuidString == defaultIDString {
+            Button(app.t("destination.removeDefault"), systemImage: "star.slash") { defaultIDString = "" }
+        } else {
+            Button(app.t("destination.makeDefault"), systemImage: "star") { defaultIDString = destination.id.uuidString }
+        }
+        Button(app.t("destination.duplicate"), systemImage: "plus.square.on.square") { duplicate(destination) }
+        Divider()
+        Button(app.t("destination.delete"), systemImage: "trash", role: .destructive) { pendingDelete = destination }
+    }
+
+    private func add(_ transferProtocol: TransferProtocol) {
+        let isFirst = destinations.isEmpty
+        let destination = UploadDestination(name: app.t("destination.new"), transferProtocol: transferProtocol)
+        context.insert(destination)
+        try? context.save()
+        if isFirst { defaultIDString = destination.id.uuidString }
+        search = ""
+        selectedID = destination.id
+    }
+
+    private func duplicate(_ source: UploadDestination) {
+        let name = DestinationDefaults.copyName(source.name, suffix: app.t("destination.copySuffix"), existing: destinations.map(\.name))
+        let copy = UploadDestination(name: name, transferProtocol: source.transferProtocol)
+        copy.host = source.host
+        copy.port = source.port
+        copy.username = source.username
+        copy.remoteFolderTemplate = source.remoteFolderTemplate
+        copy.bucket = source.bucket
+        copy.region = source.region
+        copy.trustUnknownHostKey = source.trustUnknownHostKey
+        if let password = Keychain.password(account: source.id.uuidString) {
+            Keychain.setPassword(password, account: copy.id.uuidString)
+        }
+        context.insert(copy)
+        try? context.save()
+        search = ""
+        selectedID = copy.id
+    }
+
+    private func delete(_ destination: UploadDestination) {
+        if destination.id.uuidString == defaultIDString { defaultIDString = "" }
+        if selectedID == destination.id { selectedID = destinations.first { $0.id != destination.id }?.id }
+        Keychain.deletePassword(account: destination.id.uuidString)
+        context.delete(destination)
+        try? context.save()
+    }
+
+    private func test(_ destination: UploadDestination) {
+        testingIDs.insert(destination.id)
+        Task {
+            await DestinationTester.run(destination, context: context)
+            testingIDs.remove(destination.id)
+        }
+    }
+
+    private func testAll() {
+        let targets = destinations.filter { !$0.host.isEmpty }
+        testingIDs = Set(targets.map(\.id))
+        Task {
+            // Todos em paralelo; cada ponto de estado atualiza assim que o seu teste acaba.
+            let tests = targets.map { destination in
+                Task {
+                    let ok = await DestinationTester.run(destination, context: context)
+                    testingIDs.remove(destination.id)
+                    return ok
+                }
+            }
+            var passed = 0
+            for test in tests {
+                if await test.value { passed += 1 }
+            }
+            app.showToast(String(format: app.t("destination.testAllDone"), passed, targets.count),
+                          icon: passed == targets.count ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+        }
     }
 }
 
-struct DestinationEditor: View {
-    @Environment(AppState.self) private var app
-    @Environment(\.modelContext) private var context
-    @Bindable var destination: UploadDestination
-
-    @State private var password = ""
-    @State private var testState: TestState = .idle
-
-    enum TestState: Equatable {
-        case idle, testing, ok
-        case failed(String)
-    }
+struct DestinationListRow: View {
+    let destination: UploadDestination
+    let isDefault: Bool
+    let isTesting: Bool
 
     var body: some View {
-        let isS3 = destination.transferProtocol == .s3
-        Form {
-            Section {
-                TextField(app.t("destination.name"), text: $destination.name)
-                Picker(app.t("destination.protocol"), selection: Binding(
-                    get: { destination.transferProtocol },
-                    set: { newValue in
-                        if destination.port == destination.transferProtocol.defaultPort { destination.port = newValue.defaultPort }
-                        destination.transferProtocol = newValue
-                    }
-                )) {
-                    ForEach(TransferProtocol.allCases) { Text($0.displayName).tag($0) }
-                }
-                TextField(isS3 ? app.t("destination.endpoint") : app.t("destination.host"), text: $destination.host)
-                TextField(app.t("destination.port"), value: $destination.port, format: .number.grouping(.never))
-                TextField(isS3 ? app.t("destination.accessKey") : app.t("destination.username"), text: $destination.username)
-                SecureField(isS3 ? app.t("destination.secretKey") : app.t("destination.password"), text: $password)
-                if isS3 {
-                    TextField(app.t("destination.bucket"), text: $destination.bucket)
-                    TextField(app.t("destination.region"), text: $destination.region)
-                }
-                if destination.transferProtocol == .sftp {
-                    Toggle(app.t("destination.trustHost"), isOn: $destination.trustUnknownHostKey)
-                }
-            }
-            Section {
-                TextField(app.t("destination.remoteFolder"), text: $destination.remoteFolderTemplate)
-                Text(app.t("rename.tokens") + " " + RemotePath.tokens.joined(separator: " "))
-                    .font(Typography.caption)
-                    .foregroundStyle(Palette.textSecondary)
-                LabeledContent(app.t("destination.example"), value: RemotePath.folder(template: destination.remoteFolderTemplate, date: Date(), event: "Evento"))
-            }
-            Section {
-                HStack {
-                    Button(app.t("destination.test")) { test() }
-                        .disabled(destination.host.isEmpty || testState == .testing)
-                    switch testState {
-                    case .idle: EmptyView()
-                    case .testing: ProgressView().controlSize(.small)
-                    case .ok: Label(app.t("destination.testOK"), systemImage: "checkmark.circle.fill").foregroundStyle(Brand.success)
-                    case .failed(let message): Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.error)
+        HStack(spacing: 8) {
+            Image(systemName: destination.transferProtocol.symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Brand.orange)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(destination.name.isEmpty ? "—" : destination.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    if isDefault {
+                        Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Brand.burntYellow)
                     }
                 }
-                Text(app.t("destination.keychainHint"))
+                Text(destination.addressLabel)
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 4)
+            Text(destination.transferProtocol.displayName)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Palette.textSecondary)
+            DestinationStatusDot(status: destination.testStatus, isTesting: isTesting)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// Ponto verde/vermelho/cinzento com o resultado do último teste de ligação.
+struct DestinationStatusDot: View {
+    @Environment(AppState.self) private var app
+    let status: DestinationTestStatus
+    var isTesting = false
+
+    var body: some View {
+        Group {
+            if isTesting {
+                ProgressView().controlSize(.mini)
+            } else {
+                Circle().fill(color).frame(width: 7, height: 7)
             }
         }
-        .formStyle(.grouped)
-        .onAppear { password = Keychain.password(account: destination.id.uuidString) ?? "" }
-        .onChange(of: password) { _, newValue in Keychain.setPassword(newValue, account: destination.id.uuidString) }
-        .onDisappear { try? context.save() }
+        .frame(width: 14)
+        .help(helpText)
     }
 
-    private func test() {
-        let endpoint = TransferEndpoint(
-            transferProtocol: destination.transferProtocol,
-            host: destination.host,
-            port: destination.port,
-            username: destination.username,
-            password: password,
-            bucket: destination.bucket,
-            region: destination.region,
-            trustUnknownHostKey: destination.trustUnknownHostKey
-        )
-        testState = .testing
-        Task {
-            do {
-                let command = TransferCommand.test(endpoint)
-                try await CurlProcess(executable: command.executable, environment: command.environment)
-                    .run(arguments: command.arguments, config: command.input)
-                testState = .ok
-            } catch {
-                testState = .failed(error.localizedDescription)
-            }
+    private var color: Color {
+        switch status {
+        case .untested: Palette.textSecondary.opacity(0.35)
+        case .ok: Brand.success
+        case .failed: Brand.error
+        }
+    }
+
+    private var helpText: String {
+        switch status {
+        case .untested: app.t("destination.untested")
+        case .ok(let date): String(format: app.t("destination.testedOK"), date.formatted(date: .abbreviated, time: .shortened))
+        case .failed(let date, let message): String(format: app.t("destination.testedFailed"), date.formatted(date: .abbreviated, time: .shortened), message)
         }
     }
 }

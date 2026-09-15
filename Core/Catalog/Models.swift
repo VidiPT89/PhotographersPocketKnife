@@ -100,6 +100,9 @@ final class UploadDestination {
     var region: String
     var trustUnknownHostKey: Bool
     var createdAt: Date
+    /// Último teste de ligação: sem data = nunca testado; com data e sem erro = OK.
+    var lastTestedAt: Date?
+    var lastTestError: String?
 
     init(name: String = "", transferProtocol: TransferProtocol = .sftp) {
         id = UUID()
@@ -131,9 +134,12 @@ final class UploadRecord {
     var success: Bool
     var errorMessage: String?
     var bytes: Int64
+    /// Registos antigos não têm id; as estatísticas associam-nos pelo nome do destino.
+    var destinationID: UUID?
 
-    init(fileName: String, destinationName: String, remotePath: String, success: Bool, errorMessage: String?, bytes: Int64) {
+    init(fileName: String, destinationName: String, remotePath: String, success: Bool, errorMessage: String?, bytes: Int64, destinationID: UUID? = nil) {
         id = UUID()
+        self.destinationID = destinationID
         self.fileName = fileName
         self.destinationName = destinationName
         self.remotePath = remotePath

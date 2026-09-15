@@ -95,7 +95,7 @@ struct ExportSheet: View {
             ) { startExport() }
         }
         .frame(width: 560, height: 760)
-        .onAppear { destinationID = destinationID ?? destinations.first?.id }
+        .onAppear { destinationID = destinationID ?? DestinationDefaults.preferredID(among: destinations.map(\.id)) }
     }
 
     private var presetsSection: some View {

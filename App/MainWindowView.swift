@@ -222,20 +222,25 @@ private struct SidebarPlaceholder: View {
 struct DestinationDropRow: View {
     @Environment(AppState.self) private var app
     let destination: UploadDestination
+    @AppStorage(DestinationDefaults.key) private var defaultIDString = ""
     @State private var targeted = false
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "server.rack")
+            Image(systemName: destination.transferProtocol.symbol)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(targeted ? AnyShapeStyle(Brand.diagonal) : AnyShapeStyle(Palette.textSecondary))
                 .frame(width: 18)
             Text(destination.name).lineLimit(1)
+            if destination.id.uuidString == defaultIDString {
+                Image(systemName: "star.fill").font(.system(size: 8)).foregroundStyle(Brand.burntYellow)
+            }
             Spacer()
             Text(destination.transferProtocol.displayName)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(Palette.textSecondary)
+            DestinationStatusDot(status: destination.testStatus)
         }
         .padding(.vertical, 5)
         .padding(.horizontal, 8)

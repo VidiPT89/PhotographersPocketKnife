@@ -9,7 +9,7 @@ enum UploadTab: String, CaseIterable, Identifiable {
 
 struct UploadView: View {
     @Environment(AppState.self) private var app
-    @State private var tab: UploadTab = .queue
+    @AppStorage("upload.tab") private var tab: UploadTab = .queue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -116,10 +116,18 @@ struct TransferQueueView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(queue.items) { item in
-                    TransferRow(item: item)
-                        .appearAnimation()
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                List {
+                    ForEach(TransferGroup.make(queue.items)) { group in
+                        Section {
+                            ForEach(group.items) { item in
+                                TransferRow(item: item)
+                                    .appearAnimation()
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                            }
+                        } header: {
+                            groupHeader(group)
+                        }
+                    }
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -132,6 +140,28 @@ struct TransferQueueView: View {
             return true
         } isTargeted: { dropTargeted = $0 }
         .overlay { DropZoneOverlay(active: dropTargeted) }
+    }
+
+    private func groupHeader(_ group: TransferGroup) -> some View {
+        let destination = destinations.first { $0.id == group.id }
+        let done = group.items.filter { $0.status == .done }.count
+        return HStack(spacing: 6) {
+            Image(systemName: destination?.transferProtocol.symbol ?? "server.rack")
+                .foregroundStyle(Brand.orange)
+            Text(group.name).fontWeight(.semibold)
+            if let destination {
+                Text(destination.addressLabel)
+                    .foregroundStyle(Palette.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Text(String(format: app.t("upload.group"), done, group.items.count))
+                .monospacedDigit()
+                .foregroundStyle(Palette.textSecondary)
+                .contentTransition(.numericText())
+        }
+        .font(Typography.caption)
     }
 }
 
@@ -154,7 +184,7 @@ struct TransferRow: View {
                     }
                     Text(statusText).font(Typography.caption.monospacedDigit()).foregroundStyle(statusColor)
                 }
-                Text("\(item.destinationName) · \(item.remotePath)")
+                Text(item.remotePath)
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecondary)
                     .lineLimit(1)
@@ -279,11 +309,22 @@ struct EnqueueSheet: View {
                     } else {
                         Picker(app.t("upload.destination"), selection: $destinationID) {
                             Text("—").tag(UUID?.none)
-                            ForEach(destinations) { Text($0.name).tag(Optional($0.id)) }
+                            ForEach(destinations) { Label($0.name, systemImage: $0.transferProtocol.symbol).tag(Optional($0.id)) }
                         }
                         TextField(app.t("rename.event"), text: $event)
                         if let destination = destinations.first(where: { $0.id == destinationID }) {
+                            LabeledContent(app.t("destination.section.connection")) {
+                                HStack(spacing: 6) {
+                                    Text(destination.addressLabel).lineLimit(1).truncationMode(.middle)
+                                    DestinationStatusDot(status: destination.testStatus)
+                                }
+                            }
                             LabeledContent(app.t("destination.remoteFolder"), value: RemotePath.folder(template: destination.remoteFolderTemplate, date: Date(), event: event))
+                            if case .failed(_, let message) = destination.testStatus {
+                                Label(message, systemImage: "exclamationmark.triangle.fill")
+                                    .font(Typography.caption)
+                                    .foregroundStyle(Brand.burntYellow)
+                            }
                         }
                     }
                 }
@@ -296,71 +337,6 @@ struct EnqueueSheet: View {
             }
         }
         .frame(width: 460)
-        .onAppear { destinationID = destinations.first?.id }
-    }
-}
-
-struct UploadHistoryView: View {
-    @Environment(AppState.self) private var app
-    @Environment(\.modelContext) private var context
-    @Query(sort: \UploadRecord.date, order: .reverse) private var records: [UploadRecord]
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if records.isEmpty {
-                EmptyModuleView(systemImage: "clock", title: app.t("history.upload.empty"), subtitle: "")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(records) { record in
-                    HStack(spacing: 10) {
-                        Image(systemName: record.success ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                            .foregroundStyle(record.success ? Brand.success : Brand.error)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(record.fileName).font(.system(size: 12, weight: .medium))
-                            Text("\(record.destinationName) · \(record.remotePath)")
-                                .font(Typography.caption)
-                                .foregroundStyle(Palette.textSecondary)
-                            if let message = record.errorMessage {
-                                Text(message).font(Typography.caption).foregroundStyle(Brand.error)
-                            }
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(record.date.formatted(date: .abbreviated, time: .shortened))
-                            Text(ByteCountFormatter.string(fromByteCount: record.bytes, countStyle: .file))
-                        }
-                        .font(Typography.caption)
-                        .foregroundStyle(Palette.textSecondary)
-                    }
-                }
-                .scrollContentBackground(.hidden)
-                HStack {
-                    Button(app.t("history.upload.report"), systemImage: "tablecells") { exportReport() }
-                    Spacer()
-                    Button(app.t("history.upload.clear"), role: .destructive) {
-                        records.forEach(context.delete)
-                        try? context.save()
-                    }
-                }
-                .padding(12)
-            }
-        }
-    }
-
-    private func exportReport() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.commaSeparatedText]
-        panel.nameFieldStringValue = "upload-report-\(PhotoImporter.dayString(Date())).csv"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let rows = records.map {
-            UploadReport.Row(date: $0.date, fileName: $0.fileName, destination: $0.destinationName, remotePath: $0.remotePath,
-                             bytes: $0.bytes, success: $0.success, error: $0.errorMessage)
-        }
-        do {
-            try UploadReport.csv(rows).write(to: url, atomically: true, encoding: .utf8)
-            app.showToast(app.t("toast.report"), icon: "tablecells.fill")
-        } catch {
-            app.showToast(error.localizedDescription, icon: "exclamationmark.triangle.fill")
-        }
+        .onAppear { destinationID = DestinationDefaults.preferredID(among: destinations.map(\.id)) }
     }
 }
