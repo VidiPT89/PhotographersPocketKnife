@@ -27,13 +27,14 @@ enum CullingViewMode: String, CaseIterable, Identifiable {
 }
 
 enum CullingSheet: Identifiable {
-    case importFolder(URL), rename, metadata, smartCull, gallery, timeShift, map
+    case importFolder(URL), rename, metadata, smartCull, gallery, timeShift, map, denoise
 
     var id: String {
         switch self {
         case .importFolder(let url): "import-\(url.path)"
         case .timeShift: "timeShift"
         case .map: "map"
+        case .denoise: "denoise"
         case .rename: "rename"
         case .metadata: "metadata"
         case .smartCull: "smartCull"

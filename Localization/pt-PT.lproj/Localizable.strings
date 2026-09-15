@@ -627,3 +627,16 @@
 "list.and" = " e ";
 "metadata.playersHint" = "{players} lê o número da camisola em cada foto e escreve o nome do plantel carregado.";
 "metadata.playersNeedsRoster" = "Para usar {players}, carrega primeiro um plantel nas substituições de código (número → nome).";
+
+/* Redução de ruído */
+"denoise.title" = "Reduzir ruído (ISO alto)…";
+"denoise.minISO" = "Fotos a tratar";
+"denoise.allISO" = "Todas";
+"denoise.photos" = "Fotos";
+"denoise.automatic" = "Força automática pelo ISO";
+"denoise.strength" = "Força";
+"denoise.hint" = "Redução de ruído por wavelets no GPU (sem IA nem internet): alisa o grão das zonas lisas e mantém as arestas. Cria ao lado de cada original uma cópia TIFF de 16 bits terminada em -DN e junta-a ao catálogo. Corre em segundo plano, podes continuar a trabalhar.";
+"denoise.start" = "Reduzir ruído";
+"denoise.started" = "A reduzir o ruído de %d fotos em segundo plano";
+"denoise.running" = "Redução de ruído: %d de %d";
+"denoise.finished" = "Redução de ruído concluída: %d criadas, %d falhadas";

@@ -627,3 +627,16 @@
 "list.and" = " and ";
 "metadata.playersHint" = "{players} reads the shirt number in each photo and writes the name from the loaded roster.";
 "metadata.playersNeedsRoster" = "To use {players}, first load a roster in code replacements (number → name).";
+
+/* Noise reduction */
+"denoise.title" = "Reduce noise (high ISO)…";
+"denoise.minISO" = "Photos to process";
+"denoise.allISO" = "All";
+"denoise.photos" = "Photos";
+"denoise.automatic" = "Automatic strength from ISO";
+"denoise.strength" = "Strength";
+"denoise.hint" = "Wavelet noise reduction on the GPU (no AI, no internet): smooths grain in flat areas and keeps edges. Saves a 16-bit TIFF copy ending in -DN next to each original and adds it to the catalog. It runs in the background, so you can keep working.";
+"denoise.start" = "Reduce noise";
+"denoise.started" = "Reducing noise on %d photos in the background";
+"denoise.running" = "Noise reduction: %d of %d";
+"denoise.finished" = "Noise reduction finished: %d created, %d failed";

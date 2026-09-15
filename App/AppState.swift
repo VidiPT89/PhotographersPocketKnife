@@ -84,6 +84,7 @@ final class AppState {
     let transfers = TransferQueue()
     let hotFolder = HotFolderService()
     let watchFolder = WatchFolderService()
+    let denoise = DenoiseQueue()
     let shortcuts: ShortcutStore
 
     private var bundle: Bundle
@@ -105,6 +106,10 @@ final class AppState {
         watchFolder.onImported = { [weak self] count in
             guard let self else { return }
             showToast(String(format: t("watch.imported"), count), icon: "eye.fill")
+        }
+        denoise.onFinished = { [weak self] done, failed in
+            guard let self else { return }
+            showToast(String(format: t("denoise.finished"), done, failed), icon: failed == 0 ? "sparkles" : "exclamationmark.triangle.fill")
         }
     }
 

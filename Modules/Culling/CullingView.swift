@@ -47,6 +47,9 @@ struct CullingView: View {
                 TimeShiftSheet(photos: selected.count > 1 ? selected : list)
             case .map:
                 PhotoMapSheet(photos: list)
+            case .denoise:
+                let selected = culling.targets(in: list)
+                DenoiseSheet(photos: selected.count > 1 ? selected : list)
             }
         }
     }
@@ -201,6 +204,13 @@ struct CullingToolbar: View {
 
             Spacer()
 
+            if app.denoise.isRunning {
+                ProgressView(value: app.denoise.progress)
+                    .progressViewStyle(.circular)
+                    .controlSize(.mini)
+                    .help(String(format: app.t("denoise.running"), app.denoise.completed + app.denoise.failed, app.denoise.total))
+            }
+
             Button { c.activeSheet = .smartCull } label: {
                 if c.isAnalyzing {
                     ProgressView().controlSize(.mini)
@@ -262,6 +272,7 @@ struct CullingToolbar: View {
                 Button(app.t("timeShift.title"), systemImage: "clock.arrow.2.circlepath") { c.activeSheet = .timeShift }
                 Button(app.t("map.title"), systemImage: "map") { c.activeSheet = .map }
                 Button(app.t("contactSheet.title"), systemImage: "doc.richtext") { contactSheet() }
+                Button(app.t("denoise.title"), systemImage: "sparkles") { c.activeSheet = .denoise }
                 Divider()
                 Button(app.t("gallery.create"), systemImage: "photo.on.rectangle.angled") { c.activeSheet = .gallery }
             } label: {

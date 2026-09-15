@@ -38,6 +38,7 @@
 - ✅ Exposure, contrast, highlights, shadows, whites, blacks, texture, clarity, temperature, tint, vibrance and saturation
 - ✅ Tone curve (RGB + per channel), HSL across eight colour bands and colour grading wheels for shadows, midtones and highlights
 - ✅ Sharpening with radius and edge masking, luminance and colour noise reduction, chromatic aberration correction, vignette and grain
+- ✅ Background noise reduction for high-ISO shoots: wavelet denoising on the GPU (no AI, no internet) smooths grain while keeping edges, and saves a 16-bit TIFF copy (`-DN`) next to each original, added to the catalog
 - ✅ Local adjustments with linear and radial gradient masks, a brush mask (hold ⌥ to erase) and an automatic subject mask, edited directly on the image
 - ✅ One-click Auto edit: exposure metered on what draws attention in the frame, white balance, contrast and horizon straightening, all as regular sliders you can tweak
 - ✅ Object removal: click a person or object to select it automatically, or paint over any distraction, and the area is filled with the surrounding texture — on-device, no internet needed
