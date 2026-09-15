@@ -599,3 +599,31 @@
 "watch.hint" = "Choose the folder your camera uploads to over FTP or Wi-Fi, or where tethering saves. Each photo joins the catalog as soon as the file has finished writing. Combine it with the hot folder to develop and upload straight away.";
 "watch.imported" = "%d new photos from the watched folder";
 "timeShift.seconds" = "Seconds";
+
+/* Next phase */
+"cull.genre" = "Type of work";
+"cull.genre.general" = "General";
+"cull.genre.sports" = "Sports";
+"cull.genre.events" = "Weddings and events";
+"cull.genre.portrait" = "Portrait";
+"cull.genre.landscape" = "Landscape and nature";
+"cull.genre.generalHint" = "A balance of sharpness, exposure, faces and aesthetics.";
+"cull.genre.sportsHint" = "Sharpness and action come first. Closed eyes are not a flaw and each burst is a short moment.";
+"cull.genre.eventsHint" = "Faces and expressions weigh more; closed eyes rule a photo out.";
+"cull.genre.portraitHint" = "Face quality and open eyes lead; longer moments, as in posed sessions.";
+"cull.genre.landscapeHint" = "Sharpness, exposure and aesthetics; faces are ignored and shots of the same view are grouped.";
+"duplicates.similar" = "Similar photos";
+"duplicates.exact" = "Identical files (same content)";
+"duplicates.hide" = "Show all photos";
+"duplicates.removeCopies" = "Remove copies from the catalog";
+"toast.copiesRemoved" = "%d copies removed from the catalog (files stay on disk)";
+"map.title" = "Photo map…";
+"map.empty" = "No photos with a location";
+"map.emptyHint" = "Only photos with GPS recorded by the camera or phone are shown.";
+"map.count" = "%d of %d photos with a location";
+"contactSheet.title" = "Contact sheet PDF…";
+"contactSheet.subtitle" = "%d photos · %@";
+"toast.contactSheet" = "Contact sheet created (%d pages)";
+"list.and" = " and ";
+"metadata.playersHint" = "{players} reads the shirt number in each photo and writes the name from the loaded roster.";
+"metadata.playersNeedsRoster" = "To use {players}, first load a roster in code replacements (number → name).";

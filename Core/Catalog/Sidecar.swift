@@ -84,7 +84,7 @@ enum IngestTemplate {
 
 /// Legendas e títulos com variáveis, resolvidos por foto (essencial para desporto e imprensa).
 enum CaptionTemplate {
-    static let tokens = ["{date}", "{event}", "{camera}", "{city}", "{country}", "{creator}", "{filename}", "{seq}"]
+    static let tokens = ["{date}", "{event}", "{camera}", "{city}", "{country}", "{creator}", "{filename}", "{seq}", "{players}"]
 
     struct Context: Sendable {
         var date: Date?
@@ -95,6 +95,16 @@ enum CaptionTemplate {
         var creator = ""
         var fileName = ""
         var sequence = 1
+        /// Jogadores reconhecidos pelo número da camisola e pelo plantel.
+        var players = ""
+    }
+
+    static func usesPlayers(_ text: String) -> Bool { text.contains("{players}") }
+
+    /// `Ronaldo`, `Ronaldo e Pepe`, `Ronaldo, Pepe e Bruno`.
+    static func joinNames(_ names: [String], and: String) -> String {
+        guard names.count > 1, let last = names.last else { return names.first ?? "" }
+        return names.dropLast().joined(separator: ", ") + and + last
     }
 
     static func resolve(_ text: String, _ context: Context) -> String {
@@ -108,6 +118,7 @@ enum CaptionTemplate {
             "{creator}": context.creator,
             "{filename}": context.fileName,
             "{seq}": String(context.sequence),
+            "{players}": context.players,
         ]
         var result = text
         for (token, value) in values {

@@ -25,7 +25,58 @@ struct CullCandidate: Sendable {
     let assessment: PhotoAssessment
 }
 
+/// Tipo de trabalho: muda o peso de cada critério e a duração de um "momento".
+enum CullGenre: String, CaseIterable, Identifiable, Sendable {
+    case general, sports, events, portrait, landscape
+    var id: String { rawValue }
+    var labelKey: String { "cull.genre.\(rawValue)" }
+    var hintKey: String { "cull.genre.\(rawValue)Hint" }
+
+    var icon: String {
+        switch self {
+        case .general: "camera"
+        case .sports: "figure.run"
+        case .events: "person.3.fill"
+        case .portrait: "person.crop.square"
+        case .landscape: "mountain.2.fill"
+        }
+    }
+
+    struct Weights: Sendable {
+        var sharpness: Double
+        var exposure: Double
+        var face: Double
+        var aesthetics: Double
+        /// Penalização pela fração de caras com olhos fechados.
+        var closedEyes: Double
+        var eyesClosedIsIssue: Bool
+    }
+
+    var weights: Weights {
+        switch self {
+        case .general: Weights(sharpness: 0.4, exposure: 0.2, face: 0.2, aesthetics: 0.2, closedEyes: 0.3, eyesClosedIsIssue: true)
+        // Em desporto a ação e a nitidez mandam; um piscar de olhos a meio do lance não estraga a foto.
+        case .sports: Weights(sharpness: 0.55, exposure: 0.15, face: 0.1, aesthetics: 0.2, closedEyes: 0, eyesClosedIsIssue: false)
+        case .events: Weights(sharpness: 0.3, exposure: 0.2, face: 0.3, aesthetics: 0.2, closedEyes: 0.4, eyesClosedIsIssue: true)
+        case .portrait: Weights(sharpness: 0.3, exposure: 0.15, face: 0.4, aesthetics: 0.15, closedEyes: 0.5, eyesClosedIsIssue: true)
+        case .landscape: Weights(sharpness: 0.35, exposure: 0.3, face: 0, aesthetics: 0.35, closedEyes: 0, eyesClosedIsIssue: false)
+        }
+    }
+
+    /// Segundos sem disparar para começar um novo momento.
+    var momentGap: TimeInterval {
+        switch self {
+        case .general: 8
+        case .sports: 3
+        case .events: 10
+        case .portrait: 20
+        case .landscape: 45
+        }
+    }
+}
+
 struct CullOptions: Sendable {
+    var genre: CullGenre = .general
     /// Quantas fotos ficam escolhidas em cada momento.
     var keepPerMoment = 1
     var rejectProblems = true
@@ -105,12 +156,13 @@ enum SmartCull {
         let median = logs[logs.count / 2]
         let blurLimit = 0.62 + (0.5 - options.blurTolerance) * 0.3
         let absoluteBlur = 15 * (1.5 - options.blurTolerance)
+        let weights = options.genre.weights
         for candidate in candidates {
             let a = candidate.assessment
             let relative = median > 0 ? log1p(max(a.sharpness, 0)) / median : 1
             var issues: [CullIssue] = []
             if a.sharpness < absoluteBlur || (candidates.count >= 3 && relative < blurLimit) { issues.append(.blurry) }
-            if a.faces > 0, a.closedEyes > 0 { issues.append(.eyesClosed) }
+            if weights.eyesClosedIsIssue, a.faces > 0, a.closedEyes > 0 { issues.append(.eyesClosed) }
             if a.brightness < 0.12, a.clippedShadows > 0.3 { issues.append(.underexposed) }
             if a.clippedHighlights > 0.2 || a.brightness > 0.9 { issues.append(.overexposed) }
             if a.isUtility { issues.append(.document) }
@@ -120,7 +172,8 @@ enum SmartCull {
             let faceScore = a.faceQuality ?? 0.5
             let aestheticScore = a.aesthetics.map { ($0 + 1) / 2 } ?? 0.5
             let closedShare = a.faces > 0 ? Double(a.closedEyes) / Double(a.faces) : 0
-            var score = 0.4 * sharpScore + 0.2 * exposureScore + 0.2 * faceScore + 0.2 * aestheticScore - 0.3 * closedShare
+            var score = weights.sharpness * sharpScore + weights.exposure * exposureScore + weights.face * faceScore
+                + weights.aesthetics * aestheticScore - weights.closedEyes * closedShare
             if issues.contains(.blurry) { score -= 0.15 }
             if issues.contains(.document) { score -= 0.3 }
             report.scores[candidate.id] = min(max(score, 0), 1)

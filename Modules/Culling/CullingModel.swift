@@ -27,12 +27,13 @@ enum CullingViewMode: String, CaseIterable, Identifiable {
 }
 
 enum CullingSheet: Identifiable {
-    case importFolder(URL), rename, metadata, smartCull, gallery, timeShift
+    case importFolder(URL), rename, metadata, smartCull, gallery, timeShift, map
 
     var id: String {
         switch self {
         case .importFolder(let url): "import-\(url.path)"
         case .timeShift: "timeShift"
+        case .map: "map"
         case .rename: "rename"
         case .metadata: "metadata"
         case .smartCull: "smartCull"
@@ -84,6 +85,8 @@ final class CullingModel {
     var showDuplicatesOnly = false
     var duplicateGroups: [UUID: Int] = [:]
     var isFindingDuplicates = false
+    /// `true` quando os grupos são ficheiros iguais (SHA-256), não só fotos parecidas.
+    var duplicatesAreExact = false
 
     var isImporting = false
     var importProgress = 0.0
@@ -385,6 +388,27 @@ final class CullingModel {
         cullUndo = [:]
     }
 
+    func findExactDuplicates(in photos: [Photo]) async {
+        isFindingDuplicates = true
+        let items = photos.map { ExactDuplicates.Item(id: $0.id, url: $0.url, size: $0.fileSize) }
+        duplicateGroups = await Task.detached(priority: .userInitiated) { ExactDuplicates.groups(items) }.value
+        duplicatesAreExact = true
+        showDuplicatesOnly = true
+        isFindingDuplicates = false
+    }
+
+    /// Fica a primeira importada de cada grupo de ficheiros iguais; as outras saem do catálogo (o disco não é tocado).
+    func removeExactCopies(from photos: [Photo], context: ModelContext) -> Int {
+        guard duplicatesAreExact else { return 0 }
+        let grouped = Dictionary(grouping: photos.filter { duplicateGroups[$0.id] != nil }) { duplicateGroups[$0.id] ?? 0 }
+        let extras = grouped.values.flatMap { $0.sorted { $0.importedAt < $1.importedAt }.dropFirst() }
+        extras.forEach { duplicateGroups[$0.id] = nil }
+        let sizes = Dictionary(grouping: duplicateGroups.values, by: { $0 }).mapValues(\.count)
+        duplicateGroups = duplicateGroups.filter { (sizes[$0.value] ?? 0) > 1 }
+        CatalogService.remove(Array(extras), from: context)
+        return extras.count
+    }
+
     func findDuplicates(in photos: [Photo]) async {
         isFindingDuplicates = true
         let pending = photos.filter { $0.perceptualHash == nil }.map { (id: $0.id, url: $0.url) }
@@ -402,6 +426,7 @@ final class CullingModel {
             photo.perceptualHash.map { (id: photo.id, hash: UInt64(bitPattern: $0)) }
         }
         duplicateGroups = PerceptualHash.groups(items, threshold: 6)
+        duplicatesAreExact = false
         showDuplicatesOnly = true
         isFindingDuplicates = false
     }

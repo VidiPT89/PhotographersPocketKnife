@@ -36,6 +36,9 @@ final class Photo {
     var assessmentData: Data?
     /// Palavras-chave (separadas por vírgulas), também usadas na pesquisa.
     var keywords: String?
+    /// Posição GPS em graus decimais, quando a câmara ou o telemóvel a gravou.
+    var latitude: Double?
+    var longitude: Double?
     var importedAt: Date
 
     init(info: ImportedPhotoInfo, sessionName: String) {
@@ -49,6 +52,8 @@ final class Photo {
         iso = info.iso
         aperture = info.aperture
         focalLength = info.focalLength
+        latitude = info.latitude
+        longitude = info.longitude
         pixelWidth = info.width
         pixelHeight = info.height
         fileSize = info.fileSize

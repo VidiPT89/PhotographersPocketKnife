@@ -21,11 +21,14 @@
 - ✅ Batch rename with templates and conflict detection
 - ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
 - ✅ Code replacements compatible with Photo Mechanic files: load a tab-delimited roster and type `=7=` to get the player's name (`=7#2=` for the next column), expanded live as you type
+- ✅ Automatic player captions: the `{players}` token reads the shirt numbers in each photo on-device and writes the names from the roster
 - ✅ Capture time adjustment to sync several cameras: set the correct time of one frame and the same offset is applied to the whole selection
 - ✅ `.ppk` sidecars keep ratings and edits next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
-- ✅ Duplicate and near-duplicate detection using perceptual hashing
+- ✅ Duplicate detection two ways: similar photos by perceptual hashing, or identical files (same size and SHA-256, even under another name or folder) with one click to remove the extra copies from the catalog
+- ✅ Photo map: photos with GPS appear on a map, and clicking one opens it in the loupe
+- ✅ Contact sheet PDF (A4) of the selection, with file name, stars, date and camera under each frame
 - ✅ Automatic scene keywords written to IPTC/XMP and searchable in the catalog
-- ✅ Smart selection, assisted or automatic: every photo is checked for focus, closed eyes, face quality and exposure, shots are grouped into moments, and the best of each moment is highlighted — or picked, starred and the flawed ones rejected for you, with one-click undo. Taste profiles learn what you personally keep, from your ratings, picks and rejects or from a folder of photos you delivered, so the selection follows your eye. All on-device
+- ✅ Smart selection, assisted or automatic: every photo is checked for focus, closed eyes, face quality and exposure, shots are grouped into moments, and the best of each moment is highlighted, tuned for the type of work (general, sports, weddings and events, portrait, landscape) — or picked, starred and the flawed ones rejected for you, with one-click undo. Taste profiles learn what you personally keep, from your ratings, picks and rejects or from a folder of photos you delivered, so the selection follows your eye. All on-device
 - ✅ Client presentation mode in full screen
 - ✅ Live histogram and EXIF panel
 

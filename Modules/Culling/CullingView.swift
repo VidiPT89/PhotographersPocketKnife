@@ -45,6 +45,8 @@ struct CullingView: View {
             case .timeShift:
                 let selected = culling.targets(in: list)
                 TimeShiftSheet(photos: selected.count > 1 ? selected : list)
+            case .map:
+                PhotoMapSheet(photos: list)
             }
         }
     }
@@ -220,11 +222,15 @@ struct CullingToolbar: View {
                 .help(app.t("cull.badges"))
             }
 
-            Button {
+            Menu {
                 if c.showDuplicatesOnly {
-                    c.showDuplicatesOnly = false
+                    if c.duplicatesAreExact {
+                        Button(app.t("duplicates.removeCopies"), systemImage: "minus.square") { removeCopies() }
+                    }
+                    Button(app.t("duplicates.hide"), systemImage: "eye") { c.showDuplicatesOnly = false }
                 } else {
-                    Task { await c.findDuplicates(in: photos) }
+                    Button(app.t("duplicates.similar"), systemImage: "square.on.square") { Task { await c.findDuplicates(in: photos) } }
+                    Button(app.t("duplicates.exact"), systemImage: "doc.on.doc") { Task { await c.findExactDuplicates(in: photos) } }
                 }
             } label: {
                 if c.isFindingDuplicates {
@@ -233,7 +239,10 @@ struct CullingToolbar: View {
                     Image(systemName: c.showDuplicatesOnly ? "square.on.square.fill" : "square.on.square")
                 }
             }
+            .menuIndicator(.hidden)
+            .fixedSize()
             .help(app.t("culling.duplicates"))
+            .disabled(photos.isEmpty || c.isFindingDuplicates)
 
             Button { c.activeSheet = .rename } label: { Image(systemName: "character.cursor.ibeam") }
                 .help(app.t("rename.title"))
@@ -251,6 +260,8 @@ struct CullingToolbar: View {
                 Button(app.t("culling.exportXMP"), systemImage: "arrow.up.doc") { exportXMP() }
                 Button(app.t("keywords.auto"), systemImage: "text.badge.star") { autoKeywords() }
                 Button(app.t("timeShift.title"), systemImage: "clock.arrow.2.circlepath") { c.activeSheet = .timeShift }
+                Button(app.t("map.title"), systemImage: "map") { c.activeSheet = .map }
+                Button(app.t("contactSheet.title"), systemImage: "doc.richtext") { contactSheet() }
                 Divider()
                 Button(app.t("gallery.create"), systemImage: "photo.on.rectangle.angled") { c.activeSheet = .gallery }
             } label: {
@@ -287,6 +298,42 @@ struct CullingToolbar: View {
     private var actionTargets: [Photo] {
         let targets = app.culling.targets(in: visible)
         return targets.isEmpty ? visible : targets
+    }
+
+    private func removeCopies() {
+        guard let context = photos.first?.modelContext else { return }
+        let removed = app.culling.removeExactCopies(from: photos, context: context)
+        app.showToast(String(format: app.t("toast.copiesRemoved"), removed), icon: "minus.square.fill")
+    }
+
+    private func contactSheet() {
+        let targets = actionTargets
+        guard !targets.isEmpty else { return }
+        let session = app.culling.session ?? app.t("sidebar.allPhotos")
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = "\(RenameTemplate.sanitize(session)) - contact sheet.pdf"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let items = targets.map { photo in
+            ContactSheet.Item(url: photo.url, title: photo.fileName, subtitle: [
+                photo.rating > 0 ? String(repeating: "★", count: photo.rating) : nil,
+                photo.captureDate?.formatted(date: .abbreviated, time: .shortened),
+                photo.camera,
+            ].compactMap { $0 }.joined(separator: " · "))
+        }
+        let subtitle = String(format: app.t("contactSheet.subtitle"), targets.count, Date().formatted(date: .long, time: .omitted))
+        let app = app
+        Task {
+            do {
+                let pages = try await Task.detached(priority: .userInitiated) {
+                    try ContactSheet.render(items, title: session, subtitle: subtitle, to: url)
+                }.value
+                app.showToast(String(format: app.t("toast.contactSheet"), pages), icon: "doc.richtext.fill")
+                NSWorkspace.shared.open(url)
+            } catch {
+                app.showToast(error.localizedDescription, icon: "exclamationmark.triangle.fill")
+            }
+        }
     }
 
     private func saveSidecars() {

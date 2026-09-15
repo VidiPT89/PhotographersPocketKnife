@@ -12,6 +12,8 @@ struct ImportedPhotoInfo: Sendable {
     var iso: Int? = nil
     var aperture: Double? = nil
     var focalLength: Double? = nil
+    var latitude: Double? = nil
+    var longitude: Double? = nil
     /// Classificação e revelação lidas de um `.ppk` ao lado da foto, se existir.
     var sidecar: PPKSidecar? = nil
 }
@@ -53,6 +55,7 @@ enum MetadataReader {
         let lens = exif[kCGImagePropertyExifLensModel as String] as? String
             ?? aux[kCGImagePropertyExifAuxLensModel as String] as? String
 
+        let coordinate = coordinate(from: props)
         return ImportedPhotoInfo(
             url: url,
             captureDate: exifDate ?? values?.creationDate,
@@ -63,8 +66,21 @@ enum MetadataReader {
             fileSize: Int64(values?.fileSize ?? 0),
             iso: (exif[kCGImagePropertyExifISOSpeedRatings as String] as? [Int])?.first,
             aperture: exif[kCGImagePropertyExifFNumber as String] as? Double,
-            focalLength: exif[kCGImagePropertyExifFocalLength as String] as? Double
+            focalLength: exif[kCGImagePropertyExifFocalLength as String] as? Double,
+            latitude: coordinate?.latitude,
+            longitude: coordinate?.longitude
         )
+    }
+
+    /// Posição GPS em graus decimais (sul e oeste negativos). Ignora 0,0, que as câmaras gravam sem sinal.
+    static func coordinate(from props: [String: Any]) -> (latitude: Double, longitude: Double)? {
+        guard let gps = props[kCGImagePropertyGPSDictionary as String] as? [String: Any],
+              var latitude = gps[kCGImagePropertyGPSLatitude as String] as? Double,
+              var longitude = gps[kCGImagePropertyGPSLongitude as String] as? Double else { return nil }
+        if (gps[kCGImagePropertyGPSLatitudeRef as String] as? String)?.uppercased() == "S" { latitude = -abs(latitude) }
+        if (gps[kCGImagePropertyGPSLongitudeRef as String] as? String)?.uppercased() == "W" { longitude = -abs(longitude) }
+        guard (-90...90).contains(latitude), (-180...180).contains(longitude), latitude != 0 || longitude != 0 else { return nil }
+        return (latitude, longitude)
     }
 
     static func cameraName(_ tiff: [String: Any]) -> String? {

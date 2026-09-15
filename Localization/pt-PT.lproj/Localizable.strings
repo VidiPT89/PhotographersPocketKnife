@@ -599,3 +599,31 @@
 "watch.hint" = "Escolhe a pasta onde a câmara envia por FTP ou Wi-Fi, ou onde o tethering grava. Cada foto entra no catálogo assim que o ficheiro acaba de ser escrito. Junta com o hot folder para editar e enviar logo.";
 "watch.imported" = "%d fotos novas da pasta vigiada";
 "timeShift.seconds" = "Segundos";
+
+/* Próxima fase */
+"cull.genre" = "Tipo de trabalho";
+"cull.genre.general" = "Geral";
+"cull.genre.sports" = "Desporto";
+"cull.genre.events" = "Casamentos e eventos";
+"cull.genre.portrait" = "Retrato";
+"cull.genre.landscape" = "Paisagem e natureza";
+"cull.genre.generalHint" = "Equilíbrio entre nitidez, exposição, caras e estética.";
+"cull.genre.sportsHint" = "Dá prioridade à nitidez e à ação. Olhos fechados não contam como falha e cada rajada é um momento curto.";
+"cull.genre.eventsHint" = "Caras e expressões pesam mais; olhos fechados afastam a foto.";
+"cull.genre.portraitHint" = "Mandam a qualidade da cara e os olhos abertos; momentos mais longos, próprios de sessões posadas.";
+"cull.genre.landscapeHint" = "Nitidez, exposição e estética; ignora caras e junta as fotos da mesma vista.";
+"duplicates.similar" = "Fotos parecidas";
+"duplicates.exact" = "Ficheiros iguais (mesmo conteúdo)";
+"duplicates.hide" = "Mostrar todas as fotos";
+"duplicates.removeCopies" = "Tirar as cópias do catálogo";
+"toast.copiesRemoved" = "%d cópias retiradas do catálogo (os ficheiros ficam no disco)";
+"map.title" = "Mapa das fotos…";
+"map.empty" = "Nenhuma foto com localização";
+"map.emptyHint" = "Só aparecem fotos com GPS gravado pela câmara ou pelo telemóvel.";
+"map.count" = "%d de %d fotos com localização";
+"contactSheet.title" = "Folha de contactos em PDF…";
+"contactSheet.subtitle" = "%d fotos · %@";
+"toast.contactSheet" = "Folha de contactos criada (%d páginas)";
+"list.and" = " e ";
+"metadata.playersHint" = "{players} lê o número da camisola em cada foto e escreve o nome do plantel carregado.";
+"metadata.playersNeedsRoster" = "Para usar {players}, carrega primeiro um plantel nas substituições de código (número → nome).";

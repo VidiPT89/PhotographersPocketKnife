@@ -215,6 +215,12 @@ struct MetadataSheet: View {
                     Text(app.t("rename.tokens") + " " + CaptionTemplate.tokens.joined(separator: " "))
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecondary)
+                    if CaptionTemplate.usesPlayers(fields.title + fields.caption) {
+                        Label(app.t(codes.isEmpty ? "metadata.playersNeedsRoster" : "metadata.playersHint"),
+                              systemImage: codes.isEmpty ? "exclamationmark.triangle.fill" : "person.text.rectangle")
+                            .font(Typography.caption)
+                            .foregroundStyle(codes.isEmpty ? Brand.burntYellow : Palette.textSecondary)
+                    }
                     if let first = photos.first, !(fields.caption + fields.title).isEmpty {
                         let values = codes.apply(to: fields, delimiter: delimiterCharacter)
                         LabeledContent(app.t("import.example"), value: CaptionTemplate.resolve(values.caption.isEmpty ? values.title : values.caption, context(for: first, index: 0, values: values)))
@@ -321,17 +327,27 @@ struct MetadataSheet: View {
         // Legenda e título resolvidos por foto ({date}, {event}, {seq}…).
         // Primeiro os códigos (=7=), depois as variáveis por foto.
         let values = codes.apply(to: fields, delimiter: delimiterCharacter)
-        let jobs = photos.enumerated().map { index, photo -> (url: URL, fields: IPTCFields) in
-            var resolved = values
-            resolved.title = CaptionTemplate.resolve(values.title, context(for: photo, index: index, values: values))
-            resolved.caption = CaptionTemplate.resolve(values.caption, context(for: photo, index: index, values: values))
-            return (photo.url, resolved)
+        let jobs = photos.enumerated().map { index, photo in
+            (url: photo.url, context: context(for: photo, index: index, values: values))
         }
+        // {players}: número da camisola lido em cada foto + nome do plantel carregado.
+        let roster = codes
+        let and = app.t("list.and")
+        let needsPlayers = CaptionTemplate.usesPlayers(values.title + values.caption) && !roster.isEmpty
         UserDefaults.standard.set(try? JSONEncoder().encode(fields), forKey: Self.storageKey)
         isWriting = true
         Task {
             let failures = await Task.detached(priority: .userInitiated) {
-                jobs.filter { (try? MetadataWriter.write($0.fields, to: $0.url)) == nil }.count
+                jobs.filter { job in
+                    var context = job.context
+                    if needsPlayers, let image = ThumbnailCache.shared.thumbnail(for: job.url, maxPixel: 2400)?.cgImage {
+                        context.players = CaptionTemplate.joinNames(JerseyNumbers.players(JerseyNumbers.detect(in: image), roster: roster), and: and)
+                    }
+                    var resolved = values
+                    resolved.title = CaptionTemplate.resolve(values.title, context)
+                    resolved.caption = CaptionTemplate.resolve(values.caption, context)
+                    return (try? MetadataWriter.write(resolved, to: job.url)) == nil
+                }.count
             }.value
             isWriting = false
             if failures == 0 {

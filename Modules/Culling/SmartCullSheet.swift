@@ -21,11 +21,14 @@ struct SmartCullSheet: View {
     @AppStorage("cull.keepManual") private var keepManual = true
     @AppStorage("cull.blurTolerance") private var blurTolerance = 0.5
     @AppStorage("cull.taste") private var tasteID = ""
+    @AppStorage("cull.genre") private var genre: CullGenre = .general
     @State private var finished = false
     @State private var applied: (picks: Int, rejects: Int)?
 
     private var options: CullOptions {
         var options = CullOptions()
+        options.genre = genre
+        options.momentGap = genre.momentGap
         options.keepPerMoment = keepPerMoment
         options.rejectProblems = rejectProblems
         options.assignStars = assignStars
@@ -46,6 +49,13 @@ struct SmartCullSheet: View {
                     .pickerStyle(.segmented)
                     .disabled(culling.isAnalyzing || finished)
                     Text(app.t(mode.hintKey))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecondary)
+                    Picker(app.t("cull.genre"), selection: $genre) {
+                        ForEach(CullGenre.allCases) { Label(app.t($0.labelKey), systemImage: $0.icon).tag($0) }
+                    }
+                    .disabled(culling.isAnalyzing || finished)
+                    Text(app.t(genre.hintKey))
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecondary)
                 }
