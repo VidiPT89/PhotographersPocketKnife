@@ -406,7 +406,6 @@
 "destination.remoteFolder" = "Pasta remota";
 "destination.example" = "Exemplo";
 "destination.test" = "Testar ligação";
-"destination.testOK" = "Ligação OK";
 "destination.keychainHint" = "A password fica guardada no Keychain do macOS, nunca em ficheiros.";
 "notification.uploadDone.title" = "Envio concluído";
 "notification.uploadDone.body" = "%d ficheiros enviados, %d falhados.";

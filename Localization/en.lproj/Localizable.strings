@@ -406,7 +406,6 @@
 "destination.remoteFolder" = "Remote folder";
 "destination.example" = "Example";
 "destination.test" = "Test connection";
-"destination.testOK" = "Connection OK";
 "destination.keychainHint" = "The password is stored in the macOS Keychain, never in files.";
 "notification.uploadDone.title" = "Upload finished";
 "notification.uploadDone.body" = "%d files uploaded, %d failed.";
