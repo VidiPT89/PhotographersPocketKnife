@@ -73,13 +73,10 @@ struct SplashScreenView: View {
                 .blur(radius: 18)
                 .scaleEffect(apertureOpen ? 1 : 0.6)
 
-            ApertureShape(openness: apertureOpen ? 1 : 0)
-                .fill(AngularGradient(colors: [Brand.orange, Brand.burntYellow, Brand.amber, Brand.orange], center: .center))
-                .overlay(ApertureShape(openness: apertureOpen ? 1 : 0).stroke(Color.black.opacity(0.45), lineWidth: 1.5))
-                .overlay(Circle().stroke(LinearGradient(colors: [.white.opacity(0.75), Brand.orange.opacity(0.15)], startPoint: .top, endPoint: .bottom), lineWidth: 2))
-                .frame(width: 120, height: 120)
-                .rotationEffect(.degrees(apertureOpen ? 0 : -75))
-                .shadow(color: Brand.orange.opacity(0.65), radius: 26)
+            // O olho abre e, logo a seguir, o diafragma da íris.
+            EyeApertureMark(eyeOpenness: apertureOpen ? 1 : 0.04, irisOpenness: apertureOpen ? 0.55 : 0)
+                .frame(width: 200)
+                .shadow(color: Brand.orange.opacity(0.6), radius: 26)
         }
         .frame(height: 170)
     }

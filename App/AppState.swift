@@ -83,6 +83,7 @@ final class AppState {
     let editing = EditingModel()
     let transfers = TransferQueue()
     let hotFolder = HotFolderService()
+    let watchFolder = WatchFolderService()
     let shortcuts: ShortcutStore
 
     private var bundle: Bundle
@@ -100,6 +101,10 @@ final class AppState {
         transfers.onBatchFinished = { [weak self] done, failed in
             guard let self else { return }
             showToast(String(format: t("toast.uploadDone"), done, failed), icon: failed == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+        }
+        watchFolder.onImported = { [weak self] count in
+            guard let self else { return }
+            showToast(String(format: t("watch.imported"), count), icon: "eye.fill")
         }
     }
 

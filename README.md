@@ -13,11 +13,15 @@
 - ✅ Thumbnail grid in 5 sizes (`-` / `+`), backed by a memory-bounded + disk cache that reads the camera's embedded preview first; metadata is read in parallel on import
 - ✅ Predictive prefetching of the next and previous frames, weighted by the direction you are moving in
 - ✅ Loupe with 100 % zoom and a magnifier that follow the cursor, plus a filmstrip
+- ✅ Focus peaking (`K`): sharp edges are painted orange in the loupe, so missed focus shows at a glance
+- ✅ Watched folder: photos your camera sends over FTP or Wi-Fi, or that tethering saves, join the catalog on their own as soon as each file has finished writing
 - ✅ Side-by-side compare of 2 or 4 frames with synced zoom and pan
 - ✅ Star ratings (0–5), pick/reject and colour labels, all on the keyboard with Photo Mechanic–style defaults — every shortcut can be remapped
 - ✅ Filter and sort by rating, flag, colour label, camera, lens, ISO, focal length, file name and capture time
 - ✅ Batch rename with templates and conflict detection
 - ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
+- ✅ Code replacements compatible with Photo Mechanic files: load a tab-delimited roster and type `=7=` to get the player's name (`=7#2=` for the next column), expanded live as you type
+- ✅ Capture time adjustment to sync several cameras: set the correct time of one frame and the same offset is applied to the whole selection
 - ✅ `.ppk` sidecars keep ratings and edits next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
 - ✅ Duplicate and near-duplicate detection using perceptual hashing
 - ✅ Automatic scene keywords written to IPTC/XMP and searchable in the catalog

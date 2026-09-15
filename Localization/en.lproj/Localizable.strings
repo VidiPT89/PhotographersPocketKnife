@@ -570,3 +570,32 @@
 "history.filter.none" = "No uploads match the filters";
 "history.upload.totals" = "%d uploads · %@ uploaded";
 "history.upload.clearConfirm" = "Clear the whole upload history?";
+
+/* Workflow tools */
+"shortcut.focusPeaking" = "Focus peaking (sharp areas)";
+"culling.focusPeaking" = "Focus peaking";
+"codes.title" = "Code replacements";
+"codes.load" = "Load file…";
+"codes.remove" = "Remove";
+"codes.loaded" = "%@ · %d codes";
+"codes.none" = "No file loaded";
+"codes.empty" = "The file has no lines with a code and text separated by a tab";
+"codes.delimiter" = "Delimiter";
+"codes.hint" = "A tab-delimited text file, compatible with Photo Mechanic (rosters, venues, sponsors). Type =7= and it is replaced straight away by the 2nd column; =7#2= uses the 3rd.";
+"timeShift.title" = "Adjust capture time…";
+"timeShift.applyTo" = "Apply to %d photos";
+"timeShift.reference" = "Reference photo";
+"timeShift.original" = "Camera time";
+"timeShift.corrected" = "Correct time";
+"timeShift.noDates" = "These photos have no capture time.";
+"timeShift.hint" = "To sync cameras: filter by the camera with the wrong clock, select its photos and enter the correct time of the first one. The same difference is applied to all of them. The time changes in the catalog (sorting, renaming and captions); original files are not modified.";
+"timeShift.apply" = "Adjust";
+"toast.timeShift" = "Capture time adjusted on %d photos";
+"watch.title" = "Watched folder";
+"watch.enable" = "Import new photos automatically";
+"watch.folder" = "Folder";
+"watch.session" = "Catalog session";
+"watch.status" = "%d photos imported since the app opened";
+"watch.hint" = "Choose the folder your camera uploads to over FTP or Wi-Fi, or where tethering saves. Each photo joins the catalog as soon as the file has finished writing. Combine it with the hot folder to develop and upload straight away.";
+"watch.imported" = "%d new photos from the watched folder";
+"timeShift.seconds" = "Seconds";

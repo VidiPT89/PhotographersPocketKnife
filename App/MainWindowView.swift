@@ -137,10 +137,8 @@ private struct SidebarBrand: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            ApertureShape(openness: 0.65)
-                .fill(Brand.diagonal)
-                .overlay(ApertureShape(openness: 0.65).stroke(Color.black.opacity(0.35), lineWidth: 0.7))
-                .frame(width: 20, height: 20)
+            EyeApertureMark()
+                .frame(width: 26)
                 .shadow(color: Brand.orange.opacity(0.5), radius: 5)
             VStack(alignment: .leading, spacing: 0) {
                 Text("Photographer's Pocket Knife")

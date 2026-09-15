@@ -177,6 +177,11 @@ struct MetadataSheet: View {
     @State private var event = ""
     @State private var templates: [SavedCaption] = []
     @State private var templateName = ""
+    @State private var codes = CodeReplacements()
+    @State private var codesFile: String?
+    @AppStorage(CodeReplacementStore.delimiterKey) private var delimiter = "="
+
+    private var delimiterCharacter: Character { delimiter.first ?? "=" }
 
     private static let storageKey = "metadata.lastFields"
     private static let templatesKey = "metadata.captionTemplates"
@@ -211,8 +216,30 @@ struct MetadataSheet: View {
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecondary)
                     if let first = photos.first, !(fields.caption + fields.title).isEmpty {
-                        LabeledContent(app.t("import.example"), value: CaptionTemplate.resolve(fields.caption.isEmpty ? fields.title : fields.caption, context(for: first, index: 0)))
+                        let values = codes.apply(to: fields, delimiter: delimiterCharacter)
+                        LabeledContent(app.t("import.example"), value: CaptionTemplate.resolve(values.caption.isEmpty ? values.title : values.caption, context(for: first, index: 0, values: values)))
                     }
+                }
+                Section(app.t("codes.title")) {
+                    HStack {
+                        Text(codesFile.map { String(format: app.t("codes.loaded"), $0, codes.count) } ?? app.t("codes.none"))
+                            .foregroundStyle(codesFile == nil ? Palette.textSecondary : Palette.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        Button(app.t("codes.load")) { loadCodes() }
+                        if codesFile != nil {
+                            Button(app.t("codes.remove")) {
+                                CodeReplacementStore.save(text: nil, fileName: nil)
+                                codes = CodeReplacements()
+                                codesFile = nil
+                            }
+                        }
+                    }
+                    TextField(app.t("codes.delimiter"), text: Binding(get: { delimiter }, set: { delimiter = String($0.suffix(1)) }))
+                    Text(app.t("codes.hint"))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecondary)
                 }
                 Section(String(format: app.t("metadata.applyTo"), photos.count)) {
                     TextField(app.t("meta.title"), text: $fields.title)
@@ -231,8 +258,19 @@ struct MetadataSheet: View {
                 apply()
             }
         }
-        .frame(width: 540, height: 680)
+        .frame(width: 540, height: 780)
+        // Como no Photo Mechanic: ao fechar o código (=7=) o texto é logo trocado.
+        .onChange(of: fields.caption) { _, value in
+            let replaced = codes.apply(value, delimiter: delimiterCharacter)
+            if replaced != value { fields.caption = replaced }
+        }
+        .onChange(of: fields.title) { _, value in
+            let replaced = codes.apply(value, delimiter: delimiterCharacter)
+            if replaced != value { fields.title = replaced }
+        }
         .onAppear {
+            codes = CodeReplacementStore.load()
+            codesFile = codes.isEmpty ? nil : CodeReplacementStore.fileName
             if let data = UserDefaults.standard.data(forKey: Self.storageKey),
                let saved = try? JSONDecoder().decode(IPTCFields.self, from: data) {
                 fields = saved
@@ -244,11 +282,31 @@ struct MetadataSheet: View {
         }
     }
 
-    private func context(for photo: Photo, index: Int) -> CaptionTemplate.Context {
+    private func context(for photo: Photo, index: Int, values: IPTCFields) -> CaptionTemplate.Context {
         CaptionTemplate.Context(
-            date: photo.captureDate, event: event, camera: photo.camera, city: fields.city,
-            country: fields.country, creator: fields.creator, fileName: photo.fileName, sequence: index + 1
+            date: photo.captureDate, event: event, camera: photo.camera, city: values.city,
+            country: values.country, creator: values.creator, fileName: photo.fileName, sequence: index + 1
         )
+    }
+
+    private func loadCodes() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText, .tabSeparatedText, .commaSeparatedText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let text = try CodeReplacementStore.readText(url)
+            let parsed = CodeReplacements.parse(text)
+            guard !parsed.isEmpty else {
+                message = app.t("codes.empty")
+                return
+            }
+            CodeReplacementStore.save(text: text, fileName: url.lastPathComponent)
+            codes = parsed
+            codesFile = url.lastPathComponent
+            message = nil
+        } catch {
+            message = error.localizedDescription
+        }
     }
 
     private func saveTemplate() {
@@ -261,10 +319,12 @@ struct MetadataSheet: View {
 
     private func apply() {
         // Legenda e título resolvidos por foto ({date}, {event}, {seq}…).
+        // Primeiro os códigos (=7=), depois as variáveis por foto.
+        let values = codes.apply(to: fields, delimiter: delimiterCharacter)
         let jobs = photos.enumerated().map { index, photo -> (url: URL, fields: IPTCFields) in
-            var resolved = fields
-            resolved.title = CaptionTemplate.resolve(fields.title, context(for: photo, index: index))
-            resolved.caption = CaptionTemplate.resolve(fields.caption, context(for: photo, index: index))
+            var resolved = values
+            resolved.title = CaptionTemplate.resolve(values.title, context(for: photo, index: index, values: values))
+            resolved.caption = CaptionTemplate.resolve(values.caption, context(for: photo, index: index, values: values))
             return (photo.url, resolved)
         }
         UserDefaults.standard.set(try? JSONEncoder().encode(fields), forKey: Self.storageKey)

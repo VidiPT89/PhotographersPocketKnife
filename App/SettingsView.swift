@@ -14,8 +14,43 @@ struct SettingsView: View {
                 .tabItem { Label(app.t("settings.upload"), systemImage: "arrow.up.to.line") }
             HotFolderSettings()
                 .tabItem { Label(app.t("hotFolder.title"), systemImage: "flame") }
+            WatchFolderSettings()
+                .tabItem { Label(app.t("watch.title"), systemImage: "eye") }
         }
-        .frame(width: 640, height: 480)
+        .frame(width: 680, height: 480)
+    }
+}
+
+private struct WatchFolderSettings: View {
+    @Environment(AppState.self) private var app
+
+    var body: some View {
+        @Bindable var watch = app.watchFolder
+        Form {
+            Section {
+                Toggle(app.t("watch.enable"), isOn: $watch.isEnabled)
+                    .disabled(watch.folderPath.isEmpty)
+                Text(app.t("watch.hint"))
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecondary)
+            }
+            Section {
+                LabeledContent(app.t("watch.folder")) {
+                    HStack {
+                        Text(watch.folderPath.isEmpty ? "—" : watch.folderPath).lineLimit(1).truncationMode(.middle)
+                        Button(app.t("common.choose")) {
+                            if let url = FilePanels.chooseFolder(prompt: app.t("common.choose")) { watch.folderPath = url.path }
+                        }
+                    }
+                }
+                TextField(app.t("watch.session"), text: $watch.sessionName)
+                if watch.isEnabled {
+                    Label(String(format: app.t("watch.status"), watch.importedCount), systemImage: "eye.fill")
+                        .foregroundStyle(Brand.orange)
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

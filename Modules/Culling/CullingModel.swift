@@ -27,11 +27,12 @@ enum CullingViewMode: String, CaseIterable, Identifiable {
 }
 
 enum CullingSheet: Identifiable {
-    case importFolder(URL), rename, metadata, smartCull, gallery
+    case importFolder(URL), rename, metadata, smartCull, gallery, timeShift
 
     var id: String {
         switch self {
         case .importFolder(let url): "import-\(url.path)"
+        case .timeShift: "timeShift"
         case .rename: "rename"
         case .metadata: "metadata"
         case .smartCull: "smartCull"
@@ -70,6 +71,8 @@ final class CullingModel {
     var zoomed = false
     /// Lupa circular a 100 % a seguir o cursor.
     var magnifier = false
+    /// Focus peaking na lupa: arestas nítidas pintadas a laranja.
+    var focusPeaking = false
     /// Modo apresentação ao cliente, em ecrã completo.
     var presenting = false
     /// Direção da última navegação, para o pré-carregamento dar mais peso ao que vem a seguir.
@@ -236,6 +239,9 @@ final class CullingModel {
         case .smaller: thumbnailStep = max(thumbnailStep - 1, 0)
         case .larger: thumbnailStep = min(thumbnailStep + 1, Self.thumbnailSizes.count - 1)
         case .presentation: presenting.toggle()
+        case .focusPeaking:
+            if viewMode == .grid { viewMode = .loupe }
+            focusPeaking.toggle()
         case .develop, .crop: break // tratados pela app (mudam de módulo)
         }
     }

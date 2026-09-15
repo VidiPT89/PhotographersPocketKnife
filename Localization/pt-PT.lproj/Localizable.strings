@@ -570,3 +570,32 @@
 "history.filter.none" = "Nenhum envio corresponde aos filtros";
 "history.upload.totals" = "%d envios · %@ enviados";
 "history.upload.clearConfirm" = "Limpar todo o histórico de envios?";
+
+/* Ferramentas de fluxo */
+"shortcut.focusPeaking" = "Focus peaking (zonas nítidas)";
+"culling.focusPeaking" = "Focus peaking";
+"codes.title" = "Substituições de código";
+"codes.load" = "Carregar ficheiro…";
+"codes.remove" = "Remover";
+"codes.loaded" = "%@ · %d códigos";
+"codes.none" = "Nenhum ficheiro carregado";
+"codes.empty" = "O ficheiro não tem linhas com código e texto separados por tabulação";
+"codes.delimiter" = "Delimitador";
+"codes.hint" = "Ficheiro de texto com colunas separadas por tabulação, compatível com o Photo Mechanic (plantéis, locais, patrocinadores). Escreve =7= e é logo trocado pela 2.ª coluna; =7#2= usa a 3.ª.";
+"timeShift.title" = "Acertar hora de captura…";
+"timeShift.applyTo" = "Aplicar a %d fotos";
+"timeShift.reference" = "Foto de referência";
+"timeShift.original" = "Hora na câmara";
+"timeShift.corrected" = "Hora certa";
+"timeShift.noDates" = "Estas fotos não têm hora de captura.";
+"timeShift.hint" = "Para sincronizar câmaras: filtra pela câmara com a hora errada, seleciona as fotos e indica a hora certa da primeira. A mesma diferença é aplicada a todas. Muda a hora no catálogo (ordenação, renomeação e legendas); os ficheiros originais não são alterados.";
+"timeShift.apply" = "Acertar";
+"toast.timeShift" = "Hora acertada em %d fotos";
+"watch.title" = "Pasta vigiada";
+"watch.enable" = "Importar sozinho as fotos novas";
+"watch.folder" = "Pasta";
+"watch.session" = "Sessão no catálogo";
+"watch.status" = "%d fotos importadas desde que a app abriu";
+"watch.hint" = "Escolhe a pasta onde a câmara envia por FTP ou Wi-Fi, ou onde o tethering grava. Cada foto entra no catálogo assim que o ficheiro acaba de ser escrito. Junta com o hot folder para editar e enviar logo.";
+"watch.imported" = "%d fotos novas da pasta vigiada";
+"timeShift.seconds" = "Segundos";

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct PhotoGridView: View {
     @Environment(AppState.self) private var app

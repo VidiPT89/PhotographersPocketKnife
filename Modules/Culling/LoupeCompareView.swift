@@ -46,6 +46,7 @@ struct LoupeCanvas: View {
 
     @State private var hover: CGPoint?
     @State private var fullImage: CGImage?
+    @State private var peaking: CGImage?
 
     var body: some View {
         let culling = app.culling
@@ -56,6 +57,14 @@ struct LoupeCanvas: View {
                         .transition(.opacity)
                 } else {
                     ThumbnailView(url: photo.url, maxPixel: 2400, recipeData: photo.recipeData, fit: true)
+                        .transition(.opacity)
+                }
+                if culling.focusPeaking, !culling.zoomed, let peaking {
+                    // Mesmo enquadramento e ajuste da imagem por baixo.
+                    Image(decorative: peaking, scale: 1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .allowsHitTesting(false)
                         .transition(.opacity)
                 }
                 if culling.magnifier, !culling.zoomed, let fullImage, let hover {
@@ -97,6 +106,35 @@ struct LoupeCanvas: View {
             let longest = max(photo.pixelWidth, photo.pixelHeight, 2400)
             fullImage = await Task.detached(priority: .userInitiated) {
                 ThumbnailCache.generate(url: url, maxPixel: longest).map { SendableImage(cgImage: $0) }
+            }.value?.cgImage
+        }
+        .overlay(alignment: .topLeading) {
+            if culling.focusPeaking {
+                Label(app.t("culling.focusPeaking"), systemImage: "scope")
+                    .font(.system(size: 11, weight: .bold))
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(Brand.orange.opacity(0.6), lineWidth: 1))
+                    .padding(10)
+                    .transition(.opacity)
+            }
+        }
+        .task(id: "\(photo.id)|\(culling.focusPeaking)|\(photo.recipeData?.hashValue ?? 0)") {
+            guard culling.focusPeaking else {
+                peaking = nil
+                return
+            }
+            let url = photo.url
+            let recipeData = photo.recipeData
+            peaking = await Task.detached(priority: .userInitiated) { () -> SendableImage? in
+                // Calculado sobre a mesma imagem que a lupa mostra (com a revelação, se houver).
+                let base: CGImage?
+                if let recipeData, let recipe = try? JSONDecoder().decode(EditRecipe.self, from: recipeData), !recipe.isIdentity {
+                    base = ImageRenderer.shared.renderPreview(url: url, recipe: recipe, maxPixel: 1600)?.cgImage
+                } else {
+                    base = ThumbnailCache.shared.thumbnail(for: url, maxPixel: 2400)?.cgImage
+                }
+                return base.flatMap { FocusPeaking.overlay(for: $0) }.map { SendableImage(cgImage: $0) }
             }.value?.cgImage
         }
     }

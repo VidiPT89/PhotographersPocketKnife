@@ -6,6 +6,7 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
     case labelRed, labelYellow, labelGreen, labelBlue, labelPurple
     case loupe, compare
     case zoom, magnifier, develop, crop, presentation, smaller, larger
+    case focusPeaking
 
     var id: String { rawValue }
 
@@ -40,6 +41,7 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
         case .presentation: "play.rectangle"
         case .smaller: "minus.magnifyingglass"
         case .larger: "plus.magnifyingglass"
+        case .focusPeaking: "scope"
         }
     }
 
@@ -69,6 +71,7 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
         case .presentation: "f"
         case .smaller: "-"
         case .larger: "="
+        case .focusPeaking: "k"
         }
     }
 }

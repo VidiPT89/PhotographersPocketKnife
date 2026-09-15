@@ -42,6 +42,9 @@ struct CullingView: View {
             case .gallery:
                 let selected = culling.targets(in: list)
                 GallerySheet(photos: selected.count > 1 ? selected : list)
+            case .timeShift:
+                let selected = culling.targets(in: list)
+                TimeShiftSheet(photos: selected.count > 1 ? selected : list)
             }
         }
     }
@@ -247,6 +250,7 @@ struct CullingToolbar: View {
                 Button(app.t("culling.saveSidecars"), systemImage: "doc.badge.gearshape") { saveSidecars() }
                 Button(app.t("culling.exportXMP"), systemImage: "arrow.up.doc") { exportXMP() }
                 Button(app.t("keywords.auto"), systemImage: "text.badge.star") { autoKeywords() }
+                Button(app.t("timeShift.title"), systemImage: "clock.arrow.2.circlepath") { c.activeSheet = .timeShift }
                 Divider()
                 Button(app.t("gallery.create"), systemImage: "photo.on.rectangle.angled") { c.activeSheet = .gallery }
             } label: {
@@ -263,6 +267,12 @@ struct CullingToolbar: View {
             )
             .frame(width: 90)
             .help(app.t("culling.thumbnailSize"))
+
+            Button { withAnimation(Motion.snappy) { c.perform(.focusPeaking, in: []) } } label: {
+                Image(systemName: "scope").foregroundStyle(c.focusPeaking ? Brand.orange : Palette.textPrimary)
+            }
+            .help(app.t("shortcut.focusPeaking"))
+            .disabled(photos.isEmpty)
 
             Button { c.showInfoPanel.toggle() } label: { Image(systemName: "sidebar.right") }
                 .help(app.t("info.metadata"))
