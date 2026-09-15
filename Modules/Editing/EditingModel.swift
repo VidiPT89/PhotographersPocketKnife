@@ -60,6 +60,39 @@ enum CropAspect: String, CaseIterable, Identifiable {
     }
 }
 
+extension CropRect {
+    /// Arrasta um canto com o canto oposto fixo. `aspect` é largura/altura em coordenadas normalizadas;
+    /// os dois lados são limitados juntos, para o rácio nunca se perder na borda da imagem.
+    static func resized(_ start: CropRect, movingRight: Bool, movingBottom: Bool, dx: Double, dy: Double,
+                        aspect: Double?, minSize: Double = 0.05) -> CropRect {
+        let anchorX = movingRight ? start.x : start.x + start.width
+        let anchorY = movingBottom ? start.y : start.y + start.height
+        let availableWidth = movingRight ? 1 - anchorX : anchorX
+        let availableHeight = movingBottom ? 1 - anchorY : anchorY
+        var width = start.width + (movingRight ? dx : -dx)
+        var height = start.height + (movingBottom ? dy : -dy)
+        if let aspect {
+            // Segue o eixo que o gesto mais alterou.
+            if abs(dy) * aspect > abs(dx) { width = height * aspect }
+            let limit = min(availableWidth, availableHeight * aspect)
+            width = min(max(width, max(minSize, minSize * aspect)), limit)
+            height = width / aspect
+        } else {
+            width = min(max(width, minSize), availableWidth)
+            height = min(max(height, minSize), availableHeight)
+        }
+        return CropRect(x: movingRight ? anchorX : anchorX - width, y: movingBottom ? anchorY : anchorY - height,
+                        width: width, height: height)
+    }
+
+    /// Maior recorte com o rácio pedido dentro deste, centrado nele.
+    func fitted(aspect: Double) -> CropRect {
+        let newWidth = min(width, height * aspect)
+        let newHeight = newWidth / aspect
+        return CropRect(x: x + (width - newWidth) / 2, y: y + (height - newHeight) / 2, width: newWidth, height: newHeight)
+    }
+}
+
 enum CropGuide: String, CaseIterable, Identifiable {
     case thirds, golden, none
     var id: String { rawValue }

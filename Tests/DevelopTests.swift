@@ -156,6 +156,35 @@ final class DevelopTests: XCTestCase {
         XCTAssertEqual(mask.brushSize, 0.06)
     }
 
+    func testLockedCropKeepsRatioAtImageEdges() {
+        // Imagem 3000×2000: 3:2 em píxeis corresponde a 1 em coordenadas normalizadas.
+        let aspect = 1.5 * 2000 / 3000
+        let start = CropRect(x: 0.2, y: 0.1, width: 0.6, height: 0.6)
+        let cases: [(right: Bool, bottom: Bool, dx: Double, dy: Double)] = [
+            (true, true, 0.5, 0.1), (true, true, 0.05, 0.9), (false, false, -0.9, -0.3),
+            (true, false, 0.3, -0.8), (false, true, 0.7, 0.7), (true, true, -2, -2),
+        ]
+        for c in cases {
+            let crop = CropRect.resized(start, movingRight: c.right, movingBottom: c.bottom, dx: c.dx, dy: c.dy, aspect: aspect)
+            XCTAssertEqual(crop.width * 3000 / (crop.height * 2000), 1.5, accuracy: 1e-9, "\(c)")
+            XCTAssertGreaterThanOrEqual(crop.x, -1e-9)
+            XCTAssertGreaterThanOrEqual(crop.y, -1e-9)
+            XCTAssertLessThanOrEqual(crop.x + crop.width, 1 + 1e-9)
+            XCTAssertLessThanOrEqual(crop.y + crop.height, 1 + 1e-9)
+        }
+        let edge = CropRect.resized(start, movingRight: true, movingBottom: true, dx: 0.5, dy: 0.1, aspect: aspect)
+        XCTAssertEqual(edge.width, 0.8, accuracy: 1e-9, "Stops at the right edge instead of stretching")
+        XCTAssertEqual(edge.x, 0.2, accuracy: 1e-9, "Opposite corner stays fixed")
+
+        let free = CropRect.resized(start, movingRight: true, movingBottom: true, dx: 0.5, dy: 0.1, aspect: nil)
+        XCTAssertEqual(free.width, 0.8, accuracy: 1e-9)
+        XCTAssertEqual(free.height, 0.7, accuracy: 1e-9)
+
+        let fitted = CropRect().fitted(aspect: aspect / 1.5 * (16.0 / 9))
+        XCTAssertEqual(fitted.width * 3000 / (fitted.height * 2000), 16.0 / 9, accuracy: 1e-9)
+        XCTAssertEqual(fitted.y + fitted.height / 2, 0.5, accuracy: 1e-9, "Centred")
+    }
+
     private func pixel(_ image: CIImage, at point: CGPoint) throws -> (r: Float, g: Float, b: Float) {
         var bytes = [Float](repeating: 0, count: 4)
         ImageRenderer.shared.context.render(image, toBitmap: &bytes, rowBytes: 16, bounds: CGRect(origin: point, size: CGSize(width: 1, height: 1)),

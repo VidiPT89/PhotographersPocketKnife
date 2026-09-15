@@ -267,6 +267,19 @@ struct CropOverlay: View {
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .onChange(of: app.editing.cropAspect) { _, aspect in
+            // Ao escolher um rácio, o recorte atual passa logo a respeitá-lo.
+            guard let normalized = normalizedAspect(aspect) else { return }
+            let crop = app.editing.recipe.crop
+            guard abs(crop.width / crop.height - normalized) > 0.001 else { return }
+            app.editing.recipe.crop = crop.fitted(aspect: normalized)
+            app.editing.commit("history.crop")
+        }
+    }
+
+    /// Converte o rácio em píxeis para coordenadas normalizadas da imagem.
+    private func normalizedAspect(_ aspect: CropAspect) -> Double? {
+        aspect.ratio.map { $0 * size.height / max(size.width, 1) }
     }
 
     private func position(of corner: Corner, in rect: CGRect) -> CGPoint {
@@ -299,30 +312,14 @@ struct CropOverlay: View {
             .onChanged { value in
                 let start = dragStart ?? app.editing.recipe.crop
                 dragStart = start
-                let dx = value.translation.width / size.width
-                let dy = value.translation.height / size.height
-                let minSize = 0.05
-                var left = start.x, top = start.y, right = start.x + start.width, bottom = start.y + start.height
-                switch corner {
-                case .topLeft: left += dx; top += dy
-                case .topRight: right += dx; top += dy
-                case .bottomLeft: left += dx; bottom += dy
-                case .bottomRight: right += dx; bottom += dy
-                }
-                left = min(max(left, 0), right - minSize)
-                right = max(min(right, 1), left + minSize)
-                top = min(max(top, 0), bottom - minSize)
-                bottom = max(min(bottom, 1), top + minSize)
-
-                if let ratio = app.editing.cropAspect.ratio {
-                    // Converte o rácio em píxeis para coordenadas normalizadas.
-                    let height = (right - left) * size.width / (ratio * size.height)
-                    switch corner {
-                    case .topLeft, .topRight: top = max(bottom - height, 0)
-                    case .bottomLeft, .bottomRight: bottom = min(top + height, 1)
-                    }
-                }
-                app.editing.recipe.crop = CropRect(x: left, y: top, width: right - left, height: bottom - top)
+                app.editing.recipe.crop = CropRect.resized(
+                    start,
+                    movingRight: corner == .topRight || corner == .bottomRight,
+                    movingBottom: corner == .bottomLeft || corner == .bottomRight,
+                    dx: value.translation.width / size.width,
+                    dy: value.translation.height / size.height,
+                    aspect: normalizedAspect(app.editing.cropAspect)
+                )
             }
             .onEnded { _ in
                 dragStart = nil
