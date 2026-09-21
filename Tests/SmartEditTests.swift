@@ -34,6 +34,23 @@ final class SmartEditTests: XCTestCase {
         XCTAssertLessThan(red / count, 0.35, "The red square is gone")
         XCTAssertEqual(green / count, 0.45, accuracy: 0.12, "Filled with the stripes' colours")
         XCTAssertEqual(filled.pixels[0], pixels[0], "Pixels outside the hole stay untouched")
+
+        // A média da cor sozinha não prova nada: uma mancha lisa da cor certa passava nas linhas acima,
+        // e foi exatamente isso que a remoção entregou durante meses. A textura tem de lá estar.
+        func energy(_ p: [Float], _ x0: Int, _ y0: Int, _ side: Int) -> Float {
+            var total: Float = 0
+            for y in y0..<(y0 + side - 1) {
+                for x in x0..<(x0 + side - 1) {
+                    let i = (y * width + x) * 3 + 1
+                    let dx = p[i] - p[i + 3], dy = p[i] - p[((y + 1) * width + x) * 3 + 1]
+                    total += dx * dx + dy * dy
+                }
+            }
+            return total / Float((side - 1) * (side - 1))
+        }
+        let inside = energy(filled.pixels, 40, 40, 16)
+        let outside = energy(filled.pixels, 8, 8, 16)
+        XCTAssertGreaterThan(inside, outside * 0.5, "The hole carries real texture, not the average colour")
     }
 
     func testRemovalErasesPaintedObjectThroughThePipeline() throws {
@@ -69,8 +86,7 @@ final class SmartEditTests: XCTestCase {
 
         let filled = try detail(output, in: CGRect(x: 1080, y: 780, width: 240, height: 240))
         let control = try detail(output, in: CGRect(x: 300, y: 300, width: 240, height: 240))
-        print("PPK removal detail: filled \(filled) control \(control) ratio \(filled / control)")
-        XCTAssertGreaterThan(filled, control * 0.6, "The filled area keeps the texture of its surroundings")
+        XCTAssertGreaterThan(filled, control * 0.7, "The filled area keeps the texture of its surroundings")
     }
 
     func testRemovalsAndSubjectMasksSurviveCodableAndPresets() throws {
@@ -159,6 +175,8 @@ final class SmartEditTests: XCTestCase {
             CGImageDestinationFinalize(destination)
         }
     }
+
+
 
     // MARK: Utilitários
 
