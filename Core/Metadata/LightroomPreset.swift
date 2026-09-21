@@ -44,7 +44,9 @@ enum LightroomPreset {
         set("Saturation", \.saturation)
         set("IncrementalTemperature", \.temperature)
         set("IncrementalTint", \.tint, scale: 150)
-        if let kelvin = number("Temperature") { r.temperature = min(max((kelvin - 5500) / 3000, -1), 1) }
+        // O slider desta app é relativo e tem o neutro em 6500 K (ver `ImageRenderer.apply`),
+        // por isso é esse o ponto zero para uma temperatura absoluta do Lightroom.
+        if let kelvin = number("Temperature") { r.temperature = min(max((kelvin - 6500) / 3000, -1), 1) }
         if let tint = number("Tint") { r.tint = min(max(tint / 150, -1), 1) }
         set("Sharpness", \.sharpness, scale: 150, range: 0...1)
         set("SharpenRadius", \.sharpenRadius, scale: 1, range: 0.5...3)

@@ -46,6 +46,7 @@ struct TasteProfileSection: View {
                             profiles = store.all()
                         } label: { Image(systemName: "trash") }
                         .buttonStyle(.borderless)
+                        .hint(app.t("common.delete"))
                     }
                 }
                 if let message {

@@ -24,6 +24,32 @@ final class ThumbnailCache: @unchecked Sendable {
         memory.totalCostLimit = 512 << 20
         memoryPressure.setEventHandler { [weak self] in self?.memory.removeAllObjects() }
         memoryPressure.resume()
+        // O cache em disco nunca encolhia sozinho: alguns trabalhos seguidos enchiam dezenas de GB
+        // até alguém carregar em "Limpar cache". A arrumação é feita uma vez, fora do arranque.
+        let folder = self.directory
+        DispatchQueue.global(qos: .background).async { Self.prune(folder, maxBytes: Self.diskLimit) }
+    }
+
+    /// Tecto do cache em disco. Chega para uma sessão grande e ainda assim não toma conta do disco.
+    static let diskLimit: Int64 = 4 << 30
+
+    /// Apaga as miniaturas mais antigas até ficar abaixo do tecto. A ordem vem da data de modificação:
+    /// a chave do cache inclui a data da foto, por isso cada ficheiro é escrito de novo quando a foto muda,
+    /// e a data de acesso não é de fiar (muitos volumes montam com `noatime`).
+    static func prune(_ directory: URL, maxBytes: Int64) {
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
+        guard let files = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys) else { return }
+        let entries = files.compactMap { url -> (url: URL, size: Int64, used: Date)? in
+            guard let values = try? url.resourceValues(forKeys: Set(keys)), let size = values.fileSize else { return nil }
+            return (url, Int64(size), values.contentModificationDate ?? .distantPast)
+        }
+        var total = entries.reduce(Int64(0)) { $0 + $1.size }
+        guard total > maxBytes else { return }
+        for entry in entries.sorted(by: { $0.used < $1.used }) {
+            guard total > maxBytes else { break }
+            if (try? fm.removeItem(at: entry.url)) != nil { total -= entry.size }
+        }
     }
 
     private func store(_ image: CGImage, forKey key: String) {

@@ -118,7 +118,9 @@ private struct GeneralSettings: View {
                     cacheCleared = true
                 }
                 if cacheCleared {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.success)
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Brand.success)
+                        .accessibilityLabel(app.t("settings.cacheCleared"))
                 }
             }
         }

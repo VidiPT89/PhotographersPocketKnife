@@ -119,8 +119,9 @@ struct MasksPanel: View {
                     editing.recipe.masks[index].invert.toggle()
                     editing.commit("history.mask")
                 } label: { Image(systemName: mask.invert ? "circle.righthalf.filled" : "circle.lefthalf.filled") }
-                .help(app.t("mask.invert"))
+                .hint(app.t("mask.invert"))
                 Button(role: .destructive) { editing.deleteMask(mask.id) } label: { Image(systemName: "trash") }
+                    .hint(app.t("common.delete"))
             }
             .padding(8)
             .background(selected ? Brand.orange.opacity(0.14) : Palette.background, in: RoundedRectangle(cornerRadius: 7))
@@ -398,6 +399,7 @@ struct PresetSweep: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progress: CGFloat = -0.5
     @State private var visible = false
+    @State private var fade: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geo in
@@ -415,10 +417,15 @@ struct PresetSweep: View {
             progress = -0.5
             visible = true
             withAnimation(.easeInOut(duration: 0.35)) { progress = 1.1 }
-            Task {
+            // Aplicar presets em sequência cancela o reflexo anterior: sem isto, um temporizador antigo
+            // apagava o brilho a meio do novo.
+            fade?.cancel()
+            fade = Task {
                 try? await Task.sleep(for: .milliseconds(380))
+                guard !Task.isCancelled else { return }
                 visible = false
             }
         }
+        .onDisappear { fade?.cancel() }
     }
 }

@@ -33,7 +33,8 @@ enum RemotePath {
 
     static func join(_ folder: String, _ fileName: String) -> String {
         let trimmed = folder.hasSuffix("/") ? String(folder.dropLast()) : folder
-        return (trimmed.hasPrefix("/") ? trimmed : "/" + trimmed) + "/" + fileName
+        let name = RenameTemplate.sanitize(fileName)
+        return (trimmed.hasPrefix("/") ? trimmed : "/" + trimmed) + "/" + (name.isEmpty ? "unnamed" : name)
     }
 }
 
@@ -177,8 +178,11 @@ enum SFTPCommand {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    /// O batch do sftp é um comando por linha e não há forma de escapar uma mudança de linha dentro de um
+    /// caminho, por isso os caracteres de controlo são retirados: um nome com `\n` acrescentaria comandos.
     static func quote(_ value: String) -> String {
-        "\"" + value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        let safe = value.components(separatedBy: .controlCharacters).joined()
+        return "\"" + safe.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
     static func environment(password: String) -> [String: String]? {
@@ -254,8 +258,14 @@ enum CurlCommand {
         return args
     }
 
+    /// O ficheiro de configuração do curl é uma diretiva por linha. As mudanças de linha vão escapadas
+    /// (o curl aceita `\n`, `\r` e `\t` dentro de aspas) para uma password ou um caminho não acrescentarem diretivas.
     static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\t", with: "\\t")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\n", with: "\\n")
     }
 
     /// Credenciais via stdin (`--config -`) para não aparecerem na lista de processos.
@@ -306,11 +316,14 @@ final class CurlProcess: @unchecked Sendable {
         process.standardError = errors
 
         let log = OutputLog()
+        // A barra de progresso do curl escreve muitas vezes por segundo; sem este travão, cada pedaço
+        // acordaria o MainActor para uma alteração invisível.
+        let throttle = ProgressThrottle()
         errors.fileHandleForReading.readabilityHandler = { handle in
             let chunk = String(decoding: handle.availableData, as: UTF8.self)
             guard !chunk.isEmpty else { return }
             log.append(chunk)
-            if let progress = CurlCommand.parseProgress(chunk) { onProgress(progress) }
+            if let progress = CurlCommand.parseProgress(chunk), throttle.allows(progress) { onProgress(progress) }
         }
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -339,6 +352,21 @@ final class CurlProcess: @unchecked Sendable {
     func cancel() {
         lock.withLock { cancelled = true }
         if process.isRunning { process.terminate() }
+    }
+}
+
+/// Deixa passar uma leitura de progresso no máximo a cada 100 ms, e sempre a que chega ao fim.
+private final class ProgressThrottle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastSent: Date?
+
+    func allows(_ progress: Double, now: Date = Date()) -> Bool {
+        lock.withLock {
+            guard progress < 1 else { return true }
+            if let lastSent, now.timeIntervalSince(lastSent) < 0.1 { return false }
+            lastSent = now
+            return true
+        }
     }
 }
 

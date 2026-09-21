@@ -131,7 +131,9 @@ final class SmartSelection: @unchecked Sendable {
         let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
         let bytes = base.assumingMemoryBound(to: UInt8.self)
-        let cx = Int(point.x * Double(width)), cy = Int(point.y * Double(height))
+        // Um clique exatamente na margem (1,0) daria `width`, fora do buffer.
+        let cx = min(Int(point.x * Double(width)), width - 1)
+        let cy = min(Int(point.y * Double(height)), height - 1)
         let reach = max(Int(searchRadius * Double(max(width, height))), 1)
         var best = 0, bestDistance = Int.max
         for dy in -reach...reach {

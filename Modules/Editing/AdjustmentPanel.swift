@@ -79,6 +79,7 @@ struct AdjustmentPanel: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
+            .hint(app.t("editing.section"))
 
             Text(app.t(editing.tab.labelKey))
                 .font(.system(size: 12, weight: .semibold))
@@ -204,6 +205,7 @@ struct CurvePanel: View {
             ForEach(CurveChannel.allCases) { Text(app.t($0.labelKey)).tag($0) }
         }
         .pickerStyle(.segmented)
+        .hint(app.t("curve.channel"))
         CurveEditor(channel: editing.curveChannel)
             .aspectRatio(1, contentMode: .fit)
         Text(app.t("curve.hint"))
@@ -322,6 +324,7 @@ struct HSLPanel: View {
             ForEach(HSLComponent.allCases) { Text(app.t($0.labelKey)).tag($0) }
         }
         .pickerStyle(.segmented)
+        .hint(app.t("hsl.component"))
         ForEach(HSLBand.allCases) { band in
             AdjustmentSlider(labelKey: band.labelKey, value: keyPath(band, editing.hslComponent), range: -1...1, tint: Self.bandColors[band.rawValue])
         }
@@ -357,11 +360,14 @@ struct GeometryPanel: View {
         AdjustmentSlider(labelKey: "geometry.straighten", value: \.straighten, range: -45...45)
         HStack {
             Button { rotate(-1) } label: { Image(systemName: "rotate.left") }
+                .hint(app.t("geometry.rotateLeft"))
             Button { rotate(1) } label: { Image(systemName: "rotate.right") }
+                .hint(app.t("geometry.rotateRight"))
             Button {
                 editing.recipe.flipHorizontal.toggle()
                 editing.commit("history.flip")
             } label: { Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right") }
+            .hint(app.t("history.flip"))
         }
         AdjustmentSlider(labelKey: "geometry.perspectiveV", value: \.perspectiveVertical, range: -1...1)
         AdjustmentSlider(labelKey: "geometry.perspectiveH", value: \.perspectiveHorizontal, range: -1...1)
@@ -399,7 +405,8 @@ struct HistoryPanel: View {
                 .textFieldStyle(.roundedBorder)
             Button(app.t("history.saveSnapshot")) {
                 let name = snapshotName.trimmingCharacters(in: .whitespaces)
-                editing.saveSnapshot(named: name.isEmpty ? "Snapshot \(editing.history.snapshots.count + 1)" : name)
+                let fallback = String(format: app.t("snapshot.untitled"), editing.history.snapshots.count + 1)
+                editing.saveSnapshot(named: name.isEmpty ? fallback : name)
                 snapshotName = ""
             }
         }
@@ -415,6 +422,7 @@ struct HistoryPanel: View {
                 Spacer()
                 Button(app.t("snapshot.apply")) { editing.applySnapshot(snapshot) }
                 Button(role: .destructive) { editing.deleteSnapshot(snapshot) } label: { Image(systemName: "trash") }
+                    .hint(app.t("common.delete"))
             }
             .padding(8)
             .background(Palette.background, in: RoundedRectangle(cornerRadius: 6))

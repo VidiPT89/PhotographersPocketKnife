@@ -53,6 +53,8 @@ struct InfoPanel: View {
                 let histogram = ThumbnailCache.shared.thumbnail(for: url, maxPixel: 320).map { Histogram.compute($0.cgImage) }
                 return (details, histogram)
             }.value
+            // Trocar de foto a meio da leitura cancela esta tarefa; sem isto, o painel mostraria a anterior.
+            guard !Task.isCancelled else { return }
             withAnimation(Motion.smooth) {
                 fields = result.0
                 histogram = result.1

@@ -12,6 +12,7 @@ struct RemovalPanel: View {
             }
         }
         .pickerStyle(.segmented)
+        .hint(app.t("removal.modeTitle"))
         Text(app.t(editing.removalMode == .object ? "removal.objectHint" : "removal.brushHint"))
             .font(Typography.caption)
             .foregroundStyle(Palette.textSecondary)
@@ -42,6 +43,7 @@ struct RemovalPanel: View {
                 Text("\(app.t(isObject ? "removal.object" : "removal.painted")) \(index + 1)")
                 Spacer()
                 Button(role: .destructive) { editing.deleteRemoval(removal.id) } label: { Image(systemName: "trash") }
+                    .hint(app.t("common.delete"))
             }
             .padding(8)
             .background(Palette.background, in: RoundedRectangle(cornerRadius: 7))

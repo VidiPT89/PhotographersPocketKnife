@@ -97,23 +97,42 @@ enum PhotoImporter {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let candidate = directory.appendingPathComponent(file.lastPathComponent)
-        if sameFileAlreadyCopied(file, candidate) {
-            if !verify { return candidate }
-            if try FileChecksum.sha256(of: file) == FileChecksum.sha256(of: candidate) { return candidate }
+        if sameFileAlreadyCopied(file, candidate),
+           try !verify || FileChecksum.sha256(of: file) == FileChecksum.sha256(of: candidate) {
+            copySidecars(from: file, to: candidate)
+            return candidate
         }
         let target = uniqueURL(candidate)
         try fm.copyItem(at: file, to: target)
-        for (source, destination) in [
-            (MetadataWriter.sidecarURL(for: file), MetadataWriter.sidecarURL(for: target)),
-            (PPKSidecar.url(for: file), PPKSidecar.url(for: target)),
-        ] where fm.fileExists(atPath: source.path) {
-            try? fm.copyItem(at: source, to: destination)
-        }
+        copySidecars(from: file, to: target)
         if verify, try FileChecksum.sha256(of: file) != FileChecksum.sha256(of: target) {
             try? fm.removeItem(at: target)
             throw ImportError.checksumMismatch(file.lastPathComponent)
         }
         return target
+    }
+
+    /// Os sidecars são copiados também quando a foto já estava no destino: o cartão pode trazer
+    /// classificações ou revelações mais recentes do que a cópia anterior. Mas o que está no destino
+    /// só é substituído se o do cartão for mesmo mais recente — senão, uma reimportação apagaria a
+    /// classificação feita aqui na app depois da primeira cópia.
+    private static func copySidecars(from file: URL, to target: URL) {
+        let fm = FileManager.default
+        for (source, destination) in [
+            (MetadataWriter.sidecarURL(for: file), MetadataWriter.sidecarURL(for: target)),
+            (PPKSidecar.url(for: file), PPKSidecar.url(for: target)),
+        ] where source != destination && fm.fileExists(atPath: source.path) {
+            if fm.fileExists(atPath: destination.path) {
+                guard let new = modificationDate(of: source), let old = modificationDate(of: destination),
+                      new > old else { continue }
+                try? fm.removeItem(at: destination)
+            }
+            try? fm.copyItem(at: source, to: destination)
+        }
+    }
+
+    private static func modificationDate(of url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
     static func dayString(_ date: Date) -> String {
@@ -135,11 +154,15 @@ enum PhotoImporter {
         }
     }
 
+    /// Sem verificação de checksum, o tamanho sozinho deixaria passar dois ficheiros diferentes com o mesmo
+    /// número de bytes, por isso a data de modificação (que a cópia preserva) também tem de coincidir.
     private static func sameFileAlreadyCopied(_ source: URL, _ target: URL) -> Bool {
-        let keys: Set<URLResourceKey> = [.fileSizeKey]
-        guard let a = try? source.resourceValues(forKeys: keys).fileSize,
-              let b = try? target.resourceValues(forKeys: keys).fileSize else { return false }
-        return a == b
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey]
+        guard let a = try? source.resourceValues(forKeys: keys),
+              let b = try? target.resourceValues(forKeys: keys),
+              let sizeA = a.fileSize, let sizeB = b.fileSize, sizeA == sizeB,
+              let dateA = a.contentModificationDate, let dateB = b.contentModificationDate else { return false }
+        return abs(dateA.timeIntervalSince(dateB)) < 1
     }
 }
 

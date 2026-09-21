@@ -51,6 +51,28 @@ final class CatalogTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("2.xmp").path))
     }
 
+    func testRenameCarriesPPKSidecarToTheNewName() throws {
+        let photo = folder.appendingPathComponent("DSC_1.NEF")
+        try Data("raw".utf8).write(to: photo)
+        try PPKSidecar(file: "DSC_1.NEF", rating: 4, label: "green", flag: 1, develop: nil).write(for: photo)
+
+        let renamed = folder.appendingPathComponent("Final_0001.NEF")
+        try BatchRenamer.apply([BatchRenamer.Plan(from: photo, to: renamed)])
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PPKSidecar.url(for: photo).path), "The old .ppk must not stay behind")
+        XCTAssertEqual(PPKSidecar.read(for: renamed)?.rating, 4)
+    }
+
+    func testSanitizeBlocksPathTraversalAndControlCharacters() {
+        XCTAssertEqual(RenameTemplate.sanitize(".."), "")
+        XCTAssertEqual(RenameTemplate.sanitize("."), "")
+        XCTAssertEqual(RenameTemplate.sanitize("a/b:c"), "a-b-c")
+        XCTAssertEqual(RenameTemplate.sanitize("Benfica\nPorto"), "BenficaPorto")
+        XCTAssertEqual(RenameTemplate.sanitize("..Estoril"), "..Estoril", "Only the special names themselves are dropped")
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 7))!
+        XCTAssertEqual(IngestTemplate.path("{year}/{event}", date: date, event: "..", isRaw: true), "2026")
+    }
+
     // MARK: Importação e metadados
 
     func testImporterFindsSupportedFilesAndCopiesByDate() throws {
@@ -71,6 +93,48 @@ final class CatalogTests: XCTestCase {
         // Reimportar não duplica o ficheiro copiado.
         let again = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }.infos
         XCTAssertEqual(again[0].url, infos[0].url)
+    }
+
+    func testImporterCopiesADifferentFileOfTheSameSize() throws {
+        let source = folder.appendingPathComponent("card")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let card = source.appendingPathComponent("a.jpg")
+        try writeJPEG(to: card)
+
+        let destination = folder.appendingPathComponent("library")
+        let options = PhotoImporter.Options(copyDestination: destination, subfolderByDate: false)
+        let first = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }.infos
+        XCTAssertEqual(first.count, 1)
+
+        // Outra foto, feita mais tarde, com exactamente o mesmo número de bytes: não pode ser confundida
+        // com a que já está no destino só porque o tamanho coincide.
+        let size = try XCTUnwrap(card.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        try Data(repeating: 0xAB, count: size).write(to: card)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(120)], ofItemAtPath: card.path)
+
+        // A app volta a percorrer a pasta, por isso o URL é novo e não traz valores em cache.
+        let second = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }.infos
+        XCTAssertEqual(second.count, 1)
+        XCTAssertNotEqual(second[0].url, first[0].url, "A different file must land on its own name")
+    }
+
+    func testReimportKeepsTheRatingGivenInTheAppAfterTheFirstCopy() throws {
+        let source = folder.appendingPathComponent("card")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let card = source.appendingPathComponent("a.jpg")
+        try writeJPEG(to: card)
+        try PPKSidecar(file: "a.jpg", rating: 1, label: "", flag: 0, develop: nil).write(for: card)
+
+        let destination = folder.appendingPathComponent("library")
+        let options = PhotoImporter.Options(copyDestination: destination, subfolderByDate: false)
+        let first = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }.infos
+        let copied = try XCTUnwrap(first.first?.url)
+        XCTAssertEqual(PPKSidecar.read(for: copied)?.rating, 1)
+
+        // Classificação dada na app depois de importar: pôr o cartão outra vez não a pode apagar.
+        try PPKSidecar(file: copied.lastPathComponent, rating: 5, label: "green", flag: 1, develop: nil).write(for: copied)
+        _ = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }
+        XCTAssertEqual(PPKSidecar.read(for: copied)?.rating, 5)
     }
 
     func testParallelImportKeepsOrderAndReportsProgress() throws {

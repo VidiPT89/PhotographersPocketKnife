@@ -43,7 +43,7 @@ struct DenoiseSheet: View {
     private func start() {
         let chosen = targets
         let jobs = chosen.map { DenoiseQueue.Job(url: $0.url, strength: automatic ? WaveletDenoise.suggestedStrength(iso: $0.iso) : strength) }
-        app.denoise.start(jobs, session: chosen.first?.sessionName ?? "Denoise", culling: app.culling, context: context)
+        app.denoise.start(jobs, session: chosen.first?.sessionName ?? app.t("denoise.sessionName"), culling: app.culling, context: context)
         app.showToast(String(format: app.t("denoise.started"), jobs.count), icon: "sparkles")
         dismiss()
     }
