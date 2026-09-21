@@ -48,14 +48,7 @@ enum Inpainter {
               hole.contains(true), hole.contains(false) else { return empty }
 
         let holeCount = hole.reduce(0) { $0 + ($1 ? 1 : 0) }
-        // Numa região estreita o patch tem de caber: sem isto não sobrava nenhuma origem válida.
-        let radius = min(Self.radius(forHoleOf: holeCount), (min(w, h) - 1) / 2 - 1)
-        guard radius >= 2 else { return empty }
 
-        // Origens possíveis: só patches inteiramente fora da zona. Copiar do que já foi preenchido
-        // deixaria o erro multiplicar-se para dentro.
-        var valid = [Bool](repeating: false, count: w * h)
-        var validSources: [Int32] = []
         var integral = [Int32](repeating: 0, count: (w + 1) * (h + 1))
         for y in 0..<h {
             var row: Int32 = 0
@@ -69,12 +62,32 @@ enum Inpainter {
             return integral[by * (w + 1) + bx] - integral[ay * (w + 1) + bx]
                  - integral[by * (w + 1) + ax] + integral[ay * (w + 1) + ax]
         }
-        for y in radius..<(h - radius) {
-            for x in radius..<(w - radius) where holes(x - radius, y - radius, x + radius, y + radius) == 0 {
-                valid[y * w + x] = true
-                validSources.append(Int32(y * w + x))
+
+        /// Origens possíveis: só patches inteiramente fora da zona. Copiar do que já foi preenchido
+        /// deixaria o erro multiplicar-se para dentro.
+        func sources(radius r: Int) -> (valid: [Bool], list: [Int32]) {
+            var valid = [Bool](repeating: false, count: w * h)
+            var list: [Int32] = []
+            guard r >= 2, w > 2 * r, h > 2 * r else { return (valid, list) }
+            for y in r..<(h - r) {
+                for x in r..<(w - r) where holes(x - r, y - r, x + r, y + r) == 0 {
+                    valid[y * w + x] = true
+                    list.append(Int32(y * w + x))
+                }
             }
+            return (valid, list)
         }
+
+        // O raio acompanha o tamanho da zona, mas numa faixa estreita — uma pincelada sobre uma camisola,
+        // por exemplo — um patch grande não chega a caber fora dela e ficaríamos sem origem nenhuma.
+        // Nesse caso encolhe até caber, em vez de desistir em silêncio e devolver a foto por tocar.
+        var radius = Self.radius(forHoleOf: holeCount)
+        var found = sources(radius: radius)
+        while found.list.isEmpty && radius > 3 {
+            radius = max(radius / 2, 3)
+            found = sources(radius: radius)
+        }
+        let valid = found.valid, validSources = found.list
         guard !validSources.isEmpty else { return empty }
 
         var known = hole.map { !$0 }
@@ -98,10 +111,14 @@ enum Inpainter {
             for entry in ordered where !known[Int(entry.index)] && !claimed[Int(entry.index)] {
                 let t = Int(entry.index)
                 let cx = t % w, cy = t / w
-                for dy in -radius...radius {
+                // Reserva só metade do patch: as cópias sobrepõem-se e cada nova continua a anterior
+                // (a sobreposição entra no contexto da procura). Reservar o patch inteiro fazia-as
+                // ladrilhar sem se tocarem, e o preenchimento saía numa grelha de quadrados.
+                let claim = max(radius / 2, 1)
+                for dy in -claim...claim {
                     let yy = cy + dy
                     guard yy >= 0, yy < h else { continue }
-                    for dx in -radius...radius {
+                    for dx in -claim...claim {
                         let xx = cx + dx
                         if xx >= 0, xx < w { claimed[yy * w + xx] = true }
                     }
