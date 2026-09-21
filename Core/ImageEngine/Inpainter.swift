@@ -28,16 +28,29 @@ enum Inpainter {
         let sources: [Int32]
     }
 
-    /// Meio-lado do patch. 7×7 era pequeno de mais: cada cópia trazia menos do que uma mancha da textura,
-    /// e a zona saía aos bocados. 11×11 traz um pedaço reconhecível de cada vez.
-    static let radius = 5
+    /// Meio-lado do patch, proporcional à zona a preencher.
+    ///
+    /// Um tamanho fixo não serve as duas pontas. Com 11×11 um buraco de 96×96 era preenchido por 247
+    /// cópias de ~37 píxeis cada, vindas de 247 sítios diferentes: numa textura com ruído ninguém dá por
+    /// isso, mas num fundo liso — uma bancada, um céu, pele — lê-se como sujidade fina. Poucas cópias
+    /// grandes ficam bem; muitas cópias pequenas nunca ficam.
+    ///
+    /// O custo mantém-se: um patch maior custa mais a comparar mas preenche proporcionalmente mais de
+    /// uma vez, por isso o trabalho por píxel preenchido é quase o mesmo.
+    static func radius(forHoleOf pixels: Int) -> Int {
+        min(max(Int(Double(pixels).squareRoot() / 4), 6), 32)
+    }
 
     static func solve(_ image: Image, hole: [Bool]) -> Field {
         let w = image.width, h = image.height
         let empty = Field(width: w, height: h, targets: [], sources: [])
-        guard w > 2 * radius, h > 2 * radius,
-              image.pixels.count == w * h * 3, hole.count == w * h,
+        guard image.pixels.count == w * h * 3, hole.count == w * h,
               hole.contains(true), hole.contains(false) else { return empty }
+
+        let holeCount = hole.reduce(0) { $0 + ($1 ? 1 : 0) }
+        // Numa região estreita o patch tem de caber: sem isto não sobrava nenhuma origem válida.
+        let radius = min(Self.radius(forHoleOf: holeCount), (min(w, h) - 1) / 2 - 1)
+        guard radius >= 2 else { return empty }
 
         // Origens possíveis: só patches inteiramente fora da zona. Copiar do que já foi preenchido
         // deixaria o erro multiplicar-se para dentro.
@@ -68,7 +81,7 @@ enum Inpainter {
         var pixels = image.pixels
         var sourceOf = [Int32](repeating: -1, count: w * h)
         var rng = SplitMix64(state: 0x5EED_CAFE)
-        var remaining = hole.reduce(0) { $0 + ($1 ? 1 : 0) }
+        var remaining = holeCount
 
         while remaining > 0 {
             let layer = boundary(known: known, hole: hole, width: w, height: h)
@@ -76,14 +89,28 @@ enum Inpainter {
             // Primeiro os que têm mais contexto resolvido à volta: são os que decidem a textura com
             // mais informação, e o que eles escolhem guia quem vem atrás.
             let ordered = layer
-                .map { (index: $0, context: knownCount($0, known: known, width: w, height: h)) }
+                .map { (index: $0, context: knownCount($0, known: known, width: w, height: h, radius: radius)) }
                 .sorted { $0.context > $1.context }
-            for entry in ordered where !known[Int(entry.index)] {
+            // Uma cópia por vizinhança em cada camada: sem isto, as cópias seguintes só preenchiam as
+            // lascas que sobravam das anteriores, cada uma vinda de outro sítio. Numa textura com ruído
+            // ninguém dava por isso; num fundo liso lia-se como sujidade fina.
+            var claimed = [Bool](repeating: false, count: w * h)
+            for entry in ordered where !known[Int(entry.index)] && !claimed[Int(entry.index)] {
                 let t = Int(entry.index)
+                let cx = t % w, cy = t / w
+                for dy in -radius...radius {
+                    let yy = cy + dy
+                    guard yy >= 0, yy < h else { continue }
+                    for dx in -radius...radius {
+                        let xx = cx + dx
+                        if xx >= 0, xx < w { claimed[yy * w + xx] = true }
+                    }
+                }
                 let source = bestSource(t, pixels: pixels, known: known, sourceOf: sourceOf,
-                                        valid: valid, validSources: validSources, width: w, height: h, rng: &rng)
+                                        valid: valid, validSources: validSources, width: w, height: h,
+                                        radius: radius, rng: &rng)
                 remaining -= paste(source, into: t, pixels: &pixels, known: &known,
-                                   sourceOf: &sourceOf, width: w, height: h)
+                                   sourceOf: &sourceOf, width: w, height: h, radius: radius)
             }
         }
 
@@ -113,7 +140,7 @@ enum Inpainter {
         return layer
     }
 
-    private static func knownCount(_ t: Int32, known: [Bool], width w: Int, height h: Int) -> Int {
+    private static func knownCount(_ t: Int32, known: [Bool], width w: Int, height h: Int, radius: Int) -> Int {
         let tx = Int(t) % w, ty = Int(t) / w
         var n = 0
         for dy in -radius...radius {
@@ -129,7 +156,7 @@ enum Inpainter {
 
     /// Copia o patch de origem para os píxeis do alvo que ainda faltam. Devolve quantos ficaram resolvidos.
     private static func paste(_ s: Int, into t: Int, pixels: inout [Float], known: inout [Bool],
-                              sourceOf: inout [Int32], width w: Int, height h: Int) -> Int {
+                              sourceOf: inout [Int32], width w: Int, height h: Int, radius: Int) -> Int {
         let tx = t % w, ty = t / w, sx = s % w, sy = s / w
         var filled = 0
         for dy in -radius...radius {
@@ -156,7 +183,7 @@ enum Inpainter {
     /// partir do que os vizinhos escolheram, depois tentativas aleatórias e um afinamento à volta da melhor.
     private static func bestSource(_ t: Int, pixels: [Float], known: [Bool], sourceOf: [Int32],
                                    valid: [Bool], validSources: [Int32], width w: Int, height h: Int,
-                                   rng: inout SplitMix64) -> Int {
+                                   radius: Int, rng: inout SplitMix64) -> Int {
         let tx = t % w, ty = t / w
         var best = Int(validSources[Int(rng.next() % UInt64(validSources.count))])
         var bestCost = Float.greatestFiniteMagnitude
@@ -165,7 +192,7 @@ enum Inpainter {
             known.withUnsafeBufferPointer { kn in
                 func consider(_ candidate: Int) {
                     guard candidate >= 0, candidate < w * h, valid[candidate] else { return }
-                    let cost = partialDistance(px, kn, w, h, t, candidate)
+                    let cost = partialDistance(px, kn, w, h, t, candidate, radius)
                     if cost < bestCost {
                         bestCost = cost
                         best = candidate
@@ -201,7 +228,7 @@ enum Inpainter {
     /// Comparar contra píxeis por resolver era o que fazia o algoritmo perseguir a sua própria estimativa.
     @inline(__always)
     private static func partialDistance(_ px: UnsafeBufferPointer<Float>, _ known: UnsafeBufferPointer<Bool>,
-                                        _ w: Int, _ h: Int, _ t: Int, _ s: Int) -> Float {
+                                        _ w: Int, _ h: Int, _ t: Int, _ s: Int, _ radius: Int) -> Float {
         let tx = t % w, ty = t / w, sx = s % w, sy = s / w
         var total: Float = 0
         var samples = 0
@@ -220,42 +247,64 @@ enum Inpainter {
         return samples > 0 ? total / Float(samples) : 0
     }
 
-    /// Aplica as correspondências a uma imagem da mesma região (ex. depois de mexer nos sliders). A imagem pode
-    /// ser maior do que o campo: as correspondências são procuradas numa versão reduzida, mas a cópia é feita na
-    /// resolução que vem — copiar em pequeno e ampliar depois entregava um borrão em vez de textura.
-    /// Cada píxel copia o centro do seu patch de origem: a média dos patches deixaria a textura esborratada.
+    /// Aplica as correspondências a uma imagem da mesma região (ex. depois de mexer nos sliders). A imagem
+    /// pode ser maior do que o campo: a procura corre numa versão reduzida, mas a cópia é feita na resolução
+    /// que vem — copiar em pequeno e ampliar depois entregava um borrão em vez de textura.
+    ///
+    /// Em ambos os casos o deslocamento é **interpolado entre os vizinhos**, nunca escolhido pelo mais próximo.
+    /// Dentro de um patch os vizinhos concordam e a cópia é exacta, sem perder nitidez; só na junta entre dois
+    /// patches é que discordam, e aí as duas texturas cruzam-se em vez de deixarem um degrau. Sem isto o
+    /// preenchimento sai aos quadrados: numa textura com ruído ninguém dá por eles, mas num fundo desfocado
+    /// — uma bancada, um céu, pele — cada junta é uma aresta onde não devia haver nenhuma.
     static func fill(_ image: Image, hole: [Bool], field: Field) -> Image {
         guard !field.targets.isEmpty, hole.count == field.width * field.height,
               image.pixels.count == image.width * image.height * 3,
               image.width >= field.width, image.height >= field.height else { return image }
-        if image.width == field.width, image.height == field.height {
-            var pixels = image.pixels
-            for k in 0..<field.targets.count {
-                let t = Int(field.targets[k])
-                guard hole[t] else { continue }
-                let s = Int(field.sources[k])
-                pixels[t * 3] = image.pixels[s * 3]
-                pixels[t * 3 + 1] = image.pixels[s * 3 + 1]
-                pixels[t * 3 + 2] = image.pixels[s * 3 + 2]
-            }
-            return Image(width: image.width, height: image.height, pixels: pixels)
-        }
-        return upscaledFill(image, hole: hole, field: field)
-    }
-
-    /// Cópia na resolução nativa a partir de um campo calculado em pequeno: o que se amplia é o *deslocamento*
-    /// de cada patch, não os píxeis.
-    ///
-    /// O deslocamento é interpolado entre os quatro pontos vizinhos do campo. Dentro de um patch os quatro
-    /// concordam e o resultado é uma cópia exacta, sem perder nitidez; só na junta entre dois patches é que
-    /// discordam, e aí as duas texturas cruzam-se em vez de deixarem um degrau. Sem isto, cada ponto do campo
-    /// virava um quadrado com o seu próprio deslocamento e o preenchimento saía aos quadrados — foi o que o
-    /// David viu como "um borrão e todo pixelizado".
-    private static func upscaledFill(_ image: Image, hole: [Bool], field: Field) -> Image {
         let fw = field.width, fh = field.height
         var sourceOf = [Int32](repeating: -1, count: fw * fh)
         for k in 0..<field.targets.count { sourceOf[Int(field.targets[k])] = field.sources[k] }
+        return image.width == fw && image.height == fh
+            ? nativeFill(image, hole: hole, sourceOf: sourceOf)
+            : upscaledFill(image, hole: hole, sourceOf: sourceOf, fieldWidth: fw, fieldHeight: fh)
+    }
 
+    /// Meio-lado da janela onde os deslocamentos são misturados. Mais estreita do que o patch, para a junta
+    /// desaparecer sem levar consigo a textura de dentro do patch.
+    private static let blendReach = 4
+
+    private static func nativeFill(_ image: Image, hole: [Bool], sourceOf: [Int32]) -> Image {
+        let w = image.width, h = image.height
+        var pixels = image.pixels
+        image.pixels.withUnsafeBufferPointer { px in
+            for y in 0..<h {
+                for x in 0..<w where hole[y * w + x] {
+                    var r: Float = 0, g: Float = 0, b: Float = 0, total: Float = 0
+                    for dy in -blendReach...blendReach {
+                        let ny = min(max(y + dy, 0), h - 1)
+                        for dx in -blendReach...blendReach {
+                            let nx = min(max(x + dx, 0), w - 1)
+                            let s = Int(sourceOf[ny * w + nx])
+                            guard s >= 0 else { continue }
+                            // Deslocamento do vizinho, aplicado à *nossa* posição.
+                            let ax = min(max(x + s % w - nx, 0), w - 1)
+                            let ay = min(max(y + s / w - ny, 0), h - 1)
+                            let weight: Float = 1 / Float(1 + dx * dx + dy * dy)
+                            let a = (ay * w + ax) * 3
+                            r += px[a] * weight; g += px[a + 1] * weight; b += px[a + 2] * weight
+                            total += weight
+                        }
+                    }
+                    guard total > 0 else { continue }
+                    let o = (y * w + x) * 3
+                    pixels[o] = r / total; pixels[o + 1] = g / total; pixels[o + 2] = b / total
+                }
+            }
+        }
+        return Image(width: w, height: h, pixels: pixels)
+    }
+
+    private static func upscaledFill(_ image: Image, hole: [Bool], sourceOf: [Int32],
+                                     fieldWidth fw: Int, fieldHeight fh: Int) -> Image {
         let w = image.width, h = image.height
         let toField = (x: Double(fw) / Double(w), y: Double(fh) / Double(h))
         let toImage = (x: Double(w) / Double(fw), y: Double(h) / Double(fh))
@@ -295,6 +344,7 @@ enum Inpainter {
         }
         return Image(width: w, height: h, pixels: pixels)
     }
+
 }
 
 /// Gerador pseudo-aleatório determinista (o mesmo resultado em cada render).
