@@ -151,6 +151,7 @@ struct CullingToolbar: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 110)
+            .hint(app.t("culling.viewMode"))
 
             Menu {
                 Picker(app.t("filter.minRating"), selection: $c.minRating) {
@@ -229,7 +230,7 @@ struct CullingToolbar: View {
                 Button { withAnimation(Motion.smooth) { c.showCullBadges.toggle() } } label: {
                     Image(systemName: c.showCullBadges ? "gauge.with.dots.needle.67percent" : "gauge.with.dots.needle.0percent")
                 }
-                .help(app.t("cull.badges"))
+                .hint(app.t("cull.badges"))
             }
 
             Menu {
@@ -251,14 +252,14 @@ struct CullingToolbar: View {
             }
             .menuIndicator(.hidden)
             .fixedSize()
-            .help(app.t("culling.duplicates"))
+            .hint(app.t("culling.duplicates"))
             .disabled(photos.isEmpty || c.isFindingDuplicates)
 
             Button { c.activeSheet = .rename } label: { Image(systemName: "character.cursor.ibeam") }
-                .help(app.t("rename.title"))
+                .hint(app.t("rename.title"))
                 .disabled(!hasTargets)
             Button { c.activeSheet = .metadata } label: { Image(systemName: "tag") }
-                .help(app.t("metadata.title"))
+                .hint(app.t("metadata.title"))
                 .disabled(!hasTargets)
 
             Menu {
@@ -280,7 +281,7 @@ struct CullingToolbar: View {
             }
             .menuIndicator(.hidden)
             .fixedSize()
-            .help(app.t("culling.more"))
+            .hint(app.t("culling.more"))
 
             Slider(
                 value: Binding(get: { Double(c.thumbnailStep) }, set: { c.thumbnailStep = Int($0.rounded()) }),
@@ -288,16 +289,16 @@ struct CullingToolbar: View {
                 step: 1
             )
             .frame(width: 90)
-            .help(app.t("culling.thumbnailSize"))
+            .hint(app.t("culling.thumbnailSize"))
 
             Button { withAnimation(Motion.snappy) { c.perform(.focusPeaking, in: []) } } label: {
                 Image(systemName: "scope").foregroundStyle(c.focusPeaking ? Brand.orange : Palette.textPrimary)
             }
-            .help(app.t("shortcut.focusPeaking"))
+            .hint(app.t("shortcut.focusPeaking"))
             .disabled(photos.isEmpty)
 
             Button { c.showInfoPanel.toggle() } label: { Image(systemName: "sidebar.right") }
-                .help(app.t("info.metadata"))
+                .hint(app.t("info.metadata"))
         }
         .buttonStyle(.borderless)
         .controlSize(.small)
@@ -323,7 +324,7 @@ struct CullingToolbar: View {
         let session = app.culling.session ?? app.t("sidebar.allPhotos")
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = "\(RenameTemplate.sanitize(session)) - contact sheet.pdf"
+        panel.nameFieldStringValue = String(format: app.t("contactSheet.fileName"), RenameTemplate.sanitize(session))
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let items = targets.map { photo in
             ContactSheet.Item(url: photo.url, title: photo.fileName, subtitle: [

@@ -105,7 +105,8 @@ struct GallerySheet: View {
         configured.website = website
         let options = configured
         let name = RenameTemplate.sanitize(options.title).trimmingCharacters(in: .whitespaces)
-        let target = URL(fileURLWithPath: folderPath, isDirectory: true).appendingPathComponent(name.isEmpty ? "Gallery" : name, isDirectory: true)
+        let target = URL(fileURLWithPath: folderPath, isDirectory: true)
+            .appendingPathComponent(name.isEmpty ? app.t("gallery.folderName") : name, isDirectory: true)
         let jobs = photos.map { photo in
             GalleryPhoto(
                 url: photo.url,

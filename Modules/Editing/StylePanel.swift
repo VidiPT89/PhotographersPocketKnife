@@ -40,7 +40,7 @@ struct StylePanel: View {
                     Image(systemName: isDefault ? "star.fill" : "star").foregroundStyle(Brand.amber)
                 }
                 .buttonStyle(.borderless)
-                .help(app.t("style.default"))
+                .hint(app.t("style.default"))
                 VStack(alignment: .leading, spacing: 0) {
                     Text(profile.name)
                     Text(String(format: app.t("style.examples"), profile.examples.count))
@@ -57,6 +57,7 @@ struct StylePanel: View {
                     if isDefault { defaultStyleID = "" }
                     profiles = store.all()
                 } label: { Image(systemName: "trash") }
+                .hint(app.t("common.delete"))
             }
             .padding(8)
             .background(Palette.background, in: RoundedRectangle(cornerRadius: 6))

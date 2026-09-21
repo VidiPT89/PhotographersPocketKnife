@@ -46,11 +46,12 @@ struct PresetsPanel: View {
                     editing.flashPreset()
                 }
                 Button { export(preset) } label: { Image(systemName: "square.and.arrow.up") }
-                    .help(app.t("presets.export"))
+                    .hint(app.t("presets.export"))
                 Button(role: .destructive) {
                     context.delete(preset)
                     try? context.save()
                 } label: { Image(systemName: "trash") }
+                .hint(app.t("common.delete"))
             }
             .padding(8)
             .background(Palette.background, in: RoundedRectangle(cornerRadius: 6))

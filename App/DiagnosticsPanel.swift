@@ -18,6 +18,7 @@ struct DiagnosticsPanel: View {
                 Spacer()
                 Button { withAnimation(Motion.snappy) { app.showDiagnostics = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
+                    .hint(app.t("common.close"))
             }
 
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {

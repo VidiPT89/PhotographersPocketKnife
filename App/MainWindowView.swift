@@ -71,6 +71,7 @@ struct SidebarView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Photo.importedAt) private var photos: [Photo]
     @Query(sort: \UploadDestination.createdAt) private var destinations: [UploadDestination]
+    @State private var pendingRemoval: String?
 
     var body: some View {
         let sessions = Dictionary(grouping: photos, by: \.sessionName)
@@ -94,10 +95,7 @@ struct SidebarView: View {
                         app.module = .culling
                     }
                     .contextMenu {
-                        Button(app.t("sidebar.removeFromCatalog"), role: .destructive) {
-                            if app.culling.session == session.name { app.culling.session = nil }
-                            CatalogService.remove(photos.filter { $0.sessionName == session.name }, from: context)
-                        }
+                        Button(app.t("sidebar.removeFromCatalog"), role: .destructive) { pendingRemoval = session.name }
                     }
                 }
             }
@@ -127,6 +125,22 @@ struct SidebarView: View {
         .animation(Motion.snappy, value: app.culling.isImporting)
         .animation(Motion.snappy, value: sessions.count)
         .safeAreaInset(edge: .bottom) { SidebarBrand() }
+        // Uma pasta inteira pode ser um dia de trabalho: vale a pena confirmar antes de a tirar do catálogo.
+        .confirmationDialog(
+            String(format: app.t("sidebar.removeFolderConfirm"), pendingRemoval ?? ""),
+            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(app.t("sidebar.removeFromCatalog"), role: .destructive) {
+                guard let name = pendingRemoval else { return }
+                if app.culling.session == name { app.culling.session = nil }
+                CatalogService.remove(photos.filter { $0.sessionName == name }, from: context)
+                pendingRemoval = nil
+            }
+            Button(app.t("common.cancel"), role: .cancel) { pendingRemoval = nil }
+        } message: {
+            Text(app.t("sidebar.removeFolderMessage"))
+        }
     }
 }
 

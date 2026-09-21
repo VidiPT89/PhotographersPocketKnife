@@ -94,16 +94,17 @@ struct EditingToolbar: View {
         HStack(spacing: 10) {
             Button { editing.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                 .disabled(!editing.history.canUndo)
-                .help(app.t("history.undo"))
+                .hint(app.t("history.undo"))
             Button { editing.redo() } label: { Image(systemName: "arrow.uturn.forward") }
                 .disabled(!editing.history.canRedo)
-                .help(app.t("history.redo"))
+                .hint(app.t("history.redo"))
 
             Picker("", selection: $editing.compareMode) {
                 ForEach(CompareMode.allCases) { Text(app.t($0.labelKey)).tag($0) }
             }
             .pickerStyle(.segmented)
             .fixedSize()
+            .hint(app.t("compare.mode"))
 
             Spacer(minLength: 8)
 
@@ -111,7 +112,7 @@ struct EditingToolbar: View {
                 editing.copySettings()
                 app.showToast(app.t("toast.copied"), icon: "doc.on.doc.fill")
             } label: { Image(systemName: "doc.on.doc") }
-            .help(app.t("editing.copy"))
+            .hint(app.t("editing.copy"))
             Button {
                 guard let clipboard = editing.clipboard else { return }
                 let targets = app.culling.targets(in: list)
@@ -119,9 +120,9 @@ struct EditingToolbar: View {
                 app.showToast(String(format: app.t("toast.pasted"), targets.count), icon: "doc.on.clipboard.fill")
             } label: { Image(systemName: "doc.on.clipboard") }
             .disabled(editing.clipboard == nil)
-            .help(app.t("editing.paste"))
+            .hint(app.t("editing.paste"))
             Button { editing.reset() } label: { Image(systemName: "arrow.counterclockwise") }
-                .help(app.t("editing.reset"))
+                .hint(app.t("editing.reset"))
 
             PrimaryButton(title: app.t("export.title"), systemImage: "square.and.arrow.up") { showExport = true }
         }

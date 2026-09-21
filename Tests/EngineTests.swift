@@ -173,6 +173,20 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(RemotePath.folder(template: "/clientes/{year}/{date}/{event}", date: date, event: "Benfica: Porto"), "/clientes/2026/2026-03-07/Benfica- Porto")
         XCTAssertEqual(RemotePath.folder(template: "{date}/{event}/", date: date, event: ""), "/2026-03-07")
         XCTAssertEqual(RemotePath.join("/a/b/", "foto 1.jpg"), "/a/b/foto 1.jpg")
+        // Um evento escrito à mão não deve conseguir sair da pasta remota escolhida.
+        XCTAssertEqual(RemotePath.folder(template: "/fotos/{event}", date: date, event: ".."), "/fotos")
+        XCTAssertEqual(RemotePath.join("/a/b", ".."), "/a/b/unnamed")
+    }
+
+    func testCommandsCannotBeInjectedThroughNewlines() {
+        // O batch do sftp é uma linha por comando: um nome com mudança de linha não pode acrescentar comandos.
+        XCTAssertEqual(SFTPCommand.quote("/up/a.jpg\nrm /up/tudo"), "\"/up/a.jpgrm /up/tudo\"")
+        // A configuração do curl é uma diretiva por linha: a password vai escapada, não parte a linha.
+        let endpoint = TransferEndpoint(transferProtocol: .ftp, host: "example.com", port: 21, username: "vidi",
+                                        password: "p\nupload-file = /etc/passwd", bucket: "", region: "", trustUnknownHostKey: false)
+        let config = CurlCommand.config(endpoint)
+        XCTAssertEqual(config.filter { $0 == "\n" }.count, 1)
+        XCTAssertTrue(config.contains("\\n"))
     }
 
     func testCurlArgumentsPerProtocolKeepPasswordOutOfArguments() {
@@ -237,6 +251,27 @@ final class EngineTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error \(error)")
         }
+    }
+
+    func testThumbnailCachePruneDropsTheOldestFiles() throws {
+        let cache = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: cache) }
+
+        // Três miniaturas de 1 KB, escritas há 30, 10 e 0 dias.
+        for (name, ageInDays) in [("old", 30.0), ("mid", 10.0), ("new", 0.0)] {
+            let file = cache.appendingPathComponent("\(name).jpg")
+            try Data(repeating: 0, count: 1024).write(to: file)
+            let used = Date().addingTimeInterval(-ageInDays * 86_400)
+            try FileManager.default.setAttributes([.modificationDate: used], ofItemAtPath: file.path)
+        }
+
+        ThumbnailCache.prune(cache, maxBytes: 2048)
+
+        let left = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path))
+        XCTAssertFalse(left.contains("old.jpg"), "The oldest thumbnail goes first")
+        XCTAssertTrue(left.contains("new.jpg"))
+        XCTAssertLessThanOrEqual(left.count, 2)
     }
 
     private func pixel(_ image: CIImage) throws -> (r: Float, g: Float, b: Float) {

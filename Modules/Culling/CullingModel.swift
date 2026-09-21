@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import os
 
 enum FlagFilter: String, CaseIterable, Identifiable {
     case all, picks, rejects, unflagged
@@ -270,9 +271,19 @@ final class CullingModel {
     func importFiles(_ files: [URL], options: PhotoImporter.Options, session: String, context: ModelContext) async {
         isImporting = true
         importProgress = 0
+        // Publica só quando a percentagem inteira sobe: importar milhares de ficheiros não deve acordar
+        // o MainActor uma vez por ficheiro.
+        let lastPercent = OSAllocatedUnfairLock(initialState: -1)
         let result = await Task.detached(priority: .userInitiated) {
             (try? PhotoImporter.runReporting(files: files, options: options) { done, total in
-                Task { @MainActor in self.importProgress = Double(done) / Double(max(total, 1)) }
+                let percent = done * 100 / max(total, 1)
+                let changed = lastPercent.withLock { last -> Bool in
+                    guard percent > last else { return false }
+                    last = percent
+                    return true
+                }
+                guard changed else { return }
+                Task { @MainActor in self.importProgress = Double(percent) / 100 }
             }) ?? PhotoImporter.Result(infos: [], failures: [])
         }.value
         lastImportFailures = result.failures.count

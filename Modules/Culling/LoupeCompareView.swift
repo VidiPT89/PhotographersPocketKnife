@@ -17,23 +17,26 @@ struct LoupeView: View {
             }
             .animation(Motion.smooth, value: photo.id)
             .onAppear { if app.culling.focusedID == nil { app.culling.focusedID = photo.id } }
-            .task(id: photo.id) { prefetch(around: photo) }
+            .task(id: photo.id) { await prefetch(around: photo) }
         } else {
             EmptyModuleView(systemImage: "rectangle", title: app.t("filter.noResults"), subtitle: "")
         }
     }
 
     /// Prepara n+1…n+8 e n−1…n−4 (invertido se a navegação vai para trás), para a foto seguinte aparecer já.
-    private func prefetch(around photo: Photo) {
+    private func prefetch(around photo: Photo) async {
         guard let index = list.firstIndex(where: { $0.id == photo.id }) else { return }
         let forward = app.culling.lastDirection >= 0
         let ahead = forward ? 8 : 4, behind = forward ? 4 : 8
         let order = (1...ahead).map { index + $0 } + (1...behind).map { index - $0 }
         let urls = order.filter { list.indices.contains($0) }.map { list[$0].url }
-        Task.detached(priority: .utility) {
-            for url in urls where !Task.isCancelled {
+        // A verificação de cancelamento tem de ficar nesta tarefa: uma tarefa destacada não a herdaria,
+        // e a navegação rápida deixaria a preparar miniaturas que já ninguém vai ver.
+        for url in urls {
+            guard !Task.isCancelled else { return }
+            await Task.detached(priority: .utility) {
                 _ = ThumbnailCache.shared.thumbnail(for: url, maxPixel: 2400)
-            }
+            }.value
         }
     }
 }
@@ -104,9 +107,12 @@ struct LoupeCanvas: View {
             fullImage = nil
             let url = photo.url
             let longest = max(photo.pixelWidth, photo.pixelHeight, 2400)
-            fullImage = await Task.detached(priority: .userInitiated) {
+            let loaded = await Task.detached(priority: .userInitiated) {
                 ThumbnailCache.generate(url: url, maxPixel: longest).map { SendableImage(cgImage: $0) }
             }.value?.cgImage
+            // Trocar de foto (ou sair do zoom) cancela esta tarefa antes de a imagem estar pronta.
+            guard !Task.isCancelled else { return }
+            fullImage = loaded
         }
         .overlay(alignment: .topLeading) {
             if culling.focusPeaking {
@@ -126,7 +132,7 @@ struct LoupeCanvas: View {
             }
             let url = photo.url
             let recipeData = photo.recipeData
-            peaking = await Task.detached(priority: .userInitiated) { () -> SendableImage? in
+            let overlay = await Task.detached(priority: .userInitiated) { () -> SendableImage? in
                 // Calculado sobre a mesma imagem que a lupa mostra (com a revelação, se houver).
                 let base: CGImage?
                 if let recipeData, let recipe = try? JSONDecoder().decode(EditRecipe.self, from: recipeData), !recipe.isIdentity {
@@ -136,6 +142,8 @@ struct LoupeCanvas: View {
                 }
                 return base.flatMap { FocusPeaking.overlay(for: $0) }.map { SendableImage(cgImage: $0) }
             }.value?.cgImage
+            guard !Task.isCancelled else { return }
+            peaking = overlay
         }
     }
 
@@ -240,6 +248,8 @@ struct CompareView: View {
             )
             .onTapGesture(count: 2) { reset() }
         }
+        // Comparar outro par recomeça de raiz: o zoom e o deslocamento do par anterior não se aplicam.
+        .onChange(of: photos.map(\.id)) { _, _ in reset() }
         .overlay(alignment: .topTrailing) {
             if zoom > 1 {
                 Button { reset() } label: {

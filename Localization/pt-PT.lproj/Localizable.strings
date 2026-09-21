@@ -415,6 +415,7 @@
 "settings.shortcuts" = "Atalhos";
 "settings.upload" = "Envio";
 "settings.clearCache" = "Limpar cache de miniaturas";
+"settings.cacheCleared" = "Cache limpa";
 "settings.shortcutsHint" = "Clica num campo e carrega na nova tecla. Se a tecla já estiver em uso, as duas ações trocam.";
 "settings.resetShortcuts" = "Repor atalhos originais";
 "settings.concurrent" = "Envios em simultâneo";
@@ -639,3 +640,27 @@
 "denoise.started" = "A reduzir o ruído de %d fotos em segundo plano";
 "denoise.running" = "Redução de ruído: %d de %d";
 "denoise.finished" = "Redução de ruído concluída: %d criadas, %d falhadas";
+
+/* Nomes dos controlos que só têm ícone (dica e VoiceOver) */
+"common.delete" = "Eliminar";
+"common.remove" = "Remover";
+"common.retry" = "Tentar de novo";
+"common.close" = "Fechar";
+"culling.viewMode" = "Vista";
+"compare.mode" = "Antes e depois";
+"editing.section" = "Secção";
+"curve.channel" = "Canal da curva";
+"hsl.component" = "Componente HSL";
+"geometry.rotateLeft" = "Rodar para a esquerda";
+"geometry.rotateRight" = "Rodar para a direita";
+"removal.modeTitle" = "Modo de remoção";
+"upload.tabTitle" = "Vista do envio";
+
+/* Nomes por defeito */
+"snapshot.untitled" = "Instantâneo %d";
+"contactSheet.fileName" = "%@ - folha de contacto.pdf";
+"gallery.folderName" = "Galeria";
+"denoise.sessionName" = "Redução de ruído";
+"destination.exampleEvent" = "Evento";
+"sidebar.removeFolderConfirm" = "Remover \"%@\" do catálogo?";
+"sidebar.removeFolderMessage" = "As fotos ficam no disco. A classificação e a revelação guardadas nos sidecars .ppk também se mantêm.";

@@ -111,7 +111,7 @@ struct DestinationEditor: View {
                             .truncationMode(.middle)
                         Button { copyAddress() } label: { Image(systemName: "doc.on.doc") }
                             .buttonStyle(.borderless)
-                            .help(app.t("destination.copyAddress"))
+                            .hint(app.t("destination.copyAddress"))
                     }
                 }
             }
@@ -165,7 +165,7 @@ struct DestinationEditor: View {
     }
 
     private var exampleFolder: String {
-        RemotePath.folder(template: destination.remoteFolderTemplate, date: Date(), event: "Evento")
+        RemotePath.folder(template: destination.remoteFolderTemplate, date: Date(), event: app.t("destination.exampleEvent"))
     }
 
     private var exampleAddress: String {

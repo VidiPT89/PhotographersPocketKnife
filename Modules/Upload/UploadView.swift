@@ -19,6 +19,7 @@ struct UploadView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 320)
+                .hint(app.t("upload.tabTitle"))
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -197,9 +198,11 @@ struct TransferRow: View {
             if case .failed = item.status {
                 Button { app.transfers.retry(item) } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless)
+                    .hint(app.t("common.retry"))
             }
             Button { app.transfers.remove(item) } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
+                .hint(app.t("common.remove"))
         }
         .padding(.vertical, 4)
         // Erro: agita 6 px na horizontal, dois ciclos.

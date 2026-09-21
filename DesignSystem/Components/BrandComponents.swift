@@ -1,5 +1,13 @@
 import SwiftUI
 
+extension View {
+    /// Legenda para controlos que só mostram um ícone: `help` dá a dica com o rato, mas não dá nome
+    /// ao VoiceOver, por isso os dois andam sempre juntos.
+    func hint(_ text: String) -> some View {
+        help(text).accessibilityLabel(text)
+    }
+}
+
 /// Botão primário: gradiente da marca, brilho no hover e "afundar" ao clicar.
 struct PrimaryButton: View {
     let title: String

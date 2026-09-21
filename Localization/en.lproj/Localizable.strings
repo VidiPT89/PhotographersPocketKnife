@@ -415,6 +415,7 @@
 "settings.shortcuts" = "Shortcuts";
 "settings.upload" = "Upload";
 "settings.clearCache" = "Clear thumbnail cache";
+"settings.cacheCleared" = "Cache cleared";
 "settings.shortcutsHint" = "Click a field and press the new key. If the key is already in use, both actions swap.";
 "settings.resetShortcuts" = "Restore default shortcuts";
 "settings.concurrent" = "Simultaneous uploads";
@@ -639,3 +640,27 @@
 "denoise.started" = "Reducing noise on %d photos in the background";
 "denoise.running" = "Noise reduction: %d of %d";
 "denoise.finished" = "Noise reduction finished: %d created, %d failed";
+
+/* Names for icon-only controls (tooltip and VoiceOver) */
+"common.delete" = "Delete";
+"common.remove" = "Remove";
+"common.retry" = "Retry";
+"common.close" = "Close";
+"culling.viewMode" = "View";
+"compare.mode" = "Before and after";
+"editing.section" = "Section";
+"curve.channel" = "Curve channel";
+"hsl.component" = "HSL component";
+"geometry.rotateLeft" = "Rotate left";
+"geometry.rotateRight" = "Rotate right";
+"removal.modeTitle" = "Removal mode";
+"upload.tabTitle" = "Deliver view";
+
+/* Default names */
+"snapshot.untitled" = "Snapshot %d";
+"contactSheet.fileName" = "%@ - contact sheet.pdf";
+"gallery.folderName" = "Gallery";
+"denoise.sessionName" = "Noise reduction";
+"destination.exampleEvent" = "Event";
+"sidebar.removeFolderConfirm" = "Remove \"%@\" from the catalog?";
+"sidebar.removeFolderMessage" = "The photos stay on disk. Ratings and edits saved in .ppk sidecars are kept too.";

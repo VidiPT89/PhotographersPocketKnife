@@ -50,14 +50,14 @@ struct DestinationsView: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .frame(width: 22)
-                    .help(app.t("destination.new"))
+                    .hint(app.t("destination.new"))
                     Button { pendingDelete = selected } label: { Image(systemName: "minus") }
                         .disabled(selected == nil)
-                        .help(app.t("destination.delete"))
+                        .hint(app.t("destination.delete"))
                     Spacer()
                     Button { testAll() } label: { Image(systemName: "bolt.horizontal.circle") }
                         .disabled(destinations.isEmpty || !testingIDs.isEmpty)
-                        .help(app.t("destination.testAll"))
+                        .hint(app.t("destination.testAll"))
                 }
                 .buttonStyle(.borderless)
                 .padding(8)

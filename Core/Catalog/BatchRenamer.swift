@@ -21,10 +21,15 @@ enum RenameTemplate {
         return result.isEmpty ? originalName : result
     }
 
+    /// Reduz o texto a um único componente de caminho seguro. O nome do evento é escrito pelo fotógrafo
+    /// e acaba em pastas locais e remotas, por isso separadores, caracteres de controlo e os nomes
+    /// especiais `.` e `..` (que subiriam na hierarquia) são retirados.
     static func sanitize(_ name: String) -> String {
-        name.replacingOccurrences(of: "/", with: "-")
+        let cleaned = name.replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
+            .components(separatedBy: .controlCharacters).joined()
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.allSatisfy { $0 == "." } ? "" : cleaned
     }
 }
 
@@ -77,24 +82,30 @@ enum BatchRenamer {
     /// Renomeia em duas fases (nome temporário → nome final) para suportar cadeias A→B, B→C.
     static func apply(_ plans: [Plan]) throws {
         let fm = FileManager.default
-        var staged: [(temp: URL, sidecarTemp: URL?, plan: Plan)] = []
+        // Os sidecars acompanham a foto: sem eles, a classificação (.ppk) e o XMP ficariam no nome antigo.
+        let sidecarKinds: [(url: (URL) -> URL, suffix: String)] = [
+            ({ MetadataWriter.sidecarURL(for: $0) }, "xmp"),
+            ({ PPKSidecar.url(for: $0) }, "ppk"),
+        ]
+        var staged: [(temp: URL, sidecarTemps: [URL?], plan: Plan)] = []
         for plan in plans where plan.from != plan.to {
             let dir = plan.from.deletingLastPathComponent()
             let temp = dir.appendingPathComponent(".ppk-rename-\(UUID().uuidString)")
             try fm.moveItem(at: plan.from, to: temp)
-            // O sidecar .xmp também passa por um nome temporário, senão entra na cadeia de outro plano.
-            var sidecarTemp: URL?
-            let sidecar = MetadataWriter.sidecarURL(for: plan.from)
-            if fm.fileExists(atPath: sidecar.path) {
-                let candidate = dir.appendingPathComponent(".ppk-rename-\(UUID().uuidString).xmp")
-                if (try? fm.moveItem(at: sidecar, to: candidate)) != nil { sidecarTemp = candidate }
+            // Cada sidecar também passa por um nome temporário, senão entra na cadeia de outro plano.
+            let sidecarTemps = sidecarKinds.map { kind -> URL? in
+                let sidecar = kind.url(plan.from)
+                guard fm.fileExists(atPath: sidecar.path) else { return nil }
+                let candidate = dir.appendingPathComponent(".ppk-rename-\(UUID().uuidString).\(kind.suffix)")
+                return (try? fm.moveItem(at: sidecar, to: candidate)) != nil ? candidate : nil
             }
-            staged.append((temp, sidecarTemp, plan))
+            staged.append((temp, sidecarTemps, plan))
         }
-        for (temp, sidecarTemp, plan) in staged {
+        for (temp, sidecarTemps, plan) in staged {
             try fm.moveItem(at: temp, to: plan.to)
-            if let sidecarTemp {
-                try? fm.moveItem(at: sidecarTemp, to: MetadataWriter.sidecarURL(for: plan.to))
+            for (kind, sidecarTemp) in zip(sidecarKinds, sidecarTemps) {
+                guard let sidecarTemp else { continue }
+                try? fm.moveItem(at: sidecarTemp, to: kind.url(plan.to))
             }
         }
     }

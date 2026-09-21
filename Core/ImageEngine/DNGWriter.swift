@@ -113,8 +113,16 @@ enum DNGWriter {
         let scale = min(1, 256 / max(extent.width, extent.height))
         let width = max(1, Int((extent.width * scale).rounded()))
         let height = max(1, Int((extent.height * scale).rounded()))
+        // Reduz antes de revelar: desenhar o ficheiro inteiro só para ficar com 256 px custaria
+        // a memória e o tempo da exportação completa outra vez.
+        let cropped = image.cropped(to: extent)
+        let reduce = CIFilter.lanczosScaleTransform()
+        reduce.inputImage = cropped
+        reduce.scale = Float(scale)
+        let small = (scale < 1 ? reduce.outputImage : nil) ?? cropped
+        let box = CGRect(origin: small.extent.origin, size: CGSize(width: CGFloat(width), height: CGFloat(height)))
         guard let sRGB = CGColorSpace(name: CGColorSpace.sRGB),
-              let rendered = context.createCGImage(image, from: extent, format: .RGBA8, colorSpace: sRGB) else {
+              let rendered = context.createCGImage(small, from: box, format: .RGBA8, colorSpace: sRGB) else {
             throw WriteError.render
         }
         var rgba = [UInt8](repeating: 0, count: width * height * 4)
