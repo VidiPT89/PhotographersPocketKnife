@@ -28,8 +28,9 @@ enum Inpainter {
         let sources: [Int32]
     }
 
-    /// Patches de 7×7.
-    static let radius = 3
+    /// Meio-lado do patch. 7×7 era pequeno de mais: cada cópia trazia menos do que uma mancha da textura,
+    /// e a zona saía aos bocados. 11×11 traz um pedaço reconhecível de cada vez.
+    static let radius = 5
 
     static func solve(_ image: Image, hole: [Bool]) -> Field {
         let w = image.width, h = image.height
@@ -243,12 +244,13 @@ enum Inpainter {
     }
 
     /// Cópia na resolução nativa a partir de um campo calculado em pequeno: o que se amplia é o *deslocamento*
-    /// de cada patch, não os píxeis. Píxeis vizinhos que caem no mesmo ponto do campo herdam o mesmo deslocamento,
-    /// por isso o que é copiado é um bocado contínuo de textura verdadeira.
+    /// de cada patch, não os píxeis.
     ///
-    /// O deslocamento cresce na mesma proporção nos dois eixos, portanto a origem ampliada cai dentro do píxel de
-    /// origem que o `PatchMatch` escolheu (± 1). Como esse só foi aceite com um patch inteiro fora da zona, o
-    /// arredondamento nunca chega a ir buscar píxeis ao objeto que está a ser removido.
+    /// O deslocamento é interpolado entre os quatro pontos vizinhos do campo. Dentro de um patch os quatro
+    /// concordam e o resultado é uma cópia exacta, sem perder nitidez; só na junta entre dois patches é que
+    /// discordam, e aí as duas texturas cruzam-se em vez de deixarem um degrau. Sem isto, cada ponto do campo
+    /// virava um quadrado com o seu próprio deslocamento e o preenchimento saía aos quadrados — foi o que o
+    /// David viu como "um borrão e todo pixelizado".
     private static func upscaledFill(_ image: Image, hole: [Bool], field: Field) -> Image {
         let fw = field.width, fh = field.height
         var sourceOf = [Int32](repeating: -1, count: fw * fh)
@@ -260,18 +262,34 @@ enum Inpainter {
         var pixels = image.pixels
         image.pixels.withUnsafeBufferPointer { px in
             for y in 0..<h {
-                let fy = min(Int(Double(y) * toField.y), fh - 1)
+                let fyExact = (Double(y) + 0.5) * toField.y - 0.5
+                let fy0 = Int(floor(fyExact))
+                let ty = Float(fyExact - Double(fy0))
                 for x in 0..<w {
-                    let fx = min(Int(Double(x) * toField.x), fw - 1)
-                    let t = fy * fw + fx
-                    guard hole[t] else { continue }
-                    let s = Int(sourceOf[t])
-                    guard s >= 0 else { continue }
-                    let dx = Int((Double(s % fw - fx) * toImage.x).rounded())
-                    let dy = Int((Double(s / fw - fy) * toImage.y).rounded())
-                    let ax = min(max(x + dx, 0), w - 1), ay = min(max(y + dy, 0), h - 1)
-                    let a = (ay * w + ax) * 3, b = (y * w + x) * 3
-                    pixels[b] = px[a]; pixels[b + 1] = px[a + 1]; pixels[b + 2] = px[a + 2]
+                    let fxExact = (Double(x) + 0.5) * toField.x - 0.5
+                    let fx0 = Int(floor(fxExact))
+                    let tx = Float(fxExact - Double(fx0))
+                    let nearest = min(max(fy0 + (ty > 0.5 ? 1 : 0), 0), fh - 1) * fw
+                        + min(max(fx0 + (tx > 0.5 ? 1 : 0), 0), fw - 1)
+                    guard hole[nearest] else { continue }
+
+                    var r: Float = 0, g: Float = 0, b: Float = 0, total: Float = 0
+                    for (cx, cy, weight) in [(fx0, fy0, (1 - tx) * (1 - ty)), (fx0 + 1, fy0, tx * (1 - ty)),
+                                             (fx0, fy0 + 1, (1 - tx) * ty), (fx0 + 1, fy0 + 1, tx * ty)] {
+                        guard weight > 0 else { continue }
+                        let qx = min(max(cx, 0), fw - 1), qy = min(max(cy, 0), fh - 1)
+                        let s = Int(sourceOf[qy * fw + qx])
+                        guard s >= 0 else { continue }
+                        let dx = Int((Double(s % fw - qx) * toImage.x).rounded())
+                        let dy = Int((Double(s / fw - qy) * toImage.y).rounded())
+                        let ax = min(max(x + dx, 0), w - 1), ay = min(max(y + dy, 0), h - 1)
+                        let a = (ay * w + ax) * 3
+                        r += px[a] * weight; g += px[a + 1] * weight; b += px[a + 2] * weight
+                        total += weight
+                    }
+                    guard total > 0 else { continue }
+                    let o = (y * w + x) * 3
+                    pixels[o] = r / total; pixels[o + 1] = g / total; pixels[o + 2] = b / total
                 }
             }
         }
