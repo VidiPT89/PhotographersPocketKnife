@@ -189,6 +189,55 @@ final class SmartEditTests: XCTestCase {
 
 
 
+    /// Harness visual. Desligado por omissão; correr com
+    /// `TEST_RUNNER_PPK_DUMP=<pasta> xcodebuild test -only-testing:.../testDiagnosticCrowd`.
+    /// Textura tipo bancada — manchas desfocadas do tamanho de uma cabeça — porque é nela que o
+    /// preenchimento se denuncia: num fundo liso qualquer junta é uma aresta onde não devia haver nenhuma.
+    func testDiagnosticCrowd() throws {
+        guard let out = ProcessInfo.processInfo.environment["PPK_DUMP"] else { throw XCTSkip("no dump dir") }
+        let width = 2000, height = 1200
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        var state: UInt64 = 99
+        func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+        func rnd(_ a: Double, _ b: Double) -> Double { a + Double(next() % 10000) / 10000 * (b - a) }
+        ctx.setFillColor(CGColor(red: 0.10, green: 0.10, blue: 0.13, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        for _ in 0..<9000 {
+            let x = rnd(0, Double(width)), y = rnd(0, Double(height))
+            let r = rnd(10, 34), tone = rnd(0.08, 0.85)
+            ctx.setFillColor(CGColor(red: tone * rnd(0.8, 1.1), green: tone * rnd(0.8, 1.05),
+                                     blue: tone * rnd(0.85, 1.15), alpha: rnd(0.35, 0.95)))
+            ctx.fillEllipse(in: CGRect(x: x, y: y, width: r, height: r * rnd(0.9, 1.4)))
+        }
+        let crowd = try XCTUnwrap(ctx.makeImage())
+        let blurred = CIImage(cgImage: crowd).clampedToExtent().applyingGaussianBlur(sigma: 3)
+            .cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
+        let photo = try XCTUnwrap(ImageRenderer.shared.context.createCGImage(blurred, from: blurred.extent))
+
+        // Pincel de 5%, como o do fotógrafo: a zona é pequena e nem chega a ser reduzida.
+        var recipe = EditRecipe()
+        recipe.removals = [Removal(strokes: [BrushStroke(points: (0..<4).map {
+            CurvePoint(x: (700.0 + Double($0) * 22) / Double(width), y: 1 - (500.0 + Double($0) * 18) / Double(height))
+        }, size: 0.05)])]
+
+        let output = ImageRenderer.shared.apply(recipe, to: CIImage(cgImage: photo))
+        let result = try XCTUnwrap(ImageRenderer.shared.context.createCGImage(output, from: output.extent))
+        for (name, image) in [("crowd_before", photo), ("crowd_after", result)] {
+            let url = URL(fileURLWithPath: out).appendingPathComponent("\(name).png")
+            let d = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+            CGImageDestinationAddImage(d, image, nil)
+            CGImageDestinationFinalize(d)
+        }
+    }
+
     // MARK: Utilitários
 
     /// Fundo com riscas diagonais verdes e, opcionalmente, um quadrado vermelho (coordenadas com origem em baixo).
