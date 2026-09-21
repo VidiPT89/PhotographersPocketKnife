@@ -55,6 +55,24 @@ final class SmartEditTests: XCTestCase {
         XCTAssertLessThan(brighter.r, brighter.g)
     }
 
+    func testRemovalKeepsTheTextureSharpOnALargePhoto() throws {
+        // Numa foto grande a zona a preencher é muito maior do que o lado de trabalho do `Inpainter`.
+        // O preenchimento tem de ser copiado na resolução da região, senão chega ao ecrã como um borrão.
+        let square = CGRect(x: 960, y: 660, width: 480, height: 480)
+        let photo = CIImage(cgImage: try finelyStripedImage(width: 2400, height: 1800, period: 10, square: square))
+        var recipe = EditRecipe()
+        recipe.removals = [Removal(strokes: [BrushStroke(points: [CurvePoint(x: 0.5, y: 0.5)], size: 0.3)])]
+
+        let output = ImageRenderer.shared.apply(recipe, to: photo)
+        let centre = try pixel(output, at: CGPoint(x: 1200, y: 900))
+        XCTAssertLessThan(centre.r, centre.g, "The red square was replaced by the striped background")
+
+        let filled = try detail(output, in: CGRect(x: 1080, y: 780, width: 240, height: 240))
+        let control = try detail(output, in: CGRect(x: 300, y: 300, width: 240, height: 240))
+        print("PPK removal detail: filled \(filled) control \(control) ratio \(filled / control)")
+        XCTAssertGreaterThan(filled, control * 0.6, "The filled area keeps the texture of its surroundings")
+    }
+
     func testRemovalsAndSubjectMasksSurviveCodableAndPresets() throws {
         var recipe = EditRecipe()
         recipe.removals = [Removal(objectPoint: CurvePoint(x: 0.4, y: 0.6)), Removal(strokes: [BrushStroke(points: [CurvePoint(x: 0.1, y: 0.1)])])]
@@ -180,6 +198,44 @@ final class SmartEditTests: XCTestCase {
         context.setFillColor(CGColor(red: 0.05, green: 0.2, blue: 0.35, alpha: 1))
         context.fill(CGRect(x: -CGFloat(width), y: -CGFloat(height) * 1.5, width: CGFloat(width) * 2, height: CGFloat(height) * 1.5))
         return try XCTUnwrap(context.makeImage())
+    }
+
+    /// Riscas finas e densas: qualquer perda de nitidez aparece como queda do gradiente médio.
+    private func finelyStripedImage(width: Int, height: Int, period: Int, square: CGRect? = nil) throws -> CGImage {
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        for (index, start) in stride(from: -height, to: width + height, by: period).enumerated() {
+            let tone: CGFloat = index % 2 == 0 ? 0.28 : 0.72
+            context.setFillColor(CGColor(red: tone * 0.6, green: tone, blue: tone * 0.8, alpha: 1))
+            context.move(to: CGPoint(x: start, y: 0))
+            context.addLine(to: CGPoint(x: start + period, y: 0))
+            context.addLine(to: CGPoint(x: start + period + height, y: height))
+            context.addLine(to: CGPoint(x: start + height, y: height))
+            context.fillPath()
+        }
+        if let square {
+            context.setFillColor(CGColor(red: 0.95, green: 0.05, blue: 0.05, alpha: 1))
+            context.fill(square)
+        }
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    /// Energia do gradiente (ao quadrado) numa zona: mede a nitidez. Ao contrário do gradiente médio,
+    /// não se conserva quando uma aresta é espalhada por vários píxeis — é isso que distingue nítido de borrado.
+    private func detail(_ image: CIImage, in region: CGRect) throws -> Float {
+        let width = Int(region.width), height = Int(region.height)
+        var rgba = [Float](repeating: 0, count: width * height * 4)
+        ImageRenderer.shared.context.render(image, toBitmap: &rgba, rowBytes: width * 16, bounds: region,
+                                            format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        var total: Float = 0
+        for y in 0..<(height - 1) {
+            for x in 0..<(width - 1) {
+                let i = (y * width + x) * 4
+                let dx = rgba[i + 1] - rgba[i + 5], dy = rgba[i + 1] - rgba[((y + 1) * width + x) * 4 + 1]
+                total += dx * dx + dy * dy
+            }
+        }
+        return total / Float((width - 1) * (height - 1))
     }
 
     private func pixel(_ image: CIImage, at point: CGPoint) throws -> (r: Float, g: Float, b: Float) {

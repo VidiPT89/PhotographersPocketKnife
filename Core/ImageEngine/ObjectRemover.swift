@@ -5,8 +5,11 @@ import CoreImage.CIFilterBuiltins
 /// As correspondências são calculadas sobre a foto sem ajustes e ficam em cache: mexer nos sliders só volta a copiar píxeis.
 final class ObjectRemover: @unchecked Sendable {
     static let shared = ObjectRemover()
-    /// Lado maior da região onde corre o preenchimento: equilíbrio entre qualidade e tempo de resposta.
+    /// Lado maior da região onde são *procuradas* as correspondências: equilíbrio entre qualidade e tempo de resposta.
     static let workingSide: CGFloat = 512
+    /// Lado maior a que a textura é *copiada*. A procura pode correr em pequeno, a cópia não: ampliar o resultado
+    /// de 512 px para uma região de 4000 px era o que fazia a remoção parecer um borrão por cima do objeto.
+    static let maxFillSide: CGFloat = 2048
 
     private struct Solution {
         let region: CGRect
@@ -14,6 +17,9 @@ final class ObjectRemover: @unchecked Sendable {
         let height: Int
         let hole: [Bool]
         let field: Inpainter.Field
+        /// Resolução a que a textura é copiada: a da região, até ao tecto do `maxFillSide`.
+        let fillWidth: Int
+        let fillHeight: Int
         let blendMask: CIImage
     }
 
@@ -25,7 +31,7 @@ final class ObjectRemover: @unchecked Sendable {
         let e = image.extent
         guard !removals.isEmpty, !e.isInfinite, e.width >= 16, e.height >= 16,
               let solution = solution(for: removals, reference: reference),
-              let current = Self.pixels(of: image, region: solution.region, width: solution.width, height: solution.height),
+              let current = Self.pixels(of: image, region: solution.region, width: solution.fillWidth, height: solution.fillHeight),
               let patch = Self.image(from: Inpainter.fill(current, hole: solution.hole, field: solution.field), region: solution.region)
         else { return image }
         return patch
@@ -53,10 +59,18 @@ final class ObjectRemover: @unchecked Sendable {
         let rawHole = (0..<(width * height)).map { maskPixels.pixels[$0 * 3] > 0.05 }
         let hole = Self.dilate(rawHole, width: width, height: height, radius: 2)
         let field = Inpainter.solve(referencePixels, hole: hole)
-        let pixelSize = Double(region.width) / Double(width)
+
+        // A cópia é feita na resolução da própria região, com um tecto para não gastar memória sem fim
+        // numa exportação de 45 MP. Nunca abaixo da resolução da procura.
+        let fillScale = min(Self.maxFillSide / max(region.width, region.height), 1)
+        let fillWidth = max(Int(region.width * fillScale), width)
+        let fillHeight = max(Int(region.height * fillScale), height)
+        // A junta acompanha a resolução da cópia: com textura nítida, esborratar a margem dava-a a ver.
+        let pixelSize = Double(region.width) / Double(fillWidth)
         let blendMask = holeMask.clampedToExtent().applyingGaussianBlur(sigma: max(pixelSize, 1) * 1.2).cropped(to: e)
 
-        let solution = Solution(region: region, width: width, height: height, hole: hole, field: field, blendMask: blendMask)
+        let solution = Solution(region: region, width: width, height: height, hole: hole, field: field,
+                                fillWidth: fillWidth, fillHeight: fillHeight, blendMask: blendMask)
         lock.withLock {
             cache[key] = solution
             order.append(key)

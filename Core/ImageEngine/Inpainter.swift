@@ -59,21 +59,63 @@ enum Inpainter {
         return Field(width: image.width, height: image.height, targets: previous.geometry.targets, sources: previous.sources)
     }
 
-    /// Aplica as correspondências a uma imagem com o mesmo tamanho (ex. a mesma região depois de mexer nos sliders).
-    /// No resultado final cada píxel copia o centro do seu patch de origem: a média dos patches deixaria a textura esborratada.
+    /// Aplica as correspondências a uma imagem da mesma região (ex. depois de mexer nos sliders). A imagem pode
+    /// ser maior do que o campo: as correspondências são procuradas numa versão reduzida, mas a cópia é feita na
+    /// resolução que vem — copiar em pequeno e ampliar depois entregava um borrão em vez de textura.
+    /// Cada píxel copia o centro do seu patch de origem: a média dos patches deixaria a textura esborratada.
     static func fill(_ image: Image, hole: [Bool], field: Field) -> Image {
-        guard field.width == image.width, field.height == image.height, !field.targets.isEmpty,
-              hole.count == image.width * image.height else { return image }
-        var pixels = image.pixels
-        for k in 0..<field.targets.count {
-            let t = Int(field.targets[k])
-            guard hole[t] else { continue }
-            let s = Int(field.sources[k])
-            pixels[t * 3] = image.pixels[s * 3]
-            pixels[t * 3 + 1] = image.pixels[s * 3 + 1]
-            pixels[t * 3 + 2] = image.pixels[s * 3 + 2]
+        guard !field.targets.isEmpty, hole.count == field.width * field.height,
+              image.pixels.count == image.width * image.height * 3,
+              image.width >= field.width, image.height >= field.height else { return image }
+        if image.width == field.width, image.height == field.height {
+            var pixels = image.pixels
+            for k in 0..<field.targets.count {
+                let t = Int(field.targets[k])
+                guard hole[t] else { continue }
+                let s = Int(field.sources[k])
+                pixels[t * 3] = image.pixels[s * 3]
+                pixels[t * 3 + 1] = image.pixels[s * 3 + 1]
+                pixels[t * 3 + 2] = image.pixels[s * 3 + 2]
+            }
+            return Image(width: image.width, height: image.height, pixels: pixels)
         }
-        return Image(width: image.width, height: image.height, pixels: pixels)
+        return upscaledFill(image, hole: hole, field: field)
+    }
+
+    /// Cópia na resolução nativa a partir de um campo calculado em pequeno: o que se amplia é o *deslocamento*
+    /// de cada patch, não os píxeis. Píxeis vizinhos que caem no mesmo ponto do campo herdam o mesmo deslocamento,
+    /// por isso o que é copiado é um bocado contínuo de textura verdadeira.
+    ///
+    /// O deslocamento cresce na mesma proporção nos dois eixos, portanto a origem ampliada cai dentro do píxel de
+    /// origem que o `PatchMatch` escolheu (± 1). Como esse só foi aceite com um patch inteiro fora da zona, o
+    /// arredondamento nunca chega a ir buscar píxeis ao objeto que está a ser removido.
+    private static func upscaledFill(_ image: Image, hole: [Bool], field: Field) -> Image {
+        let fw = field.width, fh = field.height
+        var sourceOf = [Int32](repeating: -1, count: fw * fh)
+        for k in 0..<field.targets.count { sourceOf[Int(field.targets[k])] = field.sources[k] }
+
+        let w = image.width, h = image.height
+        let toField = (x: Double(fw) / Double(w), y: Double(fh) / Double(h))
+        let toImage = (x: Double(w) / Double(fw), y: Double(h) / Double(fh))
+        var pixels = image.pixels
+        image.pixels.withUnsafeBufferPointer { px in
+            for y in 0..<h {
+                let fy = min(Int(Double(y) * toField.y), fh - 1)
+                for x in 0..<w {
+                    let fx = min(Int(Double(x) * toField.x), fw - 1)
+                    let t = fy * fw + fx
+                    guard hole[t] else { continue }
+                    let s = Int(sourceOf[t])
+                    guard s >= 0 else { continue }
+                    let dx = Int((Double(s % fw - fx) * toImage.x).rounded())
+                    let dy = Int((Double(s / fw - fy) * toImage.y).rounded())
+                    let ax = min(max(x + dx, 0), w - 1), ay = min(max(y + dy, 0), h - 1)
+                    let a = (ay * w + ax) * 3, b = (y * w + x) * 3
+                    pixels[b] = px[a]; pixels[b + 1] = px[a + 1]; pixels[b + 2] = px[a + 2]
+                }
+            }
+        }
+        return Image(width: w, height: h, pixels: pixels)
     }
 
     // MARK: PatchMatch
