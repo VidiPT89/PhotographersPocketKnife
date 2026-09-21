@@ -664,3 +664,4 @@
 "destination.exampleEvent" = "Evento";
 "sidebar.removeFolderConfirm" = "Remover \"%@\" do catálogo?";
 "sidebar.removeFolderMessage" = "As fotos ficam no disco. A classificação e a revelação guardadas nos sidecars .ppk também se mantêm.";
+"watchFolder.defaultSession" = "Direto";

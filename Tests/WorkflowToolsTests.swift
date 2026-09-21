@@ -48,6 +48,11 @@ final class WorkflowToolsTests: XCTestCase {
         let sizes = WatchFolderScanner.sizes(in: folder)
         XCTAssertEqual(sizes.count, 1)
         XCTAssertEqual(sizes.values.first, 12)
+
+        // O que já está no catálogo nunca volta a ficar pronto, por isso nem sequer é lido: numa pasta
+        // vigiada durante um evento é o que evita milhares de leituras de disco de dois em dois segundos.
+        let known = Set(sizes.keys)
+        XCTAssertTrue(WatchFolderScanner.sizes(in: folder, ignoring: known).isEmpty)
     }
 
     func testFocusPeakingMarksSharpEdgesMoreThanBlurredOnes() throws {

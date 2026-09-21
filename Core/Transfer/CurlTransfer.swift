@@ -305,6 +305,9 @@ final class CurlProcess: @unchecked Sendable {
 
     /// `config` é escrito no stdin (configuração do curl ou comandos batch do sftp).
     func run(arguments: [String], config: String, onProgress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
+        // Pausar mal o envio arranca podia chamar `cancel()` antes de haver processo para terminar,
+        // e o ficheiro seguia à mesma para o servidor só para depois voltar à fila.
+        guard !lock.withLock({ cancelled }) else { throw TransferError.cancelled }
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         if let environment {

@@ -10,9 +10,12 @@ enum WatchFolderScanner {
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    static func sizes(in folder: URL) -> [String: Int64] {
+    /// Isto corre de dois em dois segundos enquanto a vigilância está ligada, por isso só olha para o que
+    /// pode mudar de estado: um ficheiro que já está no catálogo nunca volta a ficar pronto, e pedir-lhe o
+    /// tamanho ao fim de milhares de fotos num evento era trabalho de disco puro e duro repetido para nada.
+    static func sizes(in folder: URL, ignoring known: Set<String> = []) -> [String: Int64] {
         var result: [String: Int64] = [:]
-        for url in PhotoImporter.imageFiles(in: folder) {
+        for url in PhotoImporter.imageFiles(in: folder, sorted: false) where !known.contains(url.path) {
             result[url.path] = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }
         return result
@@ -37,6 +40,8 @@ final class WatchFolderService {
     private(set) var importedCount = 0
 
     @ObservationIgnored var onImported: ((Int) -> Void)?
+    /// A app escolhe o idioma por bundle própria, por isso a tradução vem de fora como no `TransferQueue`.
+    @ObservationIgnored var localize: (String) -> String = { $0 }
     @ObservationIgnored private var context: ModelContext?
     @ObservationIgnored private weak var culling: CullingModel?
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -47,7 +52,7 @@ final class WatchFolderService {
         self.defaults = defaults
         isEnabled = defaults.bool(forKey: Keys.enabled)
         folderPath = defaults.string(forKey: Keys.folder) ?? ""
-        sessionName = defaults.string(forKey: Keys.session) ?? "Live"
+        sessionName = defaults.string(forKey: Keys.session) ?? ""
     }
 
     func attach(context: ModelContext, culling: CullingModel) {
@@ -65,7 +70,8 @@ final class WatchFolderService {
         let folder = URL(fileURLWithPath: folderPath, isDirectory: true)
         task = Task { [weak self] in
             while !Task.isCancelled {
-                let sizes = await Task.detached(priority: .utility) { WatchFolderScanner.sizes(in: folder) }.value
+                let seen = self?.known ?? []
+                let sizes = await Task.detached(priority: .utility) { WatchFolderScanner.sizes(in: folder, ignoring: seen) }.value
                 guard let self, !Task.isCancelled else { return }
                 await self.tick(sizes)
                 try? await Task.sleep(for: .seconds(2))
@@ -78,13 +84,16 @@ final class WatchFolderService {
         previous = sizes
         guard !ready.isEmpty, let context, let culling, !culling.isImporting else { return }
         known.formUnion(ready)
-        let name = sessionName.trimmingCharacters(in: .whitespaces).isEmpty ? "Live" : sessionName
+        let name = sessionName.trimmingCharacters(in: .whitespaces).isEmpty ? defaultSessionName : sessionName
         await culling.importFiles(ready.map { URL(fileURLWithPath: $0) }, options: .init(copyDestination: nil), session: name, context: context)
         let added = culling.lastImportCount ?? 0
         guard added > 0 else { return }
         importedCount += added
         onImported?(added)
     }
+
+    /// Nome da sessão onde aterram as fotos que chegam sozinhas, quando o fotógrafo não escolheu outro.
+    private var defaultSessionName: String { localize("watchFolder.defaultSession") }
 
     private enum Keys {
         static let enabled = "watchFolder.enabled"
