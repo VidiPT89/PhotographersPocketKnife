@@ -40,7 +40,9 @@ enum PhotoImporter {
     static func isSupported(_ url: URL) -> Bool { supportedExtensions.contains(url.pathExtension.lowercased()) }
     static func isRaw(_ url: URL) -> Bool { rawExtensions.contains(url.pathExtension.lowercased()) }
 
-    static func imageFiles(in folder: URL) -> [URL] {
+    /// `sorted: false` para quem só precisa do conjunto de ficheiros: a ordenação é por comparação
+    /// sensível ao idioma e, numa pasta com milhares de fotos, custa mais do que a própria leitura.
+    static func imageFiles(in folder: URL, sorted: Bool = true) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: folder,
             includingPropertiesForKeys: [.isRegularFileKey],
@@ -50,7 +52,7 @@ enum PhotoImporter {
         for case let url as URL in enumerator where isSupported(url) {
             files.append(url)
         }
-        return files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        return sorted ? files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending } : files
     }
 
     /// Lê (e opcionalmente copia) as fotos. A cópia é sequencial (evita corridas nos nomes únicos);

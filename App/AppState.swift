@@ -103,6 +103,7 @@ final class AppState {
             guard let self else { return }
             showToast(String(format: t("toast.uploadDone"), done, failed), icon: failed == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
         }
+        watchFolder.localize = { [weak self] key in self?.t(key) ?? key }
         watchFolder.onImported = { [weak self] count in
             guard let self else { return }
             showToast(String(format: t("watch.imported"), count), icon: "eye.fill")

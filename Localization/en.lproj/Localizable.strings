@@ -664,3 +664,4 @@
 "destination.exampleEvent" = "Event";
 "sidebar.removeFolderConfirm" = "Remove \"%@\" from the catalog?";
 "sidebar.removeFolderMessage" = "The photos stay on disk. Ratings and edits saved in .ppk sidecars are kept too.";
+"watchFolder.defaultSession" = "Live";
