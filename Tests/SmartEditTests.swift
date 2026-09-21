@@ -238,6 +238,70 @@ final class SmartEditTests: XCTestCase {
         }
     }
 
+    func testRemovalDoesNotDragInContentFromAnotherPartOfThePhoto() throws {
+        // Camisola às riscas à esquerda, equipamento azul à direita. Ao apagar uma marca nas riscas,
+        // o preenchimento tem de vir das riscas ao lado — nunca do azul, que é outra coisa da foto.
+        let width = 1200, height = 800
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        for x in stride(from: 0, to: 800, by: 60) {
+            ctx.setFillColor(CGColor(gray: (x / 60) % 2 == 0 ? 0.92 : 0.08, alpha: 1))
+            ctx.fill(CGRect(x: x, y: 0, width: 60, height: height))
+        }
+        // O equipamento azul cruza mesmo por cima, como a perna cruza a camisola na foto real.
+        ctx.setFillColor(CGColor(red: 0.05, green: 0.42, blue: 0.62, alpha: 1))
+        ctx.saveGState()
+        ctx.translateBy(x: 600, y: 560)
+        ctx.rotate(by: -0.5)
+        ctx.fill(CGRect(x: -700, y: -70, width: 1400, height: 140))
+        ctx.restoreGState()
+        let photo = try XCTUnwrap(ctx.makeImage())
+
+        var recipe = EditRecipe()
+        recipe.removals = [Removal(strokes: [BrushStroke(points: (0..<5).map {
+            CurvePoint(x: (300.0 + Double($0) * 40) / Double(width), y: 1 - 400.0 / Double(height))
+        }, size: 0.05)])]
+
+        let output = ImageRenderer.shared.apply(recipe, to: CIImage(cgImage: photo))
+        let box = CGRect(x: 280, y: 360, width: 240, height: 80)
+        var rgba = [Float](repeating: 0, count: Int(box.width * box.height) * 4)
+        ImageRenderer.shared.context.render(output, toBitmap: &rgba, rowBytes: Int(box.width) * 16, bounds: box,
+                                            format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        // Azul do outro equipamento: muito mais azul do que vermelho. As riscas são cinzentas neutras.
+        let foreign = (0..<Int(box.width * box.height)).filter { rgba[$0 * 4 + 2] > rgba[$0 * 4] + 0.12 }.count
+        let share = Double(foreign) / (box.width * box.height)
+        XCTAssertLessThan(share, 0.02, "The fill must not drag the blue kit onto the striped shirt")
+    }
+
+    /// Harness visual sobre uma foto verdadeira. `TEST_RUNNER_PPK_PHOTO` aponta o ficheiro,
+    /// `TEST_RUNNER_PPK_DUMP` a pasta de saída, `TEST_RUNNER_PPK_STROKE` os pontos normalizados
+    /// (origem em cima) como "x1,y1;x2,y2;...", e `TEST_RUNNER_PPK_BRUSH` o tamanho do pincel.
+    func testDiagnosticBrushOnPhoto() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let out = env["PPK_DUMP"], let photoPath = env["PPK_PHOTO"], let strokeText = env["PPK_STROKE"] else {
+            throw XCTSkip("no photo configured")
+        }
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: photoPath) as CFURL, nil))
+        let photo = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let points = strokeText.split(separator: ";").compactMap { pair -> CurvePoint? in
+            let parts = pair.split(separator: ",")
+            guard parts.count == 2, let x = Double(parts[0]), let y = Double(parts[1]) else { return nil }
+            return CurvePoint(x: x, y: y)  // `CurvePoint.y` já é a fracção a contar de cima
+        }
+        var recipe = EditRecipe()
+        recipe.removals = [Removal(strokes: [BrushStroke(points: points, size: Double(env["PPK_BRUSH"] ?? "") ?? 0.05)])]
+
+        let start = Date()
+        let output = ImageRenderer.shared.apply(recipe, to: CIImage(cgImage: photo))
+        let result = try XCTUnwrap(ImageRenderer.shared.context.createCGImage(output, from: output.extent))
+        print("PPK photo removal: \(photo.width)x\(photo.height) em \(Int(Date().timeIntervalSince(start) * 1000)) ms")
+        let url = URL(fileURLWithPath: out).appendingPathComponent("photo_after.png")
+        let d = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(d, result, nil)
+        CGImageDestinationFinalize(d)
+    }
+
     // MARK: Utilitários
 
     /// Fundo com riscas diagonais verdes e, opcionalmente, um quadrado vermelho (coordenadas com origem em baixo).
