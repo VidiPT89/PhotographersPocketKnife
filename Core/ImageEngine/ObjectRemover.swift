@@ -6,7 +6,7 @@ import CoreImage.CIFilterBuiltins
 final class ObjectRemover: @unchecked Sendable {
     static let shared = ObjectRemover()
     /// Lado maior da região onde são *procuradas* as correspondências: equilíbrio entre qualidade e tempo de resposta.
-    static let workingSide: CGFloat = 512
+    static let workingSide: CGFloat = 1100
     /// Lado maior a que a textura é *copiada*. A procura pode correr em pequeno, a cópia não: ampliar o resultado
     /// de 512 px para uma região de 4000 px era o que fazia a remoção parecer um borrão por cima do objeto.
     static let maxFillSide: CGFloat = 2048
