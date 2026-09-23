@@ -29,13 +29,38 @@ final class ObjectRemover: @unchecked Sendable {
 
     func apply(_ removals: [Removal], to image: CIImage, reference: CIImage) -> CIImage {
         let e = image.extent
-        guard !removals.isEmpty, !e.isInfinite, e.width >= 16, e.height >= 16,
-              let solution = solution(for: removals, reference: reference),
+        guard !removals.isEmpty, !e.isInfinite, e.width >= 16, e.height >= 16 else { return image }
+        if let generated = generative(removals, to: image, reference: reference) { return generated }
+        guard
+        let solution = solution(for: removals, reference: reference),
               let current = Self.pixels(of: image, region: solution.region, width: solution.fillWidth, height: solution.fillHeight),
               let patch = Self.image(from: Inpainter.fill(current, hole: solution.hole, field: solution.field), region: solution.region)
         else { return image }
         return patch
             .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: image, kCIInputMaskImageKey: solution.blendMask])
+            .cropped(to: e)
+    }
+
+    /// Caminho generativo, quando o modelo está instalado: inventa o que estava por baixo em vez de copiar.
+    /// Devolve `nil` se o modelo não estiver lá ou falhar, e nesse caso segue o motor por cópia.
+    ///
+    /// A máscara vai **alargada**. Uma pincelada apertada deixa metade de uma letra de fora, e o modelo,
+    /// ao ser-lhe pedido que preencha só o resto, reconstrói a continuidade com o que sobrou — ou seja,
+    /// volta a desenhar a letra. Não é falha do modelo: é o modelo a fazer o que se lhe pede.
+    private func generative(_ removals: [Removal], to image: CIImage, reference: CIImage) -> CIImage? {
+        guard GenerativeInpainter.shared.isReady else { return nil }
+        let e = image.extent
+        guard let holeMask = Self.holeMask(for: removals, reference: reference),
+              let bounds = Self.boundingBox(of: holeMask, extent: e) else { return nil }
+        let grow = min(max(min(bounds.width, bounds.height) * 0.12, 3), 24)
+        let widened = holeMask.clampedToExtent()
+            .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow])
+            .cropped(to: e)
+        guard let patch = GenerativeInpainter.shared.fill(image, mask: widened, bounds: bounds.insetBy(dx: -grow, dy: -grow)) else { return nil }
+        // Junta suave: sem isto via-se o rectângulo da janela do modelo.
+        let blend = widened.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
+        return patch
+            .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: image, kCIInputMaskImageKey: blend])
             .cropped(to: e)
     }
 

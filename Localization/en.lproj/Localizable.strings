@@ -665,3 +665,8 @@
 "sidebar.removeFolderConfirm" = "Remove \"%@\" from the catalog?";
 "sidebar.removeFolderMessage" = "The photos stay on disk. Ratings and edits saved in .ppk sidecars are kept too.";
 "watchFolder.defaultSession" = "Live";
+"settings.generativeModel" = "Generative removal";
+"settings.generativeHint" = "Invents what was behind what you erase, instead of copying from elsewhere in the photo. 99 MB, downloaded once, runs on your Mac.";
+"settings.generativeInstalled" = "Installed. Removals now use it; without it they fall back to copying nearby texture.";
+"settings.generativeInstall" = "Download";
+"settings.generativeRemove" = "Remove";

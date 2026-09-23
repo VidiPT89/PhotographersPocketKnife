@@ -16,6 +16,19 @@ struct SplitMix64Test {
 
 final class SmartEditTests: XCTestCase {
 
+    /// Quase todos os testes daqui medem o motor por cópia. Com o modelo generativo instalado na máquina
+    /// passariam a medir outra coisa sem o dizer, e foi o que aconteceu: um deles falhou por estar a
+    /// avaliar um preenchimento que já não era o que o seu nome diz.
+    override func setUp() {
+        super.setUp()
+        GenerativeInpainter.shared.isEnabled = false
+    }
+
+    override func tearDown() {
+        GenerativeInpainter.shared.isEnabled = true
+        super.tearDown()
+    }
+
     // MARK: Remoção de objetos
 
     func testInpainterFillsHoleWithSurroundingTexture() throws {
@@ -300,6 +313,74 @@ final class SmartEditTests: XCTestCase {
         let d = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
         CGImageDestinationAddImage(d, result, nil)
         CGImageDestinationFinalize(d)
+    }
+
+    /// Verifica o caminho generativo de ponta a ponta, pelo pipeline real. Instala o modelo se preciso
+    /// (descarrega 99 MB), por isso só corre com `TEST_RUNNER_PPK_GENERATIVE=1`.
+    func testGenerativeRemovalErasesLetteringThroughThePipeline() async throws {
+        guard ProcessInfo.processInfo.environment["PPK_GENERATIVE"] != nil else { throw XCTSkip("generative off") }
+        GenerativeInpainter.shared.isEnabled = true
+        if !GenerativeInpainter.shared.isInstalled {
+            try await GenerativeInpainter.shared.install { _ in }
+        }
+        XCTAssertTrue(GenerativeInpainter.shared.isReady)
+
+        let width = 1200, height = 800
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.setFillColor(CGColor(gray: 0.55, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        // Faixa escura com letras claras: o caso em que copiar falha sempre, porque a vizinhança das
+        // letras são as outras letras.
+        ctx.setFillColor(CGColor(gray: 0.07, alpha: 1))
+        ctx.fill(CGRect(x: 200, y: 280, width: 800, height: 260))
+        ctx.setFillColor(CGColor(gray: 0.95, alpha: 1))
+        for i in 0..<7 {
+            ctx.fill(CGRect(x: 260 + i * 100, y: 380, width: 46, height: 90))
+            ctx.fill(CGRect(x: 260 + i * 100, y: 380, width: 70, height: 22))
+        }
+        let photo = try XCTUnwrap(ctx.makeImage())
+
+        var recipe = EditRecipe()
+        recipe.removals = [Removal(strokes: [BrushStroke(points: (0..<8).map {
+            CurvePoint(x: (285.0 + Double($0) * 100) / Double(width), y: 1 - 425.0 / Double(height))
+        }, size: 0.14)])]
+
+        let started = Date()
+        let output = ImageRenderer.shared.apply(recipe, to: CIImage(cgImage: photo))
+        print("PPK generative render: \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+
+        // Dentro da faixa, onde estavam as letras, já não pode haver nada claro.
+        let box = CGRect(x: 250, y: 370, width: 700, height: 110)
+        var rgba = [Float](repeating: 0, count: Int(box.width * box.height) * 4)
+        ImageRenderer.shared.context.render(output, toBitmap: &rgba, rowBytes: Int(box.width) * 16, bounds: box,
+                                            format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        let bright = (0..<Int(box.width * box.height)).filter { rgba[$0 * 4 + 1] > 0.5 }.count
+        let share = Double(bright) / (box.width * box.height)
+        print("PPK generative bright share: \(share)")
+        XCTAssertLessThan(share, 0.05, "The lettering is gone, not redrawn from its own neighbours")
+
+        // Fora da faixa nada se mexe. Comparado com a própria origem: `CGColor(gray:)` é cinzento
+        // genérico e não sRGB, por isso o valor lido não é o que se escreveu.
+        let far = try pixel(output, at: CGPoint(x: 80, y: 700))
+        let farOriginal = try pixel(CIImage(cgImage: photo), at: CGPoint(x: 80, y: 700))
+        XCTAssertEqual(far.g, farOriginal.g, accuracy: 0.01, "Outside the removal nothing changes")
+
+        // Segunda passagem, com o modelo já carregado: é este o tempo que o fotógrafo sente.
+        let warm = Date()
+        _ = ImageRenderer.shared.apply(recipe, to: CIImage(cgImage: photo))
+        print("PPK generative warm render: \(Int(Date().timeIntervalSince(warm) * 1000)) ms")
+
+        if let out = ProcessInfo.processInfo.environment["PPK_DUMP"] {
+            let image = try XCTUnwrap(ImageRenderer.shared.context.createCGImage(output, from: output.extent))
+            for (name, cg) in [("gen_before", photo), ("gen_after", image)] {
+                let url = URL(fileURLWithPath: out).appendingPathComponent("\(name).png")
+                let d = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+                CGImageDestinationAddImage(d, cg, nil)
+                CGImageDestinationFinalize(d)
+            }
+        }
     }
 
     // MARK: Utilitários
