@@ -665,3 +665,8 @@
 "sidebar.removeFolderConfirm" = "Remover \"%@\" do catálogo?";
 "sidebar.removeFolderMessage" = "As fotos ficam no disco. A classificação e a revelação guardadas nos sidecars .ppk também se mantêm.";
 "watchFolder.defaultSession" = "Direto";
+"settings.generativeModel" = "Remoção generativa";
+"settings.generativeHint" = "Inventa o que estava por trás do que apagas, em vez de copiar de outro sítio da foto. 99 MB, descarregado uma vez, corre no teu Mac.";
+"settings.generativeInstalled" = "Instalado. As remoções passam a usá-lo; sem ele voltam a copiar a textura à volta.";
+"settings.generativeInstall" = "Descarregar";
+"settings.generativeRemove" = "Remover";

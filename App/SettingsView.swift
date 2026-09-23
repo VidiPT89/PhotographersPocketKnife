@@ -123,8 +123,64 @@ private struct GeneralSettings: View {
                         .accessibilityLabel(app.t("settings.cacheCleared"))
                 }
             }
+            GenerativeModelRow()
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Instalar ou remover o modelo que inventa o que estava por baixo do que se apaga.
+private struct GenerativeModelRow: View {
+    @Environment(AppState.self) private var app
+    @State private var installed = GenerativeInpainter.shared.isInstalled
+    @State private var enabled = GenerativeInpainter.shared.isEnabled
+    @State private var progress: Double?
+    @State private var failure: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.t("settings.generativeModel"))
+                    Text(app.t(installed ? "settings.generativeInstalled" : "settings.generativeHint"))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecondary)
+                }
+                Spacer()
+                if let progress {
+                    ProgressView(value: progress).frame(width: 120)
+                } else if installed {
+                    Toggle("", isOn: $enabled)
+                        .labelsHidden()
+                        .onChange(of: enabled) { _, value in GenerativeInpainter.shared.isEnabled = value }
+                    Button(app.t("settings.generativeRemove"), role: .destructive) {
+                        GenerativeInpainter.shared.remove()
+                        installed = false
+                    }
+                } else {
+                    Button(app.t("settings.generativeInstall")) { install() }
+                }
+            }
+            if let failure {
+                Text(failure).font(Typography.caption).foregroundStyle(Brand.error)
+            }
+        }
+    }
+
+    private func install() {
+        failure = nil
+        progress = 0
+        Task {
+            do {
+                try await GenerativeInpainter.shared.install { value in
+                    Task { @MainActor in progress = value }
+                }
+                installed = true
+            } catch {
+                failure = error.localizedDescription
+            }
+            progress = nil
+        }
     }
 }
 
