@@ -292,7 +292,8 @@ final class SmartEditTests: XCTestCase {
     /// (origem em cima) como "x1,y1;x2,y2;...", e `TEST_RUNNER_PPK_BRUSH` o tamanho do pincel.
     func testDiagnosticBrushOnPhoto() throws {
         let env = ProcessInfo.processInfo.environment
-        guard let out = env["PPK_DUMP"], let photoPath = env["PPK_PHOTO"], let strokeText = env["PPK_STROKE"] else {
+        guard let out = env["PPK_DUMP"], let photoPath = env["PPK_PHOTO"],
+              let strokeText = env["PPK_STROKE"] ?? env["PPK_OBJECT"] else {
             throw XCTSkip("no photo configured")
         }
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: photoPath) as CFURL, nil))
@@ -302,8 +303,25 @@ final class SmartEditTests: XCTestCase {
             guard parts.count == 2, let x = Double(parts[0]), let y = Double(parts[1]) else { return nil }
             return CurvePoint(x: x, y: y)  // `CurvePoint.y` já é a fracção a contar de cima
         }
+        GenerativeInpainter.shared.isEnabled = env["PPK_COPY"] == nil
         var recipe = EditRecipe()
-        recipe.removals = [Removal(strokes: [BrushStroke(points: points, size: Double(env["PPK_BRUSH"] ?? "") ?? 0.05)])]
+        if let object = env["PPK_OBJECT"]?.split(separator: ","), object.count == 2,
+           let ox = Double(object[0]), let oy = Double(object[1]) {
+            recipe.removals = [Removal(objectPoint: CurvePoint(x: ox, y: oy))]
+        } else {
+            recipe.removals = [Removal(strokes: [BrushStroke(points: points, size: Double(env["PPK_BRUSH"] ?? "") ?? 0.05)])]
+        }
+
+        if env["PPK_PROBE"] != nil {
+            let input = CIImage(cgImage: photo)
+            for y in stride(from: 0.15, through: 0.95, by: 0.1) {
+                var row = ""
+                for x in stride(from: 0.05, through: 0.95, by: 0.05) {
+                    row += SmartSelection.shared.objectMask(for: input, at: CurvePoint(x: x, y: y)) != nil ? "#" : "."
+                }
+                print(String(format: "PPK probe y=%.2f %@", y, row))
+            }
+        }
 
         let start = Date()
         let output = ImageRenderer.shared.apply(recipe, to: CIImage(cgImage: photo))

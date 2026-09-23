@@ -1,5 +1,6 @@
 import CoreImage
 import CoreML
+import ImageIO
 import Foundation
 
 /// Preenchimento generativo: em vez de copiar textura de outro sítio da foto, **inventa** o que estava por
@@ -134,23 +135,76 @@ final class GenerativeInpainter: @unchecked Sendable {
         static let enabled = "removal.generative"
     }
 
-    /// Preenche `bounds` (na extensão de `image`) com conteúdo inventado. `mask` é branco onde apagar.
-    /// Devolve `nil` se o modelo não estiver instalado ou algo correr mal — quem chama volta ao motor por cópia.
+    /// Devolve `image` com a zona branca de `mask` preenchida com conteúdo inventado, ou `nil` se o modelo
+    /// não estiver instalado ou falhar — e nesse caso quem chama volta ao motor por cópia.
+    ///
+    /// Uma zona maior do que uma janela do modelo é preenchida em várias janelas encadeadas: cada uma
+    /// trabalha já sobre o resultado da anterior, para não haver degrau entre elas. Sem isto, tudo o que
+    /// caísse fora da primeira janela ficava por preencher — numa selecção de objecto que apanha o primeiro
+    /// plano inteiro, sobravam as silhuetas por tocar.
     func fill(_ image: CIImage, mask: CIImage, bounds: CGRect) -> CIImage? {
         let e = image.extent
-        guard let model = model(), !e.isInfinite, bounds.width >= 2, bounds.height >= 2 else { return nil }
+        guard model() != nil, !e.isInfinite, bounds.width >= 2, bounds.height >= 2 else { return nil }
 
-        // Janela quadrada com contexto à volta da zona: o modelo precisa de ver o que a rodeia para
-        // inventar algo que continue a foto.
-        let padding = max(bounds.width, bounds.height)
-        let windowSide = min(max(bounds.width, bounds.height) + padding * 2, min(e.width, e.height))
-        let originX = min(max(bounds.midX - windowSide / 2, e.minX), e.maxX - windowSide)
-        let originY = min(max(bounds.midY - windowSide / 2, e.minY), e.maxY - windowSide)
-        let window = CGRect(x: originX, y: originY, width: windowSide, height: windowSide).integral
+        // Contexto à volta da zona: o modelo precisa de ver o que a rodeia para inventar algo que continue
+        // a foto. Uma janela grande de mais passa a ter o buraco a ocupar quase tudo e devolve uma mancha.
+        let target = max(bounds.width, bounds.height) * 3
+        let windowSide = min(max(target, 64), min(e.width, e.height))
+        // As janelas são distribuídas **centradas na zona**. Encostar a primeira ao canto do buraco
+        // deixava-o na margem da janela, sem contexto de um dos lados, e o modelo tem de ver o que rodeia
+        // a zona pelos quatro lados para inventar algo que continue a foto.
+        let step = windowSide * 0.55
+        let spanX = max(bounds.width - windowSide, 0), spanY = max(bounds.height - windowSide, 0)
+        let columns = max(Int(ceil(spanX / step)) + 1, 1)
+        let rows = max(Int(ceil(spanY / step)) + 1, 1)
+        guard columns * rows <= 24 else { return nil }
+        let strideX = columns > 1 ? spanX / CGFloat(columns - 1) : 0
+        let strideY = rows > 1 ? spanY / CGFloat(rows - 1) : 0
 
+        let single = rows == 1 && columns == 1
+        var working = image
+        for row in 0..<rows {
+            for column in 0..<columns {
+                let centreX = bounds.midX - spanX / 2 + CGFloat(column) * strideX
+                let centreY = bounds.midY - spanY / 2 + CGFloat(row) * strideY
+                let originX = min(max(centreX - windowSide / 2, e.minX), e.maxX - windowSide)
+                let originY = min(max(centreY - windowSide / 2, e.minY), e.maxY - windowSide)
+                let window = CGRect(x: originX, y: originY, width: windowSide, height: windowSide).integral
+                guard let patch = patch(for: working, mask: mask, window: window) else { continue }
+                // Só o que é buraco *dentro desta janela* é substituído; o resto fica para as outras.
+                // A máscara esbate-se na margem da janela para as janelas se cruzarem em vez de encostarem:
+                // cada uma inventa conteúdo diferente para a mesma textura, e um corte a direito deixaria
+                // uma risca visível entre elas.
+                let localMask = single ? mask.cropped(to: window)
+                    : mask.applyingFilter("CIMultiplyCompositing",
+                                          parameters: [kCIInputBackgroundImageKey: Self.taper(window)])
+                        .cropped(to: window)
+                working = patch
+                    .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: working,
+                                                                    kCIInputMaskImageKey: localMask])
+                    .cropped(to: e)
+            }
+        }
+        return working
+    }
+
+    /// Janela branca no meio que se desvanece na margem, para cruzar com a janela do lado.
+    private static func taper(_ window: CGRect) -> CIImage {
+        let margin = min(window.width, window.height) * 0.12
+        return CIImage(color: .white)
+            .cropped(to: window.insetBy(dx: margin, dy: margin))
+            .applyingGaussianBlur(sigma: margin * 0.6)
+            .cropped(to: window)
+    }
+
+    /// Uma passagem do modelo sobre uma janela quadrada.
+    private func patch(for image: CIImage, mask: CIImage, window: CGRect) -> CIImage? {
+        guard let model = model() else { return nil }
         let side = Self.side
         guard let photo = Self.samples(of: image, region: window, side: side),
               let holes = Self.samples(of: mask, region: window, side: side) else { return nil }
+        // Janela sem nada para apagar: não vale a pena acordar o modelo.
+        guard (0..<(side * side)).contains(where: { holes[$0 * 4] > 0.5 }) else { return nil }
 
         guard let input = try? MLMultiArray(shape: [1, 3, NSNumber(value: side), NSNumber(value: side)], dataType: .float32),
               let holeInput = try? MLMultiArray(shape: [1, 1, NSNumber(value: side), NSNumber(value: side)], dataType: .float32)
@@ -167,6 +221,7 @@ final class GenerativeInpainter: @unchecked Sendable {
         holeInput.withUnsafeMutableBufferPointer(ofType: Float.self) { buffer, _ in
             for i in 0..<plane { buffer[i] = holes[i * 4] > 0.5 ? 1 : 0 }
         }
+        Self.debugDump(photo, holes, side: side)
 
         guard let features = try? MLDictionaryFeatureProvider(dictionary: ["image": input, "mask": holeInput]),
               let prediction = try? model.prediction(from: features),
@@ -185,19 +240,48 @@ final class GenerativeInpainter: @unchecked Sendable {
                 rgba[i * 4 + 2] = min(max(buffer[2 * plane + i] / divisor, 0), 1)
             }
         }
+        Self.debugDump(rgba, holes, side: side, names: ("model_output", "model_mask"))
 
         let data = rgba.withUnsafeBufferPointer { Data(buffer: $0) }
-        guard let patch = CIImage(bitmapData: data, bytesPerRow: side * 16,
-                                  size: CGSize(width: side, height: side), format: .RGBAf,
-                                  colorSpace: CGColorSpaceCreateDeviceRGB()) as CIImage? else { return nil }
-        // O bitmap tem a linha 0 em cima; em Core Image o y cresce para cima.
-        let placed = patch
-            .transformed(by: CGAffineTransform(scaleX: window.width / CGFloat(side), y: -window.height / CGFloat(side)))
-            .transformed(by: CGAffineTransform(translationX: window.minX, y: window.maxY))
-        return placed.cropped(to: window)
+        // O modelo trabalha em sRGB, e é preciso dizê-lo ao Core Image nos dois sentidos.
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let raw = CIImage(bitmapData: data, bytesPerRow: side * 16,
+                                size: CGSize(width: side, height: side), format: .RGBAf,
+                                colorSpace: space) as CIImage? else { return nil }
+        return raw
+            .transformed(by: CGAffineTransform(scaleX: window.width / CGFloat(side), y: window.height / CGFloat(side)))
+            .transformed(by: CGAffineTransform(translationX: window.minX, y: window.minY))
+            .cropped(to: window)
     }
 
-    /// Região reduzida a `side`×`side`, em RGBA de vírgula flutuante, linha 0 em cima.
+    /// Diagnóstico: escreve o que o modelo recebe, para se poder olhar em vez de adivinhar a orientação.
+    static func debugDump(_ photo: [Float], _ holes: [Float], side: Int,
+                          names: (String, String) = ("model_input", "model_mask")) {
+        guard let dir = ProcessInfo.processInfo.environment["PPK_MODEL_DUMP"] else { return }
+        for (name, source) in [(names.0, photo), (names.1, holes)] {
+            var bytes = [UInt8](repeating: 255, count: side * side * 4)
+            for i in 0..<(side * side) {
+                for c in 0..<3 { bytes[i * 4 + c] = UInt8(min(max(source[i * 4 + c], 0), 1) * 255) }
+            }
+            guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+                  let image = CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32,
+                                      bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                                      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
+                  let dest = CGImageDestinationCreateWithURL(
+                    URL(fileURLWithPath: dir).appendingPathComponent("\(name).png") as CFURL,
+                    "public.png" as CFString, 1, nil) else { continue }
+            CGImageDestinationAddImage(dest, image, nil)
+            CGImageDestinationFinalize(dest)
+        }
+    }
+
+    /// Região reduzida a `side`×`side`, em RGBA de vírgula flutuante, na orientação em que o modelo a espera.
+    ///
+    /// Aqui não se inverte nada, e isso é deliberado: o `render(toBitmap:)` já entrega a linha de cima
+    /// primeiro, e o `CIImage(bitmapData:)` lê-a da mesma maneira. Eu tinha assumido o contrário e
+    /// invertido as linhas — a geometria continuava certa porque invertia outra vez à saída, mas o modelo
+    /// recebia a foto ao contrário. A LaMa aprendeu com fotos direitas; virada, devolve borrões.
     private static func samples(of image: CIImage, region: CGRect, side: Int) -> [Float]? {
         guard region.width > 0, region.height > 0 else { return nil }
         let local = image.cropped(to: region)
@@ -211,13 +295,7 @@ final class GenerativeInpainter: @unchecked Sendable {
         var rgba = [Float](repeating: 0, count: side * side * 4)
         ImageRenderer.shared.context.render(scaled, toBitmap: &rgba, rowBytes: side * 16,
                                             bounds: CGRect(x: 0, y: 0, width: side, height: side),
-                                            format: .RGBAf, colorSpace: CGColorSpaceCreateDeviceRGB())
-        // O `render` devolve a linha 0 em baixo; o modelo espera-a em cima.
-        var flipped = [Float](repeating: 0, count: rgba.count)
-        for row in 0..<side {
-            let from = (side - 1 - row) * side * 4
-            for i in 0..<(side * 4) { flipped[row * side * 4 + i] = rgba[from + i] }
-        }
-        return flipped
+                                            format: .RGBAf, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+        return rgba
     }
 }
