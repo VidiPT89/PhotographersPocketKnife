@@ -52,16 +52,17 @@ final class ObjectRemover: @unchecked Sendable {
         let e = image.extent
         guard let holeMask = Self.holeMask(for: removals, reference: reference),
               let bounds = Self.boundingBox(of: holeMask, extent: e) else { return nil }
-        let grow = min(max(min(bounds.width, bounds.height) * 0.12, 3), 24)
+        // Margem proporcional à espessura do traço, não ao seu comprimento: o que interessa é não deixar
+        // a berma do objecto de fora. Uma pincelada que corta um objecto ao meio faz o modelo reconstruir
+        // a continuidade com o que sobrou — numa camisola, volta a desenhar as letras. Mas alargar de mais
+        // puxa para dentro coisas que não se querem apagar, e aí o buraco é preenchido com elas.
+        let grow = min(max(min(bounds.width, bounds.height) * 0.15, 6), 20)
         let widened = holeMask.clampedToExtent()
             .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow])
             .cropped(to: e)
-        guard let patch = GenerativeInpainter.shared.fill(image, mask: widened, bounds: bounds.insetBy(dx: -grow, dy: -grow)) else { return nil }
-        // Junta suave: sem isto via-se o rectângulo da janela do modelo.
-        let blend = widened.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
-        return patch
-            .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: image, kCIInputMaskImageKey: blend])
-            .cropped(to: e)
+        // Junta suave: sem isto via-se a fronteira exacta da máscara.
+        let soft = widened.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
+        return GenerativeInpainter.shared.fill(image, mask: soft, bounds: bounds.insetBy(dx: -grow, dy: -grow))
     }
 
     private func solution(for removals: [Removal], reference: CIImage) -> Solution? {
