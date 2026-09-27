@@ -1,4 +1,5 @@
 import CoreImage
+import CoreImage.CIFilterBuiltins
 import CoreML
 import ImageIO
 import Foundation
@@ -15,6 +16,27 @@ import Foundation
 /// Application Support.
 final class GenerativeInpainter: @unchecked Sendable {
     static let shared = GenerativeInpainter()
+
+    /// Os números que decidem o aspecto da remoção, juntos para a bancada de ensaio (`RemovalBenchmarkTests`)
+    /// os poder variar. Os valores são os que ela mediu em 15 fotos e 60 zonas apagadas, conferidos a olho;
+    /// não são para mexer na app.
+    enum Tuning {
+        /// Janela única: a zona a ocupar mais ou menos 1/`context` de cada lado.
+        nonisolated(unsafe) static var context: CGFloat = 2.6
+        /// Margem à volta de uma pincelada, em fracção da sua espessura. A bancada prefere menos (apaga zonas
+        /// sem objecto, onde a margem só custa), mas é ela que apanha as bermas das letras e dos objectos.
+        nonisolated(unsafe) static var strokeMargin: CGFloat = 0.15
+        /// Detalhe fino copiado da foto por cima do que o modelo inventou (`GenerativeDetail`).
+        nonisolated(unsafe) static var detail = true
+        /// O detalhe só corre quando a foto tem pelo menos este múltiplo da resolução a que o modelo trabalhou.
+        /// Zero: mesmo à sua resolução a LaMa entrega bem menos detalhe fino do que a foto tinha.
+        nonisolated(unsafe) static var detailFromGain: CGFloat = 0
+        /// Escala do desfoque que separa o detalhe da cópia, em píxeis do modelo. 0,6 trazia pouco; 2,5 já
+        /// desenhava orlas escuras à volta das manchas claras do bokeh.
+        nonisolated(unsafe) static var detailBlur: CGFloat = 1.5
+        /// Grão acrescentado ao preenchimento.
+        nonisolated(unsafe) static var grain = true
+    }
 
     /// Esta conversão da LaMa tem tamanho fixo, ao contrário do modelo original que aceita qualquer
     /// resolução. Trabalha-se numa janela quadrada à volta da zona e cola-se de volta.
@@ -201,8 +223,8 @@ final class GenerativeInpainter: @unchecked Sendable {
 
         // Uma só janela: a zona a ocupar mais ou menos um terço de cada lado, com um mínimo para haver
         // contexto mesmo numa pinta pequena.
-        var width = max(bounds.width * 2.6, long * 1.6, 96)
-        var height = max(bounds.height * 2.6, long * 1.6, 96)
+        var width = max(bounds.width * Tuning.context, long * (Tuning.context - 1), 96)
+        var height = max(bounds.height * Tuning.context, long * (Tuning.context - 1), 96)
         width = min(width, e.width); height = min(height, e.height)
         // Proporção limitada: esticar de mais deforma o que o modelo vê.
         if width > height * 2 { height = min(width / 2, e.height) }
@@ -249,29 +271,50 @@ final class GenerativeInpainter: @unchecked Sendable {
         let ring = hole.applyingFilter("CIColorInvert")
             .applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: grown])
             .cropped(to: e)
-        guard let around = grainVariance(of: original.cropped(to: e), in: ring),
-              let inside = grainVariance(of: filled.cropped(to: e), in: hole) else { return filled }
+        // Mede-se e junta-se em sRGB, onde a amplitude corresponde ao grão que se vê. Em linear as sombras
+        // quase não têm amplitude: numa bancada escura faltava 0,0019 e o limite era 0,002, e o grão nunca
+        // chegava a ser acrescentado.
+        func perceptual(_ image: CIImage) -> CIImage { image.cropped(to: e).applyingFilter("CILinearToSRGBToneCurve") }
+        guard let around = grainVariance(of: perceptual(original), in: ring),
+              let inside = grainVariance(of: perceptual(filled), in: hole) else { return filled }
         let missing = max(around - inside, 0).squareRoot()
-        guard missing > 0.002 else { return filled }
+        guard Tuning.grain, missing > 0.002 else { return filled }
 
-        // Ruído de luminância à escala do píxel, média zero. O gerador do Core Image é uniforme em 0…1,
-        // de desvio 1/√12; escala-se para o desvio que falta.
+        // Ruído de luminância à escala do píxel, média zero: misturar a zona um pouco mais escura com ela um
+        // pouco mais clara, com o ruído (uniforme em 0…1, desvio 1/√12) como máscara, dá exactamente
+        // `zona + ganho × (ruído − ½)`. Somar o ruído directamente não servia: o do `CIRandomGenerator` com
+        // alfa 0 é anulado pela pré-multiplicação e o grão nunca chegava à imagem — medido, era sempre zero.
         let gain = missing * 12.0.squareRoot()
-        let noise = CIFilter(name: "CIRandomGenerator")!.outputImage!
-            .applyingFilter("CIColorMatrix", parameters: [
-                "inputRVector": CIVector(x: gain, y: 0, z: 0, w: 0),
-                "inputGVector": CIVector(x: gain, y: 0, z: 0, w: 0),
-                "inputBVector": CIVector(x: gain, y: 0, z: 0, w: 0),
-                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputBiasVector": CIVector(x: -gain / 2, y: -gain / 2, z: -gain / 2, w: 0),
-            ])
-            .cropped(to: e)
-        let grainy = filled.cropped(to: e).applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: noise])
+        func shifted(_ image: CIImage, _ amount: Double) -> CIImage {
+            image.applyingFilter("CIColorMatrix", parameters: ["inputBiasVector": CIVector(x: amount, y: amount, z: amount, w: 0)])
+        }
+        let tiled = CIFilter.affineTile()
+        tiled.inputImage = noiseTile
+        tiled.transform = .identity
+        guard let noise = tiled.outputImage?.cropped(to: e) else { return filled }
+        let grainy = shifted(perceptual(filled), gain / 2)
+            .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: shifted(perceptual(filled), -gain / 2),
+                                                            kCIInputMaskImageKey: noise])
+            .applyingFilter("CISRGBToneCurveToLinear")
             .cropped(to: e)
         return grainy.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: filled,
                                                                     kCIInputMaskImageKey: hole])
             .cropped(to: whole)
     }
+
+    /// Ruído uniforme em 0…1, igual nos três canais, num ladrilho de 256 px: determinista, para a mesma
+    /// remoção dar o mesmo grão em cada render.
+    private static let noiseTile: CIImage = {
+        var state: UInt64 = 0x6A11_7E55
+        var pixels = [Float](repeating: 1, count: 256 * 256 * 4)
+        for i in 0..<(256 * 256) {
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            let v = Float(state >> 40) / Float(1 << 24)
+            pixels[i * 4] = v; pixels[i * 4 + 1] = v; pixels[i * 4 + 2] = v
+        }
+        return CIImage(bitmapData: pixels.withUnsafeBufferPointer { Data(buffer: $0) }, bytesPerRow: 256 * 16,
+                       size: CGSize(width: 256, height: 256), format: .RGBAf, colorSpace: nil)
+    }()
 
     /// Variância do detalhe fino (imagem menos a sua versão desfocada) ponderada por `weights`.
     private static func grainVariance(of image: CIImage, in weights: CIImage) -> Double? {

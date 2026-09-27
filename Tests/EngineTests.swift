@@ -137,8 +137,11 @@ final class EngineTests: XCTestCase {
         let inside = fineEnergy(sharp, in: hole.insetBy(dx: 12, dy: 12))
         let around = fineEnergy(reference, in: CGRect(x: 10, y: 10, width: 120, height: 80))
         XCTAssertGreaterThan(inside, around * 0.3, "The fill carries real fine texture, not a flat patch")
-        XCTAssertNil(GenerativeDetail.sharpen(flat, reference: reference, mask: mask, bounds: hole, modelScale: 0.9),
-                     "When the model already worked at the photo's resolution there is nothing to add")
+        // Mesmo à resolução da foto a LaMa entrega menos detalhe do que a foto tinha: o refinamento corre.
+        XCTAssertNotNil(GenerativeDetail.sharpen(flat, reference: reference, mask: mask, bounds: hole, modelScale: 1))
+        GenerativeInpainter.Tuning.detail = false
+        defer { GenerativeInpainter.Tuning.detail = true }
+        XCTAssertNil(GenerativeDetail.sharpen(flat, reference: reference, mask: mask, bounds: hole, modelScale: 0.25))
     }
 
     // MARK: Curvas, LUT e histórico

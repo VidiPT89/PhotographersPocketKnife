@@ -15,8 +15,6 @@ import CoreImage
 /// Comparar à resolução da LaMa é o que evita o colapso descrito no `Inpainter`: a essa escala o guia é
 /// tão nítido como as origens, e um guia liso não puxa para origens lisas.
 enum GenerativeDetail {
-    /// Abaixo disto a LaMa já trabalhou quase à resolução da foto e não há detalhe a recuperar.
-    static let minimumGain: CGFloat = 1.3
     /// Tecto da resolução a que o detalhe é copiado. Com 2048 ou 4096 uma zona de 7680 px ficava com o
     /// detalhe copiado a metade ou menos, e o grão mais fino — o que se vê a 100 % — perdia-se. Na CPU só
     /// ficam a zona e a cópia (≈ 120 MB cada a 8K); o resto das contas corre na GPU.
@@ -28,7 +26,7 @@ enum GenerativeDetail {
     static func sharpen(_ filled: CIImage, reference: CIImage, mask: CIImage, bounds: CGRect,
                         modelScale: CGFloat) -> CIImage? {
         let e = reference.extent
-        guard modelScale > 0, 1 / modelScale >= minimumGain else { return nil }
+        guard GenerativeInpainter.Tuning.detail, modelScale > 0, 1 / modelScale >= GenerativeInpainter.Tuning.detailFromGain else { return nil }
         // Contexto à volta, para haver origens, sem levar a foto inteira para memória.
         let margin = max(bounds.width, bounds.height) * 0.35
         let region = bounds.insetBy(dx: -margin, dy: -margin).intersection(e).integral
@@ -53,7 +51,7 @@ enum GenerativeDetail {
         else { return nil }
         // Detalhe da cópia = o que ela tem acima da resolução da LaMa: a cópia menos a cópia desfocada à escala
         // de um píxel do modelo. Soma-se à LaMa na GPU, sem trazer mais imagens deste tamanho para a CPU.
-        let smooth = copy.clampedToExtent().applyingGaussianBlur(sigma: Double(0.6 / modelScale)).cropped(to: region)
+        let smooth = copy.clampedToExtent().applyingGaussianBlur(sigma: Double(GenerativeInpainter.Tuning.detailBlur / modelScale)).cropped(to: region)
         let detailed = sum(sum(filled.cropped(to: region), copy), negated(smooth)).cropped(to: region)
         return detailed
             .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: filled,

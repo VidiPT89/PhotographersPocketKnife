@@ -30,6 +30,14 @@ final class ObjectRemover: @unchecked Sendable {
         let bounds: CGRect
     }
 
+    /// Esquece as soluções guardadas. A bancada de ensaio precisa disto para medir outra afinação.
+    func clearCaches() {
+        lock.withLock {
+            cache = [:]; order = []
+            generatedCache = [:]; generatedOrder = []
+        }
+    }
+
     private let lock = NSLock()
     private var cache: [String: Solution] = [:]
     private var order: [String] = []
@@ -78,7 +86,7 @@ final class ObjectRemover: @unchecked Sendable {
             // a berma do objecto de fora. Uma pincelada que corta um objecto ao meio faz o modelo reconstruir
             // a continuidade com o que sobrou — numa camisola, volta a desenhar as letras. Mas alargar de mais
             // puxa para dentro coisas que não se querem apagar, e aí o buraco é preenchido com elas.
-            let grow = min(max(min(bounds.width, bounds.height) * 0.15, 6), 20)
+            let grow = min(max(min(bounds.width, bounds.height) * GenerativeInpainter.Tuning.strokeMargin, 6), 20)
             let widened = holeMask.clampedToExtent()
                 .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow])
                 .cropped(to: e)
