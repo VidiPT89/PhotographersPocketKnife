@@ -281,15 +281,15 @@ final class GenerativeInpainter: @unchecked Sendable {
         guard Tuning.grain, missing > 0.002 else { return filled }
 
         // Ruído de luminância à escala do píxel, média zero: misturar a zona um pouco mais escura com ela um
-        // pouco mais clara, com o ruído (uniforme em 0…1, desvio 1/√12) como máscara, dá exactamente
+        // pouco mais clara, com o ruído (em 0…1, média ½) como máscara, dá exactamente
         // `zona + ganho × (ruído − ½)`. Somar o ruído directamente não servia: o do `CIRandomGenerator` com
         // alfa 0 é anulado pela pré-multiplicação e o grão nunca chegava à imagem — medido, era sempre zero.
-        let gain = missing * 12.0.squareRoot()
+        let gain = missing / noiseTile.deviation
         func shifted(_ image: CIImage, _ amount: Double) -> CIImage {
             image.applyingFilter("CIColorMatrix", parameters: ["inputBiasVector": CIVector(x: amount, y: amount, z: amount, w: 0)])
         }
         let tiled = CIFilter.affineTile()
-        tiled.inputImage = noiseTile
+        tiled.inputImage = noiseTile.image
         tiled.transform = .identity
         guard let noise = tiled.outputImage?.cropped(to: e) else { return filled }
         let grainy = shifted(perceptual(filled), gain / 2)
@@ -302,39 +302,69 @@ final class GenerativeInpainter: @unchecked Sendable {
             .cropped(to: whole)
     }
 
-    /// Ruído uniforme em 0…1, igual nos três canais, num ladrilho de 256 px: determinista, para a mesma
-    /// remoção dar o mesmo grão em cada render.
-    private static let noiseTile: CIImage = {
+    /// Ruído em 0…1, igual nos três canais, num ladrilho de 256 px: determinista, para a mesma remoção dar o
+    /// mesmo grão em cada render. É a média 3×3 de ruído uniforme, não o uniforme puro: o grão de uma foto
+    /// verdadeira é ligeiramente correlacionado entre vizinhos, e ruído branco lia-se como pontos soltos,
+    /// sujidade, por cima de uma zona lisa.
+    private static let noiseTile: (image: CIImage, deviation: Double) = {
+        let side = 256
         var state: UInt64 = 0x6A11_7E55
-        var pixels = [Float](repeating: 1, count: 256 * 256 * 4)
-        for i in 0..<(256 * 256) {
+        var white = [Float](repeating: 0, count: side * side)
+        for i in white.indices {
             state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            let v = Float(state >> 40) / Float(1 << 24)
-            pixels[i * 4] = v; pixels[i * 4 + 1] = v; pixels[i * 4 + 2] = v
+            white[i] = Float(state >> 40) / Float(1 << 24)
         }
-        return CIImage(bitmapData: pixels.withUnsafeBufferPointer { Data(buffer: $0) }, bytesPerRow: 256 * 16,
-                       size: CGSize(width: 256, height: 256), format: .RGBAf, colorSpace: nil)
+        func at(_ values: [Float], _ x: Int, _ y: Int) -> Float { values[((y + side) % side) * side + (x + side) % side] }
+        var smooth = [Float](repeating: 0, count: side * side)
+        for y in 0..<side {
+            for x in 0..<side {
+                var total: Float = 0
+                for dy in -1...1 { for dx in -1...1 { total += at(white, x + dx, y + dy) } }
+                smooth[y * side + x] = total / 9
+            }
+        }
+        // O desvio que conta é o da mesma medida com que o grão em falta é medido — o ruído menos a sua versão
+        // desfocada a σ 1,5 —, não o total: um ruído correlacionado tem menos energia nessa banda e, acertado
+        // pelo total, ficava grão por pôr.
+        let kernel = (-4...4).map { Float(exp(-Double($0 * $0) / (2 * 1.5 * 1.5))) }
+        let norm = kernel.reduce(0, +)
+        var across = [Float](repeating: 0, count: side * side), blurred = across
+        for y in 0..<side { for x in 0..<side { across[y * side + x] = (-4...4).reduce(0) { $0 + kernel[$1 + 4] * at(smooth, x + $1, y) } / norm } }
+        for y in 0..<side { for x in 0..<side { blurred[y * side + x] = (-4...4).reduce(0) { $0 + kernel[$1 + 4] * at(across, x, y + $1) } / norm } }
+        var squares = 0.0
+        var pixels = [Float](repeating: 1, count: side * side * 4)
+        for i in smooth.indices {
+            pixels[i * 4] = smooth[i]; pixels[i * 4 + 1] = smooth[i]; pixels[i * 4 + 2] = smooth[i]
+            let fine = Double(smooth[i] - blurred[i])
+            squares += fine * fine
+        }
+        let image = CIImage(bitmapData: pixels.withUnsafeBufferPointer { Data(buffer: $0) }, bytesPerRow: side * 16,
+                            size: CGSize(width: side, height: side), format: .RGBAf, colorSpace: nil)
+        return (image, (squares / Double(side * side)).squareRoot())
     }()
 
-    /// Variância do detalhe fino (imagem menos a sua versão desfocada) ponderada por `weights`.
+    /// Nível de grão sob `weights`: a variância **local** do detalhe fino (imagem menos a sua versão
+    /// desfocada) em cada ponto, e dessas o percentil 25. A média servia mal: uma aresta no anel à volta
+    /// do buraco — o contorno de uma duna, o aro de uma bicicleta — contava como grão, e um céu liso
+    /// recebia ruído a mais 25 a 100 vezes o que tinha.
     private static func grainVariance(of image: CIImage, in weights: CIImage) -> Double? {
         let e = image.extent
         let blurred = image.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
         let fine = blurred.applyingFilter("CIDifferenceBlendMode", parameters: [kCIInputBackgroundImageKey: image]).cropped(to: e)
         let squared = fine.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: fine])
-        let weighted = squared.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: weights]).cropped(to: e)
-        let total = average(weighted), share = average(weights)
-        guard share > 0.0005 else { return nil }
-        return total / share
-    }
-
-    private static func average(_ image: CIImage) -> Double {
-        let mean = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: image.extent)])
-        var pixel = [Float](repeating: 0, count: 4)
-        ImageRenderer.shared.context.render(mean, toBitmap: &pixel, rowBytes: 16,
-                                            bounds: CGRect(origin: mean.extent.origin, size: CGSize(width: 1, height: 1)),
-                                            format: .RGBAf, colorSpace: nil)
-        return Double(pixel[1])
+        let local = squared.clampedToExtent().applyingGaussianBlur(sigma: 6).cropped(to: e)
+        // Um mapa de variância local é liso: medi-lo reduzido não perde nada.
+        let scale = min(256 / max(e.width, e.height), 1)
+        let width = max(Int(e.width * scale), 1), height = max(Int(e.height * scale), 1)
+        guard let variance = ObjectRemover.pixels(of: local, region: e, width: width, height: height),
+              let weight = ObjectRemover.pixels(of: weights, region: e, width: width, height: height) else { return nil }
+        var values: [Float] = []
+        for i in 0..<(width * height) where weight.pixels[i * 3] > 0.5 {
+            values.append((variance.pixels[i * 3] + variance.pixels[i * 3 + 1] + variance.pixels[i * 3 + 2]) / 3)
+        }
+        guard values.count >= 16 else { return nil }
+        values.sort()
+        return Double(values[values.count / 4])
     }
 
     /// Janela branca no meio que se desvanece na margem, para cruzar com a janela do lado.
