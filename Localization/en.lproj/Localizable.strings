@@ -670,3 +670,6 @@
 "settings.generativeInstalled" = "Installed. Removals now use it; without it they fall back to copying nearby texture.";
 "settings.generativeInstall" = "Download";
 "settings.generativeRemove" = "Remove";
+"settings.segmentModel" = "AI object selection";
+"settings.segmentHint" = "One click selects just that object or person, even in a group, with tight edges. 93 MB, downloaded once, runs on your Mac.";
+"settings.segmentInstalled" = "Installed. Clicks in object removal now use it; without it the system detector is used, which merges things that touch.";

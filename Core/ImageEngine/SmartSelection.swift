@@ -33,19 +33,72 @@ final class SmartSelection: @unchecked Sendable {
 
     /// Máscara do objeto no ponto (normalizado, origem em cima à esquerda). Procura à volta se o clique cair ao lado.
     func objectMask(for image: CIImage, at point: CurvePoint) -> CIImage? {
-        guard let analysis = analysis(for: image), let observation = analysis.observation else { return nil }
-        let label = visionLock.withLock { Self.label(in: observation.instanceMask, at: point, searchRadius: 0.025) }
-        guard label > 0 else { return nil }
+        let analysis = analysis(for: image)
+        let observation = analysis?.observation
+        let label = observation.map { o in visionLock.withLock { Self.label(in: o.instanceMask, at: point, searchRadius: 0.025) } } ?? 0
         // Uma cabeça também se solta pelo pescoço, mas quem clica numa cabeça quer tirar a pessoa. Só vale a
         // peça quando não é gente — a bola, um cartaz, uma bandeirola. A segmentação de pessoas não serve
         // para o saber (marca a bancada inteira e até a bola), nem a pose ou o rosto, que falham num
         // jogador de costas ou de pernas para o ar; o tronco detectado apanha esses casos.
-        if let part = visionLock.withLock({ Self.part(of: observation.instanceMask, label: label, at: point) }),
-           !analysis.people.contains(where: { $0.contains(part.centre) }) {
-            return Self.grayMask(part.image, extent: image.extent)
+        let thing: Part? = {
+            guard label > 0, let observation, let analysis,
+                  let part = visionLock.withLock({ Self.part(of: observation.instanceMask, label: label, at: point) }),
+                  !analysis.people.contains(where: { $0.contains(part.centre) }) else { return nil }
+            return part
+        }()
+
+        // Com o SAM instalado, é ele que recorta: separa uma pessoa do grupo com que o Vision a junta.
+        if let candidates = SegmentAnything.shared.candidates(for: image, at: point),
+           let chosen = Self.choose(candidates, piece: thing.map { Self.grid($0, side: SegmentAnything.maskSide) },
+                                    onForeground: label > 0) {
+            return chosen.mask
+        }
+
+        guard label > 0, let observation, let analysis else { return nil }
+        if let thing {
+            return Self.grayMask(thing.image, extent: image.extent)
                 .clampedToExtent().applyingGaussianBlur(sigma: 1).cropped(to: image.extent)
         }
         return mask(observation, analysis.handler, instances: IndexSet(integer: label), extent: image.extent)
+    }
+
+    /// Qual das três leituras do SAM remover. A nota do modelo prefere as partes pequenas — num clique na
+    /// cabeça, a cabeça sozinha tem 0,81 e a pessoa inteira 0,19 —, mas para apagar quer-se o objecto todo:
+    ///
+    /// - quando o Vision soltou ali uma peça que não é gente (a bola presa à bota), a leitura que mais
+    ///   coincide com ela: a maior levava a bota;
+    /// - quando o clique caiu no primeiro plano do Vision, a maior das leituras com alguma confiança;
+    /// - fora dele, só uma leitura em que o modelo confie, para um clique no céu não apagar o céu.
+    static func choose(_ candidates: [SegmentAnything.Candidate], piece: [Bool]?, onForeground: Bool) -> SegmentAnything.Candidate? {
+        let usable = candidates.filter { $0.area > 0 }
+        if let piece {
+            func overlap(_ c: SegmentAnything.Candidate) -> Double {
+                var both = 0, either = 0
+                for i in c.grid.indices where c.grid[i] || piece[i] {
+                    either += 1
+                    if c.grid[i] && piece[i] { both += 1 }
+                }
+                return either > 0 ? Double(both) / Double(either) : 0
+            }
+            return usable.max { overlap($0) < overlap($1) }
+        }
+        if onForeground {
+            return usable.filter { $0.score >= 0.1 }.max { $0.area < $1.area }
+        }
+        return usable.filter { $0.score >= 0.5 }.max { $0.score < $1.score }
+    }
+
+    /// Uma peça da grelha do Vision reduzida à grelha `side`×`side` do SAM (as duas esticam a foto inteira
+    /// para um quadrado, por isso correspondem ponto a ponto).
+    private static func grid(_ part: Part, side: Int) -> [Bool] {
+        var out = [Bool](repeating: false, count: side * side)
+        for y in 0..<side {
+            let sy = min(y * part.height / side, part.height - 1)
+            for x in 0..<side {
+                out[y * side + x] = part.pixels[sy * part.width + min(x * part.width / side, part.width - 1)]
+            }
+        }
+        return out
     }
 
     /// O Vision junta muitas vezes num só objecto tudo o que se toca: a bola presa à bota, a bota ao

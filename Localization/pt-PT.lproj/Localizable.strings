@@ -670,3 +670,6 @@
 "settings.generativeInstalled" = "Instalado. As remoções passam a usá-lo; sem ele voltam a copiar a textura à volta.";
 "settings.generativeInstall" = "Descarregar";
 "settings.generativeRemove" = "Remover";
+"settings.segmentModel" = "Seleção de objetos com IA";
+"settings.segmentHint" = "Um clique seleciona só aquele objeto ou pessoa, mesmo num grupo, com as bermas justas. 93 MB, descarregado uma vez, corre no teu Mac.";
+"settings.segmentInstalled" = "Instalado. Os cliques na remoção de objetos passam a usá-lo; sem ele volta a deteção do sistema, que junta o que se toca.";

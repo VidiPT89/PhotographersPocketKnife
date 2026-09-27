@@ -41,7 +41,7 @@
 - ✅ Background noise reduction for high-ISO shoots: wavelet denoising on the GPU (no AI, no internet) smooths grain while keeping edges, and saves a 16-bit TIFF copy (`-DN`) next to each original, added to the catalog
 - ✅ Local adjustments with linear and radial gradient masks, a brush mask (hold ⌥ to erase) and an automatic subject mask, edited directly on the image
 - ✅ One-click Auto edit: exposure metered on what draws attention in the frame, white balance, contrast and horizon straightening, all as regular sliders you can tweak
-- ✅ Object removal: click a person or object to select it automatically, or paint over any distraction, and the area is filled with the surrounding texture — on-device, no internet needed
+- ✅ Object removal: click a person or object to select just that one (even inside a group, with SAM 2.1), or paint over any distraction; the area is invented by a generative model (LaMa) with the photo's own grain and detail, and a stroke over lettering takes the whole word. Both models are optional one-time downloads that run on-device; without them it falls back to copying the surrounding texture
 - ✅ Crop with aspect presets and rule-of-thirds or golden-spiral overlays, straighten, rotate, flip, perspective and automatic lens correction for RAW
 - ✅ Clipping warnings on the histogram and on the image
 - ✅ Visual history with undo/redo, named snapshots, presets with live hover preview that can be shared as `.ppkpreset` files, Lightroom `.xmp` preset import, and copy/paste settings across a selection

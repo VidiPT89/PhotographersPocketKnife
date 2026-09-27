@@ -123,17 +123,35 @@ private struct GeneralSettings: View {
                         .accessibilityLabel(app.t("settings.cacheCleared"))
                 }
             }
-            GenerativeModelRow()
+            ModelRow(model: GenerativeInpainter.shared, titleKey: "settings.generativeModel",
+                     hintKey: "settings.generativeHint", installedKey: "settings.generativeInstalled")
+            ModelRow(model: SegmentAnything.shared, titleKey: "settings.segmentModel",
+                     hintKey: "settings.segmentHint", installedKey: "settings.segmentInstalled")
         }
         .formStyle(.grouped)
     }
 }
 
-/// Instalar ou remover o modelo que inventa o que estava por baixo do que se apaga.
-private struct GenerativeModelRow: View {
+/// Um modelo descarregado à parte (a LaMa, o SAM), com interruptor.
+private protocol DownloadableModel: AnyObject, Sendable {
+    var isInstalled: Bool { get }
+    var isEnabled: Bool { get set }
+    func install(progress: @Sendable @escaping (Double) -> Void) async throws
+    func remove()
+}
+
+extension GenerativeInpainter: DownloadableModel {}
+extension SegmentAnything: DownloadableModel {}
+
+/// Instalar, ligar ou remover um modelo que corre no Mac.
+private struct ModelRow: View {
     @Environment(AppState.self) private var app
-    @State private var installed = GenerativeInpainter.shared.isInstalled
-    @State private var enabled = GenerativeInpainter.shared.isEnabled
+    let model: any DownloadableModel
+    let titleKey: String
+    let hintKey: String
+    let installedKey: String
+    @State private var installed = false
+    @State private var enabled = true
     @State private var progress: Double?
     @State private var failure: String?
 
@@ -141,8 +159,8 @@ private struct GenerativeModelRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(app.t("settings.generativeModel"))
-                    Text(app.t(installed ? "settings.generativeInstalled" : "settings.generativeHint"))
+                    Text(app.t(titleKey))
+                    Text(app.t(installed ? installedKey : hintKey))
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecondary)
                 }
@@ -152,9 +170,9 @@ private struct GenerativeModelRow: View {
                 } else if installed {
                     Toggle("", isOn: $enabled)
                         .labelsHidden()
-                        .onChange(of: enabled) { _, value in GenerativeInpainter.shared.isEnabled = value }
+                        .onChange(of: enabled) { _, value in model.isEnabled = value }
                     Button(app.t("settings.generativeRemove"), role: .destructive) {
-                        GenerativeInpainter.shared.remove()
+                        model.remove()
                         installed = false
                     }
                 } else {
@@ -165,6 +183,10 @@ private struct GenerativeModelRow: View {
                 Text(failure).font(Typography.caption).foregroundStyle(Brand.error)
             }
         }
+        .onAppear {
+            installed = model.isInstalled
+            enabled = model.isEnabled
+        }
     }
 
     private func install() {
@@ -172,7 +194,7 @@ private struct GenerativeModelRow: View {
         progress = 0
         Task {
             do {
-                try await GenerativeInpainter.shared.install { value in
+                try await model.install { value in
                     Task { @MainActor in progress = value }
                 }
                 installed = true
