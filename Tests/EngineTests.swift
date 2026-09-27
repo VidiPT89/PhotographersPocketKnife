@@ -1,6 +1,7 @@
 import XCTest
 import CoreImage
 import ImageIO
+import CoreText
 import UniformTypeIdentifiers
 @testable import PhotographersPocketKnife
 
@@ -67,6 +68,38 @@ final class EngineTests: XCTestCase {
         XCTAssertLessThan(p.r, 0.6, "The red disc is gone")
         XCTAssertGreaterThan(q.g, p.g * 1.25, "The fill follows the exposure")
         XCTAssertLessThan(elapsed, 0.35, "The model does not run again for a slider")
+    }
+
+    /// Uma pincelada que só apanha a metade de baixo de um nome leva a palavra inteira: com meia letra à
+    /// vista, o modelo voltava a desenhá-la.
+    func testStrokeOverHalfAWordTakesTheWholeWord() throws {
+        let width = 1200, height = 500
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.setFillColor(CGColor(gray: 0.05, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 110, nil)
+        let text = NSAttributedString(string: "ASAMOAH", attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 0.95, alpha: 1),
+        ])
+        ctx.textPosition = CGPoint(x: 200, y: 200)  // linha de base; as letras vão de ~200 a ~280 (origem em baixo)
+        CTLineDraw(CTLineCreateWithAttributedString(text), ctx)
+        let photo = CIImage(cgImage: try XCTUnwrap(ctx.makeImage()))
+
+        // Traço na metade de baixo das letras (y ≈ 215 a contar de baixo), da ponta à ponta da palavra.
+        let stroke = CIImage(color: .white).cropped(to: CGRect(x: 210, y: 200, width: 560, height: 30))
+            .composited(over: CIImage(color: .black).cropped(to: photo.extent))
+        let words = try XCTUnwrap(ObjectRemover.wordsTouched(by: stroke, in: photo), "The word under the stroke is found")
+        var top = [Float](repeating: 0, count: 4)
+        ImageRenderer.shared.context.render(words, toBitmap: &top, rowBytes: 16, bounds: CGRect(x: 480, y: 270, width: 1, height: 1),
+                                            format: .RGBAf, colorSpace: nil)
+        XCTAssertGreaterThan(top[0], 0.5, "The tops of the letters, outside the stroke, go too")
+        var far = [Float](repeating: 0, count: 4)
+        ImageRenderer.shared.context.render(words, toBitmap: &far, rowBytes: 16, bounds: CGRect(x: 480, y: 420, width: 1, height: 1),
+                                            format: .RGBAf, colorSpace: nil)
+        XCTAssertLessThan(far[0], 0.1, "Nothing away from the word")
     }
 
     // MARK: Curvas, LUT e histórico

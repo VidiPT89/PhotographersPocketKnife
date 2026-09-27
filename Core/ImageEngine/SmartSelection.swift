@@ -21,6 +21,8 @@ final class SmartSelection: @unchecked Sendable {
     private var order: [String] = []
     private var personCache: [String: CIImage?] = [:]
     private var personOrder: [String] = []
+    private var wordCache: [String: [[CGPoint]]] = [:]
+    private var wordOrder: [String] = []
 
     /// Máscara do sujeito principal (branco = sujeito) com a extensão de `image`; `nil` se não houver nenhum.
     func subjectMask(for image: CIImage) -> CIImage? {
@@ -224,11 +226,55 @@ final class SmartSelection: @unchecked Sendable {
         return mask
     }
 
-    /// A foto reduzida a 1024 px, como o Vision a vê.
-    private static func analysisImage(_ image: CIImage) -> CGImage? {
+    /// Palavras escritas na foto — um nome numa camisola, um cartaz, uma matrícula —, cada uma como os quatro
+    /// cantos (esquerda-cima, direita-cima, direita-baixo, esquerda-baixo) normalizados com origem em cima à
+    /// esquerda. Palavra a palavra e não linha a linha: quem pinta um nome não quer levar a frase toda.
+    ///
+    /// Só o reconhecimento "preciso" encontra texto em camisolas; o rápido não viu nada na foto de teste.
+    /// Na primeira vez que corre no Mac, o sistema prepara o modelo (~20 s, uma só vez); depois são ~50 ms.
+    func words(in image: CIImage) -> [[CGPoint]] {
+        let e = image.extent
+        guard !e.isInfinite, e.width >= 16, e.height >= 16 else { return [] }
+        let key = Self.fingerprint(image)
+        if let hit = lock.withLock({ wordCache[key] }) { return hit }
+
+        var words: [[CGPoint]] = []
+        // Mais resolução do que as outras análises: letras pequenas numa foto grande desaparecem a 1024 px.
+        if let cgImage = Self.analysisImage(image, side: 2048) {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = false
+            let lines: [VNRecognizedTextObservation] = visionLock.withLock {
+                (try? VNImageRequestHandler(cgImage: cgImage).perform([request])) != nil ? request.results ?? [] : []
+            }
+            for line in lines where line.confidence > 0.25 {
+                guard let text = line.topCandidates(1).first else { continue }
+                let string = text.string
+                var start = string.startIndex
+                while start < string.endIndex {
+                    guard let wordStart = string[start...].firstIndex(where: { !$0.isWhitespace }) else { break }
+                    let wordEnd = string[wordStart...].firstIndex(where: \.isWhitespace) ?? string.endIndex
+                    if let box = try? text.boundingBox(for: wordStart..<wordEnd) {
+                        words.append([box.topLeft, box.topRight, box.bottomRight, box.bottomLeft]
+                            .map { CGPoint(x: $0.x, y: 1 - $0.y) })
+                    }
+                    start = wordEnd
+                }
+            }
+        }
+        lock.withLock {
+            wordCache[key] = words
+            wordOrder.append(key)
+            if wordOrder.count > 4 { wordCache[wordOrder.removeFirst()] = nil }
+        }
+        return words
+    }
+
+    /// A foto reduzida a `side` px (1024 por omissão), como o Vision a vê.
+    private static func analysisImage(_ image: CIImage, side: CGFloat = 1024) -> CGImage? {
         let e = image.extent
         let renderer = ImageRenderer.shared
-        let scale = min(1024 / max(e.width, e.height), 1)
+        let scale = min(side / max(e.width, e.height), 1)
         let size = CGSize(width: (e.width * scale).rounded(.down), height: (e.height * scale).rounded(.down))
         let scaled = image
             .transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY))

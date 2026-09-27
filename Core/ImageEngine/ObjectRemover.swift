@@ -156,6 +156,7 @@ final class ObjectRemover: @unchecked Sendable {
         }
         if let raster = ImageRenderer.rasterizeStrokes(removals.flatMap(\.strokes), extent: e) {
             add(raster.image)
+            if let words = wordsTouched(by: raster.image, in: reference) { add(words) }
         }
         for point in removals.compactMap(\.objectPoint) {
             guard let object = SmartSelection.shared.objectMask(for: reference, at: point) else { continue }
@@ -164,6 +165,78 @@ final class ObjectRemover: @unchecked Sendable {
             add(object.clampedToExtent().applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow]).cropped(to: e))
         }
         return combined?.cropped(to: e)
+    }
+
+    /// Uma pincelada sobre um nome quase nunca o cobre todo: fica o topo das letras de fora, e o modelo, com
+    /// meia letra à vista, volta a desenhá-la. Foi a queixa que mais se repetiu. Aqui, cada palavra que a
+    /// pincelada cobre em pelo menos um quinto passa a ir inteira, com margem para as bermas das letras.
+    static func wordsTouched(by stroke: CIImage, in reference: CIImage) -> CIImage? {
+        let words = SmartSelection.shared.words(in: reference)
+        guard !words.isEmpty else { return nil }
+        let e = reference.extent
+        let scale = min(1024 / max(e.width, e.height), 1)
+        let width = max(Int(e.width * scale), 1), height = max(Int(e.height * scale), 1)
+        guard let painted = pixels(of: stroke, region: e, width: width, height: height) else { return nil }
+
+        var chosen: [[CGPoint]] = []
+        for word in words {
+            let corners = word.map { CGPoint(x: $0.x * CGFloat(width), y: $0.y * CGFloat(height)) }
+            let xs = corners.map(\.x), ys = corners.map(\.y)
+            let minX = max(Int(xs.min()!), 0), maxX = min(Int(xs.max()!.rounded(.up)), width - 1)
+            let minY = max(Int(ys.min()!), 0), maxY = min(Int(ys.max()!.rounded(.up)), height - 1)
+            guard minX <= maxX, minY <= maxY else { continue }
+            var inside = 0, covered = 0
+            for y in minY...maxY {
+                for x in minX...maxX where contains(corners, CGPoint(x: Double(x) + 0.5, y: Double(y) + 0.5)) {
+                    inside += 1
+                    if painted.pixels[(y * width + x) * 3] > 0.5 { covered += 1 }
+                }
+            }
+            if inside > 0, covered * 5 >= inside { chosen.append(corners) }
+        }
+        guard !chosen.isEmpty,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { return nil }
+        context.setFillColor(gray: 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(gray: 1, alpha: 1)
+        for corners in chosen {
+            // Margem pequena: a caixa do Vision já apanha as letras, e o caminho generativo ainda alarga a
+            // máscara por cima disto. Com um terço da altura, as duas margens somadas comiam as riscas ao lado
+            // e o modelo inventava riscas novas.
+            let across = CGPoint(x: corners[1].x - corners[0].x, y: corners[1].y - corners[0].y)
+            let down = CGPoint(x: corners[3].x - corners[0].x, y: corners[3].y - corners[0].y)
+            let tall = hypot(down.x, down.y), long = max(hypot(across.x, across.y), 1)
+            let pad = tall / 10
+            let u = CGPoint(x: across.x / long * pad, y: across.y / long * pad)
+            let v = CGPoint(x: down.x / max(tall, 1) * pad, y: down.y / max(tall, 1) * pad)
+            let grown = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].enumerated().map { index, sign in
+                CGPoint(x: corners[index].x + sign.0 * u.x + sign.1 * v.x, y: corners[index].y + sign.0 * u.y + sign.1 * v.y)
+            }
+            // A grelha tem a linha 0 em cima; o contexto desenha com y a crescer para cima.
+            context.addLines(between: grown.map { CGPoint(x: $0.x, y: CGFloat(height) - $0.y) })
+            context.closePath()
+            context.fillPath()
+        }
+        guard let cg = context.makeImage() else { return nil }
+        return CIImage(cgImage: cg)
+            .transformed(by: CGAffineTransform(scaleX: e.width / CGFloat(width), y: e.height / CGFloat(height)))
+            .transformed(by: CGAffineTransform(translationX: e.minX, y: e.minY))
+            .clampedToExtent().applyingGaussianBlur(sigma: 1).cropped(to: e)
+    }
+
+    /// Ponto dentro de um quadrilátero convexo, em qualquer sentido de percurso.
+    private static func contains(_ polygon: [CGPoint], _ p: CGPoint) -> Bool {
+        var sign: CGFloat = 0
+        for i in polygon.indices {
+            let a = polygon[i], b = polygon[(i + 1) % polygon.count]
+            let cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+            if cross != 0 {
+                if sign == 0 { sign = cross } else if (cross > 0) != (sign > 0) { return false }
+            }
+        }
+        return true
     }
 
     private static func boundingBox(of mask: CIImage, extent e: CGRect) -> CGRect? {
