@@ -18,9 +18,13 @@ final class AppUITests: XCTestCase {
 
     func testSplashShowsCreditsThenOpensTheApp() {
         app.launch()
-        let credit = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "David Arsénio Martins")).firstMatch
+        // Consoante a versão do macOS, o texto do SwiftUI chega à acessibilidade como `label` ou como `value`.
+        let credit = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
+                                                            "David Arsénio Martins", "David Arsénio Martins")).firstMatch
         XCTAssertTrue(credit.waitForExistence(timeout: 5), "Developer credit on the splash")
-        XCTAssertTrue(app.links["ividi.dev"].exists || app.buttons["ividi.dev"].exists || app.staticTexts["ividi.dev"].exists)
+        // Os links entram um instante depois do crédito: espera-se por eles em vez de os ver logo.
+        XCTAssertTrue(app.links["ividi.dev"].waitForExistence(timeout: 3) || app.buttons["ividi.dev"].exists
+                      || app.staticTexts["ividi.dev"].exists)
         XCTAssertTrue(app.buttons["Seleção"].waitForExistence(timeout: 10), "Main window after the splash")
     }
 
@@ -35,6 +39,9 @@ final class AppUITests: XCTestCase {
         XCTAssertFalse(app.toolbars.buttons["EN"].exists, "Language lives in Settings, not in the toolbar")
 
         app.typeKey(",", modifierFlags: .command)
+        // As Definições abrem no último separador usado, que o macOS guarda fora das preferências de teste.
+        let general = app.windows["com_apple_SwiftUI_Settings_window"].toolbars.buttons["Geral"]
+        if general.waitForExistence(timeout: 5) { general.click() }
         let english = app.radioButtons["EN"]
         XCTAssertTrue(english.waitForExistence(timeout: 5), "Settings window with the language picker")
         english.click()
