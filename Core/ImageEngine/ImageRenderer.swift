@@ -75,84 +75,9 @@ final class ImageRenderer: @unchecked Sendable {
     // MARK: Pipeline
 
     func apply(_ r: EditRecipe, to input: CIImage, applyCrop: Bool = true) -> CIImage {
-        var image = input
         // Raios dos filtros proporcionais ao tamanho: a preview (≈2000 px) e a exportação dão o mesmo aspeto.
         let scale = max(max(input.extent.width, input.extent.height) / 2000, 0.25)
-
-        if r.chromaticAberration != 0 {
-            image = correctChromaticAberration(image, amount: r.chromaticAberration)
-        }
-
-        if r.exposure != 0 {
-            let f = CIFilter.exposureAdjust()
-            f.inputImage = image
-            f.ev = Float(r.exposure)
-            image = f.outputImage ?? image
-        }
-        if r.temperature != 0 || r.tint != 0 {
-            let f = CIFilter.temperatureAndTint()
-            f.inputImage = image
-            f.neutral = CIVector(x: 6500 + r.temperature * 3000, y: r.tint * 100)
-            f.targetNeutral = CIVector(x: 6500, y: 0)
-            image = f.outputImage ?? image
-        }
-        if r.shadows != 0 || r.highlights < 0 {
-            let f = CIFilter.highlightShadowAdjust()
-            f.inputImage = image
-            f.shadowAmount = Float(r.shadows)
-            f.highlightAmount = Float(1 + min(0, r.highlights))
-            f.radius = 8
-            image = f.outputImage ?? image
-        }
-        if r.contrast != 0 || r.saturation != 0 {
-            let f = CIFilter.colorControls()
-            f.inputImage = image
-            f.contrast = Float(1 + r.contrast * 0.5)
-            f.saturation = Float(1 + r.saturation)
-            f.brightness = 0
-            image = f.outputImage ?? image
-        }
-        if r.vibrance != 0 {
-            let f = CIFilter.vibrance()
-            f.inputImage = image
-            f.amount = Float(r.vibrance)
-            image = f.outputImage ?? image
-        }
-        if r.clarity != 0 {
-            image = localContrast(image, amount: r.clarity * 0.8, radius: 22 * scale)
-        }
-        if r.texture != 0 {
-            image = localContrast(image, amount: r.texture * 0.9, radius: 3 * scale)
-        }
-        if r.needsToneCube {
-            let f = CIFilter.colorCubeWithColorSpace()
-            f.inputImage = image
-            f.cubeDimension = Float(ColorCube.dimension)
-            f.cubeData = cube(for: r)
-            f.colorSpace = sRGB
-            image = f.outputImage ?? image
-        }
-        if r.noiseReduction > 0 {
-            let f = CIFilter.noiseReduction()
-            f.inputImage = image
-            f.noiseLevel = Float(r.noiseReduction * 0.06)
-            f.sharpness = 0.4
-            image = f.outputImage ?? image
-        }
-        if r.colorNoiseReduction > 0 {
-            // Mantém a luminância original e usa a cor de uma versão desfocada: tira o ruído de cor sem perder detalhe.
-            let e = image.extent
-            let blurred = image.clampedToExtent().applyingGaussianBlur(sigma: r.colorNoiseReduction * 6 * scale).cropped(to: e)
-            image = image.applyingFilter("CILuminosityBlendMode", parameters: [kCIInputBackgroundImageKey: blurred]).cropped(to: e)
-        }
-        if r.sharpness > 0 {
-            let f = CIFilter.sharpenLuminance()
-            f.inputImage = image
-            f.sharpness = Float(r.sharpness * 1.2)
-            f.radius = Float(max(r.sharpenRadius * scale, 0.5))
-            let sharpened = (f.outputImage ?? image).cropped(to: image.extent)
-            image = r.sharpenMasking > 0 ? blend(sharpened, over: image, mask: edgeMask(image, masking: r.sharpenMasking)) : sharpened
-        }
+        var image = adjusted(r, input, scale: scale)
 
         // As remoções e o sujeito são calculados sobre a foto sem ajustes: os sliders não obrigam a repetir a análise.
         let needsReference = !r.removals.isEmpty || r.masks.contains { $0.kind == .subject && !$0.isNeutral }
@@ -164,7 +89,9 @@ final class ImageRenderer: @unchecked Sendable {
             image = cropped(image, to: r.crop)
         }
         if let reference, !r.removals.isEmpty {
-            image = ObjectRemover.shared.apply(r.removals, to: image, reference: reference)
+            image = ObjectRemover.shared.apply(r.removals, to: image, reference: reference) {
+                self.adjusted(r, $0, scale: scale)
+            }
         }
         if let reference, r.skinSmoothing > 0 || r.backgroundBlur > 0 {
             image = Retouch.apply(r, to: image, reference: reference)
@@ -282,6 +209,87 @@ final class ImageRenderer: @unchecked Sendable {
     }
 
     /// A foto só com geometria e recorte, sem ajustes: base estável para as seleções automáticas e as remoções.
+    /// Os ajustes globais, sem geometria nem máscaras. Quase todos são ponto a ponto, por isso servem
+    /// também para trazer à cor da foto o que a remoção generativa inventou sobre a foto sem ajustes.
+    func adjusted(_ r: EditRecipe, _ input: CIImage, scale: CGFloat) -> CIImage {
+        var image = input
+        if r.chromaticAberration != 0 {
+            image = correctChromaticAberration(image, amount: r.chromaticAberration)
+        }
+
+        if r.exposure != 0 {
+            let f = CIFilter.exposureAdjust()
+            f.inputImage = image
+            f.ev = Float(r.exposure)
+            image = f.outputImage ?? image
+        }
+        if r.temperature != 0 || r.tint != 0 {
+            let f = CIFilter.temperatureAndTint()
+            f.inputImage = image
+            f.neutral = CIVector(x: 6500 + r.temperature * 3000, y: r.tint * 100)
+            f.targetNeutral = CIVector(x: 6500, y: 0)
+            image = f.outputImage ?? image
+        }
+        if r.shadows != 0 || r.highlights < 0 {
+            let f = CIFilter.highlightShadowAdjust()
+            f.inputImage = image
+            f.shadowAmount = Float(r.shadows)
+            f.highlightAmount = Float(1 + min(0, r.highlights))
+            f.radius = 8
+            image = f.outputImage ?? image
+        }
+        if r.contrast != 0 || r.saturation != 0 {
+            let f = CIFilter.colorControls()
+            f.inputImage = image
+            f.contrast = Float(1 + r.contrast * 0.5)
+            f.saturation = Float(1 + r.saturation)
+            f.brightness = 0
+            image = f.outputImage ?? image
+        }
+        if r.vibrance != 0 {
+            let f = CIFilter.vibrance()
+            f.inputImage = image
+            f.amount = Float(r.vibrance)
+            image = f.outputImage ?? image
+        }
+        if r.clarity != 0 {
+            image = localContrast(image, amount: r.clarity * 0.8, radius: 22 * scale)
+        }
+        if r.texture != 0 {
+            image = localContrast(image, amount: r.texture * 0.9, radius: 3 * scale)
+        }
+        if r.needsToneCube {
+            let f = CIFilter.colorCubeWithColorSpace()
+            f.inputImage = image
+            f.cubeDimension = Float(ColorCube.dimension)
+            f.cubeData = cube(for: r)
+            f.colorSpace = sRGB
+            image = f.outputImage ?? image
+        }
+        if r.noiseReduction > 0 {
+            let f = CIFilter.noiseReduction()
+            f.inputImage = image
+            f.noiseLevel = Float(r.noiseReduction * 0.06)
+            f.sharpness = 0.4
+            image = f.outputImage ?? image
+        }
+        if r.colorNoiseReduction > 0 {
+            // Mantém a luminância original e usa a cor de uma versão desfocada: tira o ruído de cor sem perder detalhe.
+            let e = image.extent
+            let blurred = image.clampedToExtent().applyingGaussianBlur(sigma: r.colorNoiseReduction * 6 * scale).cropped(to: e)
+            image = image.applyingFilter("CILuminosityBlendMode", parameters: [kCIInputBackgroundImageKey: blurred]).cropped(to: e)
+        }
+        if r.sharpness > 0 {
+            let f = CIFilter.sharpenLuminance()
+            f.inputImage = image
+            f.sharpness = Float(r.sharpness * 1.2)
+            f.radius = Float(max(r.sharpenRadius * scale, 0.5))
+            let sharpened = (f.outputImage ?? image).cropped(to: image.extent)
+            image = r.sharpenMasking > 0 ? blend(sharpened, over: image, mask: edgeMask(image, masking: r.sharpenMasking)) : sharpened
+        }
+        return image
+    }
+
     func referenceImage(_ r: EditRecipe, input: CIImage, applyCrop: Bool) -> CIImage {
         let geometry = applyGeometry(r, to: input)
         return applyCrop ? cropped(geometry, to: r.crop) : geometry

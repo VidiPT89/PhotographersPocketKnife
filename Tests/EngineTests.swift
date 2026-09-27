@@ -6,6 +6,69 @@ import UniformTypeIdentifiers
 
 final class EngineTests: XCTestCase {
 
+    // MARK: Remoção generativa
+
+    /// Um objecto grande vai ao modelo numa só janela com contexto à volta. Em janelas encadeadas que
+    /// eram quase só buraco, cada uma via o borrão da anterior e o resultado era uma mancha.
+    func testGenerativeRemovalSeesALargeHoleInOneWindowWithContext() {
+        let photo = CGRect(x: 0, y: 0, width: 1950, height: 1099)
+        let hole = CGRect(x: 150, y: 50, width: 1300, height: 950)
+        let windows = GenerativeInpainter.windows(for: hole, in: photo)
+        XCTAssertEqual(windows.count, 1)
+        XCTAssertTrue(windows[0].contains(hole), "The whole hole is inside the window")
+
+        let small = CGRect(x: 900, y: 500, width: 100, height: 80)
+        let window = GenerativeInpainter.windows(for: small, in: photo)[0]
+        XCTAssertTrue(window.contains(small))
+        XCTAssertGreaterThanOrEqual(window.width, small.width * 2.5, "There is context on both sides")
+        XCTAssertLessThanOrEqual(max(window.width / window.height, window.height / window.width), 2.01)
+    }
+
+    /// Um traço fino e comprido é percorrido por várias janelas que o cobrem de ponta a ponta.
+    func testGenerativeRemovalWalksALongThinStroke() {
+        let photo = CGRect(x: 0, y: 0, width: 1950, height: 1099)
+        let stroke = CGRect(x: 780, y: 740, width: 1150, height: 60)
+        let windows = GenerativeInpainter.windows(for: stroke, in: photo)
+        XCTAssertGreaterThan(windows.count, 1)
+        XCTAssertTrue(windows.allSatisfy { photo.contains($0) && $0.minY <= stroke.minY && $0.maxY >= stroke.maxY })
+        XCTAssertLessThanOrEqual(windows.map(\.minX).min()!, stroke.minX)
+        XCTAssertGreaterThanOrEqual(windows.map(\.maxX).max()!, stroke.maxX)
+    }
+
+    /// Com o modelo instalado (`TEST_RUNNER_PPK_GENERATIVE=1`): mexer na exposição depois de uma remoção
+    /// não volta a correr o modelo, e o preenchimento acompanha a exposição.
+    func testGenerativeRemovalFollowsAdjustmentsWithoutRunningAgain() throws {
+        guard ProcessInfo.processInfo.environment["PPK_GENERATIVE"] != nil, GenerativeInpainter.shared.isInstalled
+        else { throw XCTSkip("generative off") }
+        GenerativeInpainter.shared.isEnabled = true
+        let width = 900, height = 600
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        for y in stride(from: 0, to: height, by: 20) {
+            ctx.setFillColor(CGColor(srgbRed: 0.3, green: y % 40 == 0 ? 0.45 : 0.35, blue: 0.25, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: y, width: width, height: 20))
+        }
+        ctx.setFillColor(CGColor(srgbRed: 0.9, green: 0.1, blue: 0.1, alpha: 1))
+        ctx.fillEllipse(in: CGRect(x: 400, y: 250, width: 100, height: 100))
+        let photo = CIImage(cgImage: try XCTUnwrap(ctx.makeImage()))
+
+        var recipe = EditRecipe()
+        recipe.removals = [Removal(strokes: [BrushStroke(points: [CurvePoint(x: 450.0 / 900, y: 0.5)], size: 0.2)])]
+        let plain = ImageRenderer.shared.apply(recipe, to: photo)
+        recipe.exposure = 1
+        let started = Date()
+        let brighter = ImageRenderer.shared.apply(recipe, to: photo)
+        let centre = CGRect(x: 440, y: 290, width: 1, height: 1)
+        let p = try pixel(plain.cropped(to: centre)), q = try pixel(brighter.cropped(to: centre))
+        _ = ImageRenderer.shared.context.createCGImage(brighter, from: brighter.extent)
+        let elapsed = Date().timeIntervalSince(started)
+        print("PPK generative render after an adjustment: \(Int(elapsed * 1000)) ms")
+        XCTAssertLessThan(p.r, 0.6, "The red disc is gone")
+        XCTAssertGreaterThan(q.g, p.g * 1.25, "The fill follows the exposure")
+        XCTAssertLessThan(elapsed, 0.35, "The model does not run again for a slider")
+    }
+
     // MARK: Curvas, LUT e histórico
 
     func testLinearCurveIsIdentityAndMonotoneCurveDoesNotOvershoot() {

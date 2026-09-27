@@ -46,15 +46,6 @@ final class GenerativeInpainter: @unchecked Sendable {
 
     var isInstalled: Bool { FileManager.default.fileExists(atPath: Self.modelURL.path) }
 
-    func installedBytes() -> Int64 {
-        guard let e = FileManager.default.enumerator(at: Self.modelURL, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
-        var total: Int64 = 0
-        for case let file as URL in e {
-            total += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        }
-        return total
-    }
-
     func remove() {
         lock.withLock { loaded = nil }
         try? FileManager.default.removeItem(at: Self.modelURL)
@@ -145,47 +136,147 @@ final class GenerativeInpainter: @unchecked Sendable {
     func fill(_ image: CIImage, mask: CIImage, bounds: CGRect) -> CIImage? {
         let e = image.extent
         guard model() != nil, !e.isInfinite, bounds.width >= 2, bounds.height >= 2 else { return nil }
+        let windows = Self.windows(for: bounds, in: e)
+        guard !windows.isEmpty else { return nil }
 
-        // Contexto à volta da zona: o modelo precisa de ver o que a rodeia para inventar algo que continue
-        // a foto. Uma janela grande de mais passa a ter o buraco a ocupar quase tudo e devolve uma mancha.
-        let target = max(bounds.width, bounds.height) * 3
-        let windowSide = min(max(target, 64), min(e.width, e.height))
-        // As janelas são distribuídas **centradas na zona**. Encostar a primeira ao canto do buraco
-        // deixava-o na margem da janela, sem contexto de um dos lados, e o modelo tem de ver o que rodeia
-        // a zona pelos quatro lados para inventar algo que continue a foto.
-        let step = windowSide * 0.55
-        let spanX = max(bounds.width - windowSide, 0), spanY = max(bounds.height - windowSide, 0)
-        let columns = max(Int(ceil(spanX / step)) + 1, 1)
-        let rows = max(Int(ceil(spanY / step)) + 1, 1)
-        guard columns * rows <= 24 else { return nil }
-        let strideX = columns > 1 ? spanX / CGFloat(columns - 1) : 0
-        let strideY = rows > 1 ? spanY / CGFloat(rows - 1) : 0
-
-        let single = rows == 1 && columns == 1
+        let single = windows.count == 1
         var working = image
-        for row in 0..<rows {
-            for column in 0..<columns {
-                let centreX = bounds.midX - spanX / 2 + CGFloat(column) * strideX
-                let centreY = bounds.midY - spanY / 2 + CGFloat(row) * strideY
-                let originX = min(max(centreX - windowSide / 2, e.minX), e.maxX - windowSide)
-                let originY = min(max(centreY - windowSide / 2, e.minY), e.maxY - windowSide)
-                let window = CGRect(x: originX, y: originY, width: windowSide, height: windowSide).integral
-                guard let patch = patch(for: working, mask: mask, window: window) else { continue }
-                // Só o que é buraco *dentro desta janela* é substituído; o resto fica para as outras.
-                // A máscara esbate-se na margem da janela para as janelas se cruzarem em vez de encostarem:
-                // cada uma inventa conteúdo diferente para a mesma textura, e um corte a direito deixaria
-                // uma risca visível entre elas.
-                let localMask = single ? mask.cropped(to: window)
-                    : mask.applyingFilter("CIMultiplyCompositing",
-                                          parameters: [kCIInputBackgroundImageKey: Self.taper(window)])
-                        .cropped(to: window)
-                working = patch
-                    .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: working,
-                                                                    kCIInputMaskImageKey: localMask])
-                    .cropped(to: e)
+        var filledAny = false
+        for window in windows {
+            guard let patch = patch(for: working, mask: mask, window: window) else { continue }
+            filledAny = true
+            // Só o que é buraco *dentro desta janela* é substituído; o resto fica para as outras.
+            // A máscara esbate-se na margem da janela para as janelas se cruzarem em vez de encostarem:
+            // cada uma inventa conteúdo diferente para a mesma textura, e um corte a direito deixaria
+            // uma risca visível entre elas.
+            let localMask = single ? mask.cropped(to: window)
+                : mask.applyingFilter("CIMultiplyCompositing",
+                                      parameters: [kCIInputBackgroundImageKey: Self.taper(window)])
+                    .cropped(to: window)
+            working = patch
+                .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: working,
+                                                                kCIInputMaskImageKey: localMask])
+                .cropped(to: e)
+        }
+        // Sem nenhuma janela preenchida, devolver a foto intacta deixava a remoção a não fazer nada, em
+        // silêncio, e ficava em cache; assim segue o motor por cópia.
+        return filledAny ? working : nil
+    }
+
+    /// Onde o modelo vai olhar. Há dois casos, e confundi-los era o que dava manchas:
+    ///
+    /// - **Zona compacta ou grande** (um objecto, uma pessoa): uma só janela com a zona e bastante contexto
+    ///   à volta, mesmo que isso signifique reduzir mais. A LaMa inventa bem uma bancada inteira quando vê
+    ///   a bancada; em janelas encadeadas que são quase só buraco, cada uma via apenas o borrão da
+    ///   anterior e o resultado era uma mancha escura.
+    /// - **Traço fino e comprido** (um fio, uma linha no chão): várias janelas ao longo do traço, cada uma
+    ///   com o traço estreito no meio e contexto de sobra dos dois lados, para não perder resolução.
+    ///
+    /// As janelas não precisam de ser quadradas: o `samples` estica-as para o tamanho do modelo e o
+    /// `patch` desfaz o esticão, e a LaMa aguenta bem uma proporção até ~2:1.
+    static func windows(for bounds: CGRect, in e: CGRect) -> [CGRect] {
+        let long = max(bounds.width, bounds.height), short = min(bounds.width, bounds.height)
+        let limit = min(e.width, e.height)
+
+        // Traço fino: janelas quadradas ao longo dele, quando cabem várias e o traço é mesmo estreito.
+        let tileSide = min(max(short * 4, 384), limit)
+        if long > tileSide * 1.5, short * 3 < tileSide {
+            let step = tileSide * 0.55
+            let spanX = max(bounds.width - tileSide, 0), spanY = max(bounds.height - tileSide, 0)
+            let columns = Int(ceil(spanX / step)) + 1, rows = Int(ceil(spanY / step)) + 1
+            if columns * rows <= 24 {
+                let strideX = columns > 1 ? spanX / CGFloat(columns - 1) : 0
+                let strideY = rows > 1 ? spanY / CGFloat(rows - 1) : 0
+                var out: [CGRect] = []
+                for row in 0..<rows {
+                    for column in 0..<columns {
+                        let centre = CGPoint(x: bounds.midX - spanX / 2 + CGFloat(column) * strideX,
+                                             y: bounds.midY - spanY / 2 + CGFloat(row) * strideY)
+                        out.append(fit(CGSize(width: tileSide, height: tileSide), centredOn: centre, in: e))
+                    }
+                }
+                return out
             }
         }
-        return working
+
+        // Uma só janela: a zona a ocupar mais ou menos um terço de cada lado, com um mínimo para haver
+        // contexto mesmo numa pinta pequena.
+        var width = max(bounds.width * 2.6, long * 1.6, 96)
+        var height = max(bounds.height * 2.6, long * 1.6, 96)
+        width = min(width, e.width); height = min(height, e.height)
+        // Proporção limitada: esticar de mais deforma o que o modelo vê.
+        if width > height * 2 { height = min(width / 2, e.height) }
+        if height > width * 2 { width = min(height / 2, e.width) }
+        return [fit(CGSize(width: width, height: height), centredOn: CGPoint(x: bounds.midX, y: bounds.midY), in: e)]
+    }
+
+    /// Rectângulo de `size` centrado em `centre`, empurrado para dentro da imagem.
+    private static func fit(_ size: CGSize, centredOn centre: CGPoint, in e: CGRect) -> CGRect {
+        let w = min(size.width, e.width), h = min(size.height, e.height)
+        let x = min(max(centre.x - w / 2, e.minX), e.maxX - w)
+        let y = min(max(centre.y - h / 2, e.minY), e.maxY - h)
+        return CGRect(x: x, y: y, width: w, height: h).integral.intersection(e)
+    }
+
+    /// O modelo trabalha reduzido e devolve uma zona lisa, sem o grão da foto — é isso que denuncia um
+    /// preenchimento mesmo quando a forma está certa. Mede-se quanto grão há à volta e quanto há no que
+    /// foi inventado, e junta-se a diferença.
+    ///
+    /// Tudo se mede e aplica só em `bounds` (a zona do buraco) com uma margem: isto corre em cada render
+    /// da pré-visualização, e medir a foto inteira custava por nada.
+    static func matchingGrain(_ filled: CIImage, original: CIImage, mask: CIImage, around bounds: CGRect) -> CIImage {
+        let whole = filled.extent
+        let e = bounds.insetBy(dx: -40, dy: -40).intersection(whole).integral
+        guard !e.isEmpty else { return filled }
+        let hole = mask.cropped(to: e)
+        // Anel à volta do buraco: é daí que vem a medida do grão que a foto tem.
+        let grown = hole.clampedToExtent().applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: 24]).cropped(to: e)
+        let ring = hole.applyingFilter("CIColorInvert")
+            .applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: grown])
+            .cropped(to: e)
+        guard let around = grainVariance(of: original.cropped(to: e), in: ring),
+              let inside = grainVariance(of: filled.cropped(to: e), in: hole) else { return filled }
+        let missing = max(around - inside, 0).squareRoot()
+        guard missing > 0.002 else { return filled }
+
+        // Ruído de luminância à escala do píxel, média zero. O gerador do Core Image é uniforme em 0…1,
+        // de desvio 1/√12; escala-se para o desvio que falta.
+        let gain = missing * 12.0.squareRoot()
+        let noise = CIFilter(name: "CIRandomGenerator")!.outputImage!
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: gain, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: gain, y: 0, z: 0, w: 0),
+                "inputBVector": CIVector(x: gain, y: 0, z: 0, w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+                "inputBiasVector": CIVector(x: -gain / 2, y: -gain / 2, z: -gain / 2, w: 0),
+            ])
+            .cropped(to: e)
+        let grainy = filled.cropped(to: e).applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: noise])
+            .cropped(to: e)
+        return grainy.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: filled,
+                                                                    kCIInputMaskImageKey: hole])
+            .cropped(to: whole)
+    }
+
+    /// Variância do detalhe fino (imagem menos a sua versão desfocada) ponderada por `weights`.
+    private static func grainVariance(of image: CIImage, in weights: CIImage) -> Double? {
+        let e = image.extent
+        let blurred = image.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
+        let fine = blurred.applyingFilter("CIDifferenceBlendMode", parameters: [kCIInputBackgroundImageKey: image]).cropped(to: e)
+        let squared = fine.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: fine])
+        let weighted = squared.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: weights]).cropped(to: e)
+        let total = average(weighted), share = average(weights)
+        guard share > 0.0005 else { return nil }
+        return total / share
+    }
+
+    private static func average(_ image: CIImage) -> Double {
+        let mean = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: image.extent)])
+        var pixel = [Float](repeating: 0, count: 4)
+        ImageRenderer.shared.context.render(mean, toBitmap: &pixel, rowBytes: 16,
+                                            bounds: CGRect(origin: mean.extent.origin, size: CGSize(width: 1, height: 1)),
+                                            format: .RGBAf, colorSpace: nil)
+        return Double(pixel[1])
     }
 
     /// Janela branca no meio que se desvanece na margem, para cruzar com a janela do lado.

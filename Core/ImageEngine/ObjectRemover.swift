@@ -23,14 +23,26 @@ final class ObjectRemover: @unchecked Sendable {
         let blendMask: CIImage
     }
 
+    /// Preenchimento generativo já feito sobre a foto sem ajustes.
+    private struct Generated {
+        let filled: CIImage
+        let mask: CIImage
+        let bounds: CGRect
+    }
+
     private let lock = NSLock()
     private var cache: [String: Solution] = [:]
     private var order: [String] = []
+    private var generatedCache: [String: Generated] = [:]
+    private var generatedOrder: [String] = []
 
-    func apply(_ removals: [Removal], to image: CIImage, reference: CIImage) -> CIImage {
+    /// `adjust` leva os ajustes da receita a uma imagem sem ajustes, e é por ele que o preenchimento
+    /// generativo, feito sobre `reference`, fica com a cor de `image`.
+    func apply(_ removals: [Removal], to image: CIImage, reference: CIImage,
+               adjust: (CIImage) -> CIImage = { $0 }) -> CIImage {
         let e = image.extent
         guard !removals.isEmpty, !e.isInfinite, e.width >= 16, e.height >= 16 else { return image }
-        if let generated = generative(removals, to: image, reference: reference) { return generated }
+        if let generated = generative(removals, to: image, reference: reference, adjust: adjust) { return generated }
         guard
         let solution = solution(for: removals, reference: reference),
               let current = Self.pixels(of: image, region: solution.region, width: solution.fillWidth, height: solution.fillHeight),
@@ -47,28 +59,59 @@ final class ObjectRemover: @unchecked Sendable {
     /// A máscara vai **alargada**. Uma pincelada apertada deixa metade de uma letra de fora, e o modelo,
     /// ao ser-lhe pedido que preencha só o resto, reconstrói a continuidade com o que sobrou — ou seja,
     /// volta a desenhar a letra. Não é falha do modelo: é o modelo a fazer o que se lhe pede.
-    private func generative(_ removals: [Removal], to image: CIImage, reference: CIImage) -> CIImage? {
+    ///
+    /// O modelo corre **uma vez**, sobre a foto sem ajustes, e o resultado fica em cache. Corria dentro de
+    /// cada render e cada toque num slider custava de novo quase um segundo. Os ajustes chegam ao
+    /// preenchimento passando-o pelos mesmos ajustes, só na zona dele.
+    private func generative(_ removals: [Removal], to image: CIImage, reference: CIImage,
+                            adjust: (CIImage) -> CIImage) -> CIImage? {
         guard GenerativeInpainter.shared.isReady else { return nil }
         let e = image.extent
-        guard let holeMask = Self.holeMask(for: removals, reference: reference),
-              let bounds = Self.boundingBox(of: holeMask, extent: e) else { return nil }
-        // Margem proporcional à espessura do traço, não ao seu comprimento: o que interessa é não deixar
-        // a berma do objecto de fora. Uma pincelada que corta um objecto ao meio faz o modelo reconstruir
-        // a continuidade com o que sobrou — numa camisola, volta a desenhar as letras. Mas alargar de mais
-        // puxa para dentro coisas que não se querem apagar, e aí o buraco é preenchido com elas.
-        let grow = min(max(min(bounds.width, bounds.height) * 0.15, 6), 20)
-        let widened = holeMask.clampedToExtent()
-            .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow])
+        let key = Self.key(for: removals, reference: reference)
+        let generated: Generated
+        if let hit = lock.withLock({ generatedCache[key] }) {
+            generated = hit
+        } else {
+            guard let holeMask = Self.holeMask(for: removals, reference: reference),
+                  let bounds = Self.boundingBox(of: holeMask, extent: e) else { return nil }
+            // Margem proporcional à espessura do traço, não ao seu comprimento: o que interessa é não deixar
+            // a berma do objecto de fora. Uma pincelada que corta um objecto ao meio faz o modelo reconstruir
+            // a continuidade com o que sobrou — numa camisola, volta a desenhar as letras. Mas alargar de mais
+            // puxa para dentro coisas que não se querem apagar, e aí o buraco é preenchido com elas.
+            let grow = min(max(min(bounds.width, bounds.height) * 0.15, 6), 20)
+            let widened = holeMask.clampedToExtent()
+                .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow])
+                .cropped(to: e)
+            // Junta suave: sem isto via-se a fronteira exacta da máscara.
+            let soft = widened.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
+            let grown = bounds.insetBy(dx: -grow, dy: -grow)
+            guard let filled = GenerativeInpainter.shared.fill(reference, mask: soft, bounds: grown) else { return nil }
+            generated = Generated(filled: filled, mask: soft, bounds: grown)
+            lock.withLock {
+                generatedCache[key] = generated
+                generatedOrder.append(key)
+                if generatedOrder.count > 3 { generatedCache[generatedOrder.removeFirst()] = nil }
+            }
+        }
+        // Margem para os filtros com raio (nitidez, claridade) terem vizinhança verdadeira na berma.
+        let zone = generated.bounds.insetBy(dx: -8, dy: -8).intersection(e)
+        let context = zone.insetBy(dx: -64, dy: -64).intersection(e)
+        let coloured = adjust(generated.filled.cropped(to: context)).cropped(to: zone)
+        let result = coloured
+            .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: image,
+                                                            kCIInputMaskImageKey: generated.mask.cropped(to: zone)])
             .cropped(to: e)
-        // Junta suave: sem isto via-se a fronteira exacta da máscara.
-        let soft = widened.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
-        return GenerativeInpainter.shared.fill(image, mask: soft, bounds: bounds.insetBy(dx: -grow, dy: -grow))
+        return GenerativeInpainter.matchingGrain(result, original: image, mask: generated.mask, around: zone)
+    }
+
+    private static func key(for removals: [Removal], reference: CIImage) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return SmartSelection.fingerprint(reference) + "|" + String(decoding: (try? encoder.encode(removals)) ?? Data(), as: UTF8.self)
     }
 
     private func solution(for removals: [Removal], reference: CIImage) -> Solution? {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        let key = SmartSelection.fingerprint(reference) + "|" + String(decoding: (try? encoder.encode(removals)) ?? Data(), as: UTF8.self)
+        let key = Self.key(for: removals, reference: reference)
         if let hit = lock.withLock({ cache[key] }) { return hit }
 
         let e = reference.extent
