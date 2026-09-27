@@ -102,6 +102,45 @@ final class EngineTests: XCTestCase {
         XCTAssertLessThan(far[0], 0.1, "Nothing away from the word")
     }
 
+    /// Um preenchimento liso (como o da LaMa ampliado numa exportação) ganha o detalhe fino da foto à volta.
+    func testGenerativeDetailBringsBackFineTexture() throws {
+        let width = 480, height = 320
+        var rng = SplitMix64Test(state: 7)
+        var rgba = [Float](repeating: 1, count: width * height * 4)
+        for i in 0..<(width * height) {
+            let v = 0.3 + Float(rng.next() % 1000) / 1000 * 0.4
+            rgba[i * 4] = v; rgba[i * 4 + 1] = v; rgba[i * 4 + 2] = v
+        }
+        let reference = CIImage(bitmapData: rgba.withUnsafeBufferPointer { Data(buffer: $0) }, bytesPerRow: width * 16,
+                                size: CGSize(width: width, height: height), format: .RGBAf, colorSpace: nil)
+        let hole = CGRect(x: 160, y: 110, width: 160, height: 100)
+        let mask = CIImage(color: .white).cropped(to: hole)
+            .composited(over: CIImage(color: .black).cropped(to: reference.extent))
+        let flat = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: hole).composited(over: reference)
+        let sharp = try XCTUnwrap(GenerativeDetail.sharpen(flat, reference: reference, mask: mask, bounds: hole, modelScale: 0.25))
+
+        func fineEnergy(_ image: CIImage, in rect: CGRect) -> Float {
+            var px = [Float](repeating: 0, count: Int(rect.width * rect.height) * 4)
+            ImageRenderer.shared.context.render(image, toBitmap: &px, rowBytes: Int(rect.width) * 16, bounds: rect,
+                                                format: .RGBAf, colorSpace: nil)
+            let w = Int(rect.width), h = Int(rect.height)
+            var total: Float = 0
+            for y in 1..<(h - 1) {
+                for x in 1..<(w - 1) {
+                    let l = 4 * px[(y * w + x) * 4] - px[(y * w + x - 1) * 4] - px[(y * w + x + 1) * 4]
+                        - px[((y - 1) * w + x) * 4] - px[((y + 1) * w + x) * 4]
+                    total += l * l
+                }
+            }
+            return total / Float((w - 2) * (h - 2))
+        }
+        let inside = fineEnergy(sharp, in: hole.insetBy(dx: 12, dy: 12))
+        let around = fineEnergy(reference, in: CGRect(x: 10, y: 10, width: 120, height: 80))
+        XCTAssertGreaterThan(inside, around * 0.3, "The fill carries real fine texture, not a flat patch")
+        XCTAssertNil(GenerativeDetail.sharpen(flat, reference: reference, mask: mask, bounds: hole, modelScale: 0.9),
+                     "When the model already worked at the photo's resolution there is nothing to add")
+    }
+
     // MARK: Curvas, LUT e histórico
 
     func testLinearCurveIsIdentityAndMonotoneCurveDoesNotOvershoot() {

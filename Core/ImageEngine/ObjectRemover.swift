@@ -85,7 +85,13 @@ final class ObjectRemover: @unchecked Sendable {
             // Junta suave: sem isto via-se a fronteira exacta da máscara.
             let soft = widened.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
             let grown = bounds.insetBy(dx: -grow, dy: -grow)
-            guard let filled = GenerativeInpainter.shared.fill(reference, mask: soft, bounds: grown) else { return nil }
+            guard let invented = GenerativeInpainter.shared.fill(reference, mask: soft, bounds: grown) else { return nil }
+            // O modelo trabalhou a `side` px sobre a janela maior; numa exportação isso é muito menos do
+            // que a foto, e o detalhe vem da própria foto.
+            let widest = GenerativeInpainter.windows(for: grown, in: e).map { max($0.width, $0.height) }.max() ?? 1
+            let modelScale = CGFloat(GenerativeInpainter.side) / max(widest, 1)
+            let filled = GenerativeDetail.sharpen(invented, reference: reference, mask: soft, bounds: grown,
+                                                  modelScale: modelScale) ?? invented
             generated = Generated(filled: filled, mask: soft, bounds: grown)
             lock.withLock {
                 generatedCache[key] = generated

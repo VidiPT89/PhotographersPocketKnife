@@ -151,7 +151,7 @@ final class GenerativeInpainter: @unchecked Sendable {
             // uma risca visível entre elas.
             let localMask = single ? mask.cropped(to: window)
                 : mask.applyingFilter("CIMultiplyCompositing",
-                                      parameters: [kCIInputBackgroundImageKey: Self.taper(window)])
+                                      parameters: [kCIInputBackgroundImageKey: Self.taper(window, in: e)])
                     .cropped(to: window)
             working = patch
                 .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: working,
@@ -207,7 +207,22 @@ final class GenerativeInpainter: @unchecked Sendable {
         // Proporção limitada: esticar de mais deforma o que o modelo vê.
         if width > height * 2 { height = min(width / 2, e.height) }
         if height > width * 2 { width = min(height / 2, e.width) }
-        return [fit(CGSize(width: width, height: height), centredOn: CGPoint(x: bounds.midX, y: bounds.midY), in: e)]
+        // Numa foto panorâmica a altura não chega para isso, e a janela ficava 7280×2160 espremida em 800×800:
+        // 3,4 vezes mais apertada num sentido do que no outro. Fica em 2:1 e, se a zona não couber, vão
+        // várias ao longo dela, cruzadas.
+        let wide = width > height * 2, tall = height > width * 2
+        if wide { width = height * 2 }
+        if tall { height = width * 2 }
+        let span = wide ? max(bounds.width + long * 0.6 - width, 0) : tall ? max(bounds.height + long * 0.6 - height, 0) : 0
+        let count = span > 0 ? Int(ceil(span / ((wide ? width : height) * 0.55))) + 1 : 1
+        guard count > 1, count <= 12 else {
+            return [fit(CGSize(width: width, height: height), centredOn: CGPoint(x: bounds.midX, y: bounds.midY), in: e)]
+        }
+        return (0..<count).map { i in
+            let offset = -span / 2 + span * CGFloat(i) / CGFloat(count - 1)
+            let centre = wide ? CGPoint(x: bounds.midX + offset, y: bounds.midY) : CGPoint(x: bounds.midX, y: bounds.midY + offset)
+            return fit(CGSize(width: width, height: height), centredOn: centre, in: e)
+        }
     }
 
     /// Rectângulo de `size` centrado em `centre`, empurrado para dentro da imagem.
@@ -280,10 +295,20 @@ final class GenerativeInpainter: @unchecked Sendable {
     }
 
     /// Janela branca no meio que se desvanece na margem, para cruzar com a janela do lado.
-    private static func taper(_ window: CGRect) -> CIImage {
+    ///
+    /// Só nos lados que não são a borda da foto: aí não há janela vizinha com quem cruzar, e esbater deixava
+    /// o original a transparecer — um sapo removido de uma panorâmica deixava as patas translúcidas na
+    /// faixa de baixo.
+    private static func taper(_ window: CGRect, in e: CGRect) -> CIImage {
         let margin = min(window.width, window.height) * 0.12
+        var inner = window.insetBy(dx: margin, dy: margin)
+        let beyond = margin * 3
+        if window.minX <= e.minX + 1 { inner = CGRect(x: window.minX - beyond, y: inner.minY, width: inner.maxX - window.minX + beyond, height: inner.height) }
+        if window.maxX >= e.maxX - 1 { inner.size.width = window.maxX + beyond - inner.minX }
+        if window.minY <= e.minY + 1 { inner = CGRect(x: inner.minX, y: window.minY - beyond, width: inner.width, height: inner.maxY - window.minY + beyond) }
+        if window.maxY >= e.maxY - 1 { inner.size.height = window.maxY + beyond - inner.minY }
         return CIImage(color: .white)
-            .cropped(to: window.insetBy(dx: margin, dy: margin))
+            .cropped(to: inner)
             .applyingGaussianBlur(sigma: margin * 0.6)
             .cropped(to: window)
     }

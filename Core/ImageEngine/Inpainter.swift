@@ -365,7 +365,7 @@ enum Inpainter {
 }
 
 /// Gerador pseudo-aleatório determinista (o mesmo resultado em cada render).
-private struct SplitMix64 {
+struct SplitMix64 {
     var state: UInt64
 
     mutating func next() -> UInt64 {
