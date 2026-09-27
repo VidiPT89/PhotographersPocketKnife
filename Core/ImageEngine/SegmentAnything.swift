@@ -153,6 +153,14 @@ final class SegmentAnything: @unchecked Sendable {
         }
     }
 
+    /// Carrega os modelos e codifica a foto antes do primeiro clique, para ele não ter de esperar. A primeira
+    /// execução numa sessão leva segundos (o sistema prepara os modelos); depois uma foto nova codifica-se
+    /// em ~130 ms.
+    func prepare(_ image: CIImage) {
+        guard isReady, let models = models() else { return }
+        _ = embedding(of: image, with: models.encoder)
+    }
+
     /// Codificação da foto, guardada para os cliques seguintes na mesma foto.
     private func embedding(of image: CIImage, with encoder: MLModel) -> MLFeatureProvider? {
         let key = SmartSelection.fingerprint(image)

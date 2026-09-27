@@ -78,9 +78,14 @@ final class SegmentAnythingTests: XCTestCase {
             return Double(px[0])
         }
 
+        // Preparada antes, como o painel de remoção faz ao abrir: o primeiro clique já não espera.
+        SegmentAnything.shared.prepare(photo)
+        _ = SmartSelection.shared.subjectMask(for: photo)
         let started = Date()
         let asamoah = try XCTUnwrap(SmartSelection.shared.objectMask(for: photo, at: CurvePoint(x: 0.12, y: 0.72)))
-        print("PPK SAM first click (encodes the photo): \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+        let firstClick = Date().timeIntervalSince(started)
+        print("PPK SAM first click after preparing: \(Int(firstClick * 1000)) ms")
+        XCTAssertLessThan(firstClick, 1.5, "The prepared photo does not make the first click wait")
         let clicked = Date()
         let ronaldo = try XCTUnwrap(SmartSelection.shared.objectMask(for: photo, at: CurvePoint(x: 0.66, y: 0.62)))
         print("PPK SAM next click: \(Int(Date().timeIntervalSince(clicked) * 1000)) ms")

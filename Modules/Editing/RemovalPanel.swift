@@ -13,6 +13,12 @@ struct RemovalPanel: View {
         }
         .pickerStyle(.segmented)
         .hint(app.t("removal.modeTitle"))
+        .onAppear {
+            if editing.removalMode == .object { editing.prepareObjectSelection() }
+        }
+        .onChange(of: editing.removalMode) { _, mode in
+            if mode == .object { editing.prepareObjectSelection() }
+        }
         Text(app.t(editing.removalMode == .object ? "removal.objectHint" : "removal.brushHint"))
             .font(Typography.caption)
             .foregroundStyle(Palette.textSecondary)

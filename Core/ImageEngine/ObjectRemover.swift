@@ -328,4 +328,12 @@ extension ImageRenderer {
         let reference = referenceImage(recipe, input: CIImage(cgImage: base), applyCrop: true)
         return SmartSelection.shared.objectMask(for: reference, at: point) != nil
     }
+
+    /// Prepara a foto para os cliques de remoção antes de haver algum: codifica-a com o SAM se estiver
+    /// instalado. Sem isto o primeiro clique esperava os segundos da preparação.
+    func prepareObjectSelection(url: URL, recipe: EditRecipe, maxPixel: Int) {
+        guard SegmentAnything.shared.isReady,
+              let base = previewBase(url: url, maxPixel: maxPixel, lensCorrection: recipe.lensCorrection) else { return }
+        SegmentAnything.shared.prepare(referenceImage(recipe, input: CIImage(cgImage: base), applyCrop: true))
+    }
 }

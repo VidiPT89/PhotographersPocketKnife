@@ -168,6 +168,8 @@ final class EditingModel {
         hoverPreview = nil
         selectedMaskID = recipe.masks.first?.id
         scheduleRender()
+        // Com a remoção de objetos aberta, a foto seguinte fica logo pronta para ser clicada.
+        if tab == .remove && removalMode == .object { prepareObjectSelection() }
     }
 
     // MARK: Snapshots e máscaras
@@ -220,6 +222,16 @@ final class EditingModel {
     func clearRemovals() {
         recipe.removals = []
         commit("history.remove")
+    }
+
+    /// Prepara a seleção de objetos em segundo plano, para o primeiro clique não esperar.
+    func prepareObjectSelection() {
+        guard let url else { return }
+        let recipe = recipe
+        let maxPixel = previewMaxPixel
+        Task.detached(priority: .utility) {
+            ImageRenderer.shared.prepareObjectSelection(url: url, recipe: recipe, maxPixel: maxPixel)
+        }
     }
 
     /// Só acrescenta a remoção se o Vision encontrar um objeto no ponto; devolve se encontrou.
