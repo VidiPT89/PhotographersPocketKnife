@@ -1,4 +1,4 @@
-"splash.developedBy" = "Developed by";
+"splash.developedBy" = "Desenvolvido por";
 
 /* Geral */
 "module.culling" = "Seleção";
@@ -201,7 +201,7 @@
 "sort.ascending" = "Ascendente";
 "sort.captureDate" = "Data de captura";
 "sort.fileName" = "Nome do ficheiro";
-"sort.rating" = "Rating";
+"sort.rating" = "Classificação";
 "sort.camera" = "Câmara";
 "color.none" = "Sem cor";
 "color.red" = "Vermelho";
@@ -243,7 +243,7 @@
 /* Renomear */
 "rename.title" = "Renomear em lote";
 "rename.template" = "Modelo";
-"rename.tokens" = "Tokens:";
+"rename.tokens" = "Campos:";
 "rename.event" = "Evento";
 "rename.start" = "Começar em";
 "rename.preview" = "Pré-visualização (%d fotos)";
@@ -397,9 +397,9 @@
 "destination.endpoint" = "Endpoint S3";
 "destination.port" = "Porta";
 "destination.username" = "Utilizador";
-"destination.password" = "Password";
-"destination.accessKey" = "Access key";
-"destination.secretKey" = "Secret key";
+"destination.password" = "Palavra-passe";
+"destination.accessKey" = "Chave de acesso";
+"destination.secretKey" = "Chave secreta";
 "destination.bucket" = "Bucket";
 "destination.region" = "Região";
 "destination.trustHost" = "Aceitar chave de servidor desconhecida";

@@ -115,7 +115,7 @@ final class ObjectRemover: @unchecked Sendable {
             .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: image,
                                                             kCIInputMaskImageKey: generated.mask.cropped(to: zone)])
             .cropped(to: e)
-        return GenerativeInpainter.matchingGrain(result, original: image, mask: generated.mask, around: zone)
+        return GenerativeGrain.matching(result, original: image, mask: generated.mask, around: zone)
     }
 
     private static func key(for removals: [Removal], reference: CIImage) -> String {
