@@ -31,6 +31,23 @@ final class SmartSelection: @unchecked Sendable {
         return mask(observation, analysis.handler, instances: observation.allInstances, extent: image.extent)
     }
 
+    /// A grelha de instâncias do Vision (0 = fundo), com a foto inteira esticada para ela; linha 0 em cima.
+    func instanceLabels(for image: CIImage) -> (labels: [UInt8], width: Int, height: Int)? {
+        guard let observation = analysis(for: image)?.observation else { return nil }
+        return visionLock.withLock {
+            let buffer = observation.instanceMask
+            CVPixelBufferLockBaseAddress(buffer, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+            guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+            let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+            let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+            let bytes = base.assumingMemoryBound(to: UInt8.self)
+            var labels = [UInt8](repeating: 0, count: width * height)
+            for y in 0..<height { for x in 0..<width { labels[y * width + x] = bytes[y * bytesPerRow + x] } }
+            return (labels, width, height)
+        }
+    }
+
     /// Máscara do objeto no ponto (normalizado, origem em cima à esquerda). Procura à volta se o clique cair ao lado.
     func objectMask(for image: CIImage, at point: CurvePoint) -> CIImage? {
         let analysis = analysis(for: image)
@@ -51,7 +68,17 @@ final class SmartSelection: @unchecked Sendable {
         if let candidates = SegmentAnything.shared.candidates(for: image, at: point),
            let chosen = Self.choose(candidates, piece: thing.map { Self.grid($0, side: SegmentAnything.maskSide) },
                                     onForeground: label > 0) {
-            return chosen.mask
+            let shape = Self.closed(chosen, extent: image.extent)
+            // Quando o SAM cobre a maior parte do objecto do Vision, o Vision não juntou vários: é esse objecto,
+            // e a máscara dele apanha o que o SAM falhou (a fatia das costas do sapo). Medido: o sapo cobre
+            // 65 % do seu; num grupo que o Vision colou, o Ronaldo cobre 46 % e o Asamoah 25 %.
+            if label > 0, let observation, let analysis,
+               visionLock.withLock({ Self.coverage(of: chosen.grid, over: observation.instanceMask, label: label) }) >= 0.55,
+               let whole = mask(observation, analysis.handler, instances: IndexSet(integer: label), extent: image.extent) {
+                return shape.applyingFilter("CIMaximumCompositing", parameters: [kCIInputBackgroundImageKey: whole])
+                    .cropped(to: image.extent)
+            }
+            return shape
         }
 
         guard label > 0, let observation, let analysis else { return nil }
@@ -60,6 +87,41 @@ final class SmartSelection: @unchecked Sendable {
                 .clampedToExtent().applyingGaussianBlur(sigma: 1).cropped(to: image.extent)
         }
         return mask(observation, analysis.handler, instances: IndexSet(integer: label), extent: image.extent)
+    }
+
+    /// Que fracção da instância `label` do Vision a grelha do SAM cobre. As duas grelhas esticam a foto inteira
+    /// para um quadrado, por isso correspondem ponto a ponto.
+    private static func coverage(of grid: [Bool], over buffer: CVPixelBuffer, label: Int) -> Double {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return 0 }
+        let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let bytes = base.assumingMemoryBound(to: UInt8.self)
+        let n = SegmentAnything.maskSide
+        var instance = 0, covered = 0
+        for y in 0..<n {
+            let sy = min(y * height / n, height - 1)
+            for x in 0..<n where Int(bytes[sy * bytesPerRow + min(x * width / n, width - 1)]) == label {
+                instance += 1
+                if grid[y * n + x] { covered += 1 }
+            }
+        }
+        return instance > 0 ? Double(covered) / Double(instance) : 0
+    }
+
+    /// O SAM deixa buracos em objectos com muita textura: num sapo, as manchas da pele e metade de uma
+    /// pata ficavam de fora, e cada bocado esquecido virava uma nódoa de sapo no meio do preenchimento.
+    /// Fecha-se a máscara (dilatar e voltar a erodir) numa escala proporcional ao objecto, o que tapa os
+    /// buracos e as reentrâncias estreitas sem a fazer crescer para fora.
+    private static func closed(_ candidate: SegmentAnything.Candidate, extent e: CGRect) -> CIImage {
+        let cells = Double(candidate.area).squareRoot()
+        let cellSize = max(e.width, e.height) / CGFloat(SegmentAnything.maskSide)
+        let radius = CGFloat(max(cells * 0.06, 1.5)) * cellSize
+        return candidate.mask.clampedToExtent()
+            .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: radius])
+            .applyingFilter("CIMorphologyMinimum", parameters: [kCIInputRadiusKey: radius])
+            .cropped(to: e)
     }
 
     /// Qual das três leituras do SAM remover. A nota do modelo prefere as partes pequenas — num clique na

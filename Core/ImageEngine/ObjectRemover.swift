@@ -177,6 +177,11 @@ final class ObjectRemover: @unchecked Sendable {
             // Alarga um pouco para levar também os contornos e a sombra colada ao objeto.
             let grow = min(max(e.width, e.height) * 0.006, 40)
             add(object.clampedToExtent().applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow]).cropped(to: e))
+            // A sombra projectada vai com ele, com margem para a berma difusa (penumbra). Proporcional à
+            // sombra, não à foto: numa panorâmica, 2 % da foto engolia o que estava na água ao lado.
+            if let shadow = CastShadow.mask(for: object, in: reference) {
+                add(shadow.clampedToExtent().applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: grow]).cropped(to: e))
+            }
         }
         return combined?.cropped(to: e)
     }
