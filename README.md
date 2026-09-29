@@ -19,6 +19,7 @@
 - ✅ Star ratings (0–5), pick/reject and colour labels, all on the keyboard with Photo Mechanic–style defaults — every shortcut can be remapped
 - ✅ Filter and sort by rating, flag, colour label, camera, lens, ISO, focal length, file name and capture time
 - ✅ Batch rename with templates and conflict detection
+- ✅ File Info (`⇧⌘I`) laid out like Photo Mechanic's IPTC Info: headline, caption, rights, credit, location and more, read from each photo and saved as you move with Save & ← / →, with copy and paste, recent values per field, caption variables and XMP templates that also open Photo Mechanic stationery pads
 - ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
 - ✅ Code replacements compatible with Photo Mechanic files: load a tab-delimited roster and type `=7=` to get the player's name (`=7#2=` for the next column), expanded live as you type
 - ✅ Automatic player captions: the `{players}` token reads the shirt numbers in each photo on-device and writes the names from the roster
