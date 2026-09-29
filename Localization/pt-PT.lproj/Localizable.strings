@@ -255,7 +255,6 @@
 "toast.fileInfo" = "Informação do ficheiro guardada";
 "metadata.title" = "Metadados IPTC em lote";
 "metadata.applyTo" = "Aplicar a %d fotos";
-"metadata.apply" = "Aplicar";
 "metadata.hint" = "Campos vazios não são alterados. Em ficheiros RAW os metadados são guardados num ficheiro .xmp ao lado.";
 "metadata.failures" = "Não foi possível escrever em %d ficheiros.";
 

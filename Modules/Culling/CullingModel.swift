@@ -60,6 +60,8 @@ final class CullingModel {
     var minISO = 0
     var focalLength: Double?
     var searchText = ""
+    /// Sobe quando se grava file info, para o painel de informação voltar a ler a foto.
+    var metadataRevision = 0
     var sort: PhotoSort = .captureDate
     var sortAscending = true
 

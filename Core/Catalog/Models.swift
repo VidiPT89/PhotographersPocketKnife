@@ -54,6 +54,7 @@ final class Photo {
         focalLength = info.focalLength
         latitude = info.latitude
         longitude = info.longitude
+        keywords = info.keywords
         pixelWidth = info.width
         pixelHeight = info.height
         fileSize = info.fileSize

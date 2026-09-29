@@ -88,7 +88,9 @@ enum PhotoImporter {
         DispatchQueue.concurrentPerform(iterations: inputs.count) { index in
             let target = inputs[index]
             var info = Diagnostics.shared.measure(.importFile) { MetadataReader.basicInfo(for: target) }
-            info.sidecar = PPKSidecar.read(for: target) ?? MetadataReader.xmpClassification(for: target)
+            let xmp = MetadataWriter.readMetadata(for: target)
+            info.sidecar = PPKSidecar.read(for: target) ?? xmp.flatMap { MetadataReader.xmpClassification(from: $0, url: target) }
+            info.keywords = xmp.flatMap { MetadataReader.xmpString($0, "dc:subject") }
             let done = results.set(info, at: index)
             if !copied { progress(done, inputs.count) }
         }

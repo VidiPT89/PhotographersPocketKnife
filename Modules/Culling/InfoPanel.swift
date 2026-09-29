@@ -42,7 +42,7 @@ struct InfoPanel: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Palette.panel)
-        .task(id: photo.map { "\($0.path)|\($0.fileName)" }) {
+        .task(id: photo.map { "\($0.path)|\($0.fileName)|\(app.culling.metadataRevision)" }) {
             guard let url = photo?.url else {
                 fields = []
                 histogram = nil

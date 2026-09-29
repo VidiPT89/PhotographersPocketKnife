@@ -16,6 +16,8 @@ struct ImportedPhotoInfo: Sendable {
     var longitude: Double? = nil
     /// Classificação e revelação lidas de um `.ppk` ao lado da foto, se existir.
     var sidecar: PPKSidecar? = nil
+    /// Palavras-chave que a foto já traz (Photo Mechanic, Lightroom…), para a pesquisa as encontrar.
+    var keywords: String? = nil
 }
 
 /// Um campo de metadados; `id` é a chave de tradução do rótulo.
@@ -135,8 +137,7 @@ enum MetadataReader {
     }
 
     /// Estrelas e etiqueta gravadas pelo Lightroom/Bridge (`xmp:Rating`, `xmp:Label`). Rating -1 é "rejeitada".
-    static func xmpClassification(for url: URL) -> PPKSidecar? {
-        guard let xmp = MetadataWriter.readMetadata(for: url) else { return nil }
+    static func xmpClassification(from xmp: CGImageMetadata, url: URL) -> PPKSidecar? {
         let rating = xmpString(xmp, "xmp:Rating").flatMap { Int($0) } ?? 0
         let label = xmpString(xmp, "xmp:Label").map(ColorLabel.init(name:)) ?? .none
         guard rating != 0 || label != .none else { return nil }

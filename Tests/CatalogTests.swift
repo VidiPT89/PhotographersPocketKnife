@@ -167,6 +167,19 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(again.sidecar?.rating, 2)
     }
 
+    func testImportReadsKeywordsTheFileAlreadyHas() throws {
+        let file = folder.appendingPathComponent("tagged.jpg")
+        try writeJPEG(to: file)
+        var fields = IPTCFields()
+        fields.keywords = "futebol, Benfica"
+        try MetadataWriter.write(fields, to: file)
+        XCTAssertEqual(fields.catalogKeywords, "futebol, Benfica")
+
+        let info = try XCTUnwrap(PhotoImporter.runReporting(files: [file], options: .init()) { _, _ in }.infos.first)
+        XCTAssertTrue(info.keywords?.contains("Benfica") == true)
+        XCTAssertNil(IPTCFields().catalogKeywords)
+    }
+
     func testIPTCWriteIsReadBack() throws {
         let file = folder.appendingPathComponent("photo.jpg")
         try writeJPEG(to: file)

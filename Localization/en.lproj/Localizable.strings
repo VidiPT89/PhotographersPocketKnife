@@ -255,7 +255,6 @@
 "toast.fileInfo" = "File info saved";
 "metadata.title" = "Batch IPTC metadata";
 "metadata.applyTo" = "Apply to %d photos";
-"metadata.apply" = "Apply";
 "metadata.hint" = "Empty fields are left unchanged. For RAW files, metadata is saved to a .xmp sidecar file.";
 "metadata.failures" = "Could not write to %d files.";
 

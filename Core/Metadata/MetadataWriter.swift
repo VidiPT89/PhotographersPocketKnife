@@ -63,6 +63,11 @@ struct IPTCFields: Codable, Equatable, Sendable {
         countryCode = try text(.countryCode)
     }
 
+    /// Como fica em `Photo.keywords` (nil sem palavras-chave).
+    var catalogKeywords: String? {
+        keywordList.isEmpty ? nil : keywordList.joined(separator: ", ")
+    }
+
     var keywordList: [String] {
         keywords.split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }

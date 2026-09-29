@@ -247,20 +247,12 @@ struct MetadataSheet: View {
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecondary)
                 }
-                Section(String(format: app.t("metadata.applyTo"), photos.count)) {
-                    TextField(app.t("meta.title"), text: $fields.title)
-                    TextField(app.t("meta.caption"), text: $fields.caption, axis: .vertical).lineLimit(2...4)
-                    TextField(app.t("meta.creator"), text: $fields.creator)
-                    TextField(app.t("meta.copyright"), text: $fields.copyright)
-                    TextField(app.t("meta.keywords"), text: $fields.keywords)
-                    TextField(app.t("meta.city"), text: $fields.city)
-                    TextField(app.t("meta.country"), text: $fields.country)
-                }
+                IPTCFormSections(fields: $fields)
                 Text(app.t("metadata.hint")).font(Typography.caption).foregroundStyle(Palette.textSecondary)
                 if let message { Text(message).foregroundStyle(Brand.error) }
             }
             .formStyle(.grouped)
-            SheetButtons(confirmTitle: app.t("metadata.apply"), confirmDisabled: fields.isEmpty || isWriting, isWorking: isWriting) {
+            SheetButtons(confirmTitle: String(format: app.t("metadata.applyTo"), photos.count), confirmDisabled: fields.isEmpty || isWriting, isWorking: isWriting) {
                 apply()
             }
         }
@@ -328,7 +320,7 @@ struct MetadataSheet: View {
         // Primeiro os códigos (=7=), depois as variáveis por foto.
         let values = codes.apply(to: fields, delimiter: delimiterCharacter)
         let jobs = photos.enumerated().map { index, photo in
-            (url: photo.url, context: context(for: photo, index: index, values: values))
+            (id: photo.id, url: photo.url, context: context(for: photo, index: index, values: values))
         }
         // {players}: número da camisola lido em cada foto + nome do plantel carregado.
         let roster = codes
@@ -337,8 +329,8 @@ struct MetadataSheet: View {
         UserDefaults.standard.set(try? JSONEncoder().encode(fields), forKey: Self.storageKey)
         isWriting = true
         Task {
-            let failures = await Task.detached(priority: .userInitiated) {
-                jobs.filter { job in
+            let failed = await Task.detached(priority: .userInitiated) {
+                Set(jobs.filter { job in
                     var context = job.context
                     if needsPlayers, let image = ThumbnailCache.shared.thumbnail(for: job.url, maxPixel: 2400)?.cgImage {
                         context.players = CaptionTemplate.joinNames(JerseyNumbers.players(JerseyNumbers.detect(in: image), roster: roster), and: and)
@@ -347,9 +339,15 @@ struct MetadataSheet: View {
                     resolved.title = CaptionTemplate.resolve(values.title, context)
                     resolved.caption = CaptionTemplate.resolve(values.caption, context)
                     return (try? MetadataWriter.write(resolved, to: job.url)) == nil
-                }.count
+                }.map(\.id))
             }.value
             isWriting = false
+            // Em lote as palavras-chave substituem as da foto; o catálogo acompanha, para a pesquisa.
+            if let keywords = values.catalogKeywords {
+                for photo in photos where !failed.contains(photo.id) { photo.keywords = keywords }
+            }
+            app.culling.metadataRevision += 1
+            let failures = failed.count
             if failures == 0 {
                 app.showToast(String(format: app.t("toast.metadata"), jobs.count), icon: "tag.fill")
                 dismiss()

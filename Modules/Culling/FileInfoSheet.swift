@@ -29,29 +29,7 @@ struct FileInfoSheet: View {
             header
             Divider()
             Form {
-                Section(app.t("fileInfo.description")) {
-                    field("meta.headline", \.headline)
-                    field("meta.title", \.title)
-                    TextField(app.t("meta.caption"), text: $fields.caption, axis: .vertical).lineLimit(3...6)
-                    field("meta.captionWriter", \.captionWriter)
-                    field("meta.keywords", \.keywords)
-                }
-                Section(app.t("fileInfo.credits")) {
-                    field("meta.creator", \.creator)
-                    field("meta.creatorTitle", \.creatorTitle)
-                    field("meta.credit", \.credit)
-                    field("meta.source", \.source)
-                    field("meta.copyright", \.copyright)
-                    field("meta.instructions", \.instructions)
-                    field("meta.jobID", \.jobID)
-                }
-                Section(app.t("fileInfo.location")) {
-                    field("meta.sublocation", \.sublocation)
-                    field("meta.city", \.city)
-                    field("meta.state", \.state)
-                    field("meta.country", \.country)
-                    field("meta.countryCode", \.countryCode)
-                }
+                IPTCFormSections(fields: $fields)
                 if let message { Text(message).foregroundStyle(Brand.error) }
             }
             .formStyle(.grouped)
@@ -107,10 +85,6 @@ struct FileInfoSheet: View {
         .padding(16)
     }
 
-    private func field(_ key: String, _ path: WritableKeyPath<IPTCFields, String>) -> some View {
-        TextField(app.t(key), text: Binding(get: { fields[keyPath: path] }, set: { fields[keyPath: path] = $0 }))
-    }
-
     private func replaceCodes(_ value: String, _ path: WritableKeyPath<IPTCFields, String>) {
         let replaced = codes.apply(value, delimiter: delimiterCharacter)
         if replaced != value { fields[keyPath: path] = replaced }
@@ -129,7 +103,8 @@ struct FileInfoSheet: View {
 
     /// Grava a foto atual (se mudou) e passa a `target`; com `nil`, fecha.
     private func go(to target: Int?) {
-        guard let url = photo?.url else { return dismiss() }
+        guard let photo else { return dismiss() }
+        let url = photo.url
         let values = codes.apply(to: fields, delimiter: delimiterCharacter)
         guard values != original else { return move(to: target) }
         isSaving = true
@@ -140,6 +115,8 @@ struct FileInfoSheet: View {
             isSaving = false
             switch result {
             case .success:
+                photo.keywords = values.catalogKeywords
+                app.culling.metadataRevision += 1
                 if target == nil { app.showToast(app.t("toast.fileInfo"), icon: "info.circle.fill") }
                 move(to: target)
             case .failure(let error):
@@ -151,5 +128,41 @@ struct FileInfoSheet: View {
     private func move(to target: Int?) {
         guard let target, photos.indices.contains(target) else { return dismiss() }
         index = target
+    }
+}
+
+/// Os campos do IPTC Info, agrupados como no Photo Mechanic. Usados foto a foto e em lote.
+struct IPTCFormSections: View {
+    @Environment(AppState.self) private var app
+    @Binding var fields: IPTCFields
+
+    var body: some View {
+        Section(app.t("fileInfo.description")) {
+            field("meta.headline", \.headline)
+            field("meta.title", \.title)
+            TextField(app.t("meta.caption"), text: $fields.caption, axis: .vertical).lineLimit(3...6)
+            field("meta.captionWriter", \.captionWriter)
+            field("meta.keywords", \.keywords)
+        }
+        Section(app.t("fileInfo.credits")) {
+            field("meta.creator", \.creator)
+            field("meta.creatorTitle", \.creatorTitle)
+            field("meta.credit", \.credit)
+            field("meta.source", \.source)
+            field("meta.copyright", \.copyright)
+            field("meta.instructions", \.instructions)
+            field("meta.jobID", \.jobID)
+        }
+        Section(app.t("fileInfo.location")) {
+            field("meta.sublocation", \.sublocation)
+            field("meta.city", \.city)
+            field("meta.state", \.state)
+            field("meta.country", \.country)
+            field("meta.countryCode", \.countryCode)
+        }
+    }
+
+    private func field(_ key: String, _ path: WritableKeyPath<IPTCFields, String>) -> some View {
+        TextField(app.t(key), text: Binding(get: { fields[keyPath: path] }, set: { fields[keyPath: path] = $0 }))
     }
 }
