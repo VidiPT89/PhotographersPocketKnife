@@ -62,6 +62,8 @@ final class CullingModel {
     var searchText = ""
     /// Sobe quando se grava file info, para o painel de informação voltar a ler a foto.
     var metadataRevision = 0
+    /// "Copiar" do File Info, para "Colar" noutra foto.
+    var fileInfoClipboard: IPTCFields?
     var sort: PhotoSort = .captureDate
     var sortAscending = true
 

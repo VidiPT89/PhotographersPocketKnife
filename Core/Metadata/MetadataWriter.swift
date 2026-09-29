@@ -6,6 +6,9 @@ struct IPTCFields: Codable, Equatable, Sendable {
     var headline = ""
     var title = ""
     var caption = ""
+    var usageTerms = ""
+    /// `yyyy-MM-ddTHH:mm:ss`, como o `photoshop:DateCreated`.
+    var dateCreated = ""
     var captionWriter = ""
     var keywords = ""
     var creator = ""
@@ -24,13 +27,14 @@ struct IPTCFields: Codable, Equatable, Sendable {
     /// Todos os campos de texto, pela ordem da janela.
     // Constantes; os key paths só não são marcados Sendable.
     nonisolated(unsafe) static let textPaths: [WritableKeyPath<IPTCFields, String>] = [
-        \.headline, \.title, \.caption, \.captionWriter, \.keywords, \.creator, \.creatorTitle, \.credit, \.source,
+        \.headline, \.title, \.caption, \.usageTerms, \.dateCreated, \.captionWriter, \.keywords, \.creator, \.creatorTitle, \.credit, \.source,
         \.copyright, \.instructions, \.jobID, \.sublocation, \.city, \.state, \.country, \.countryCode,
     ]
 
     /// Chave de tradução do rótulo de cada campo.
     nonisolated(unsafe) static let labelKeys: [(String, WritableKeyPath<IPTCFields, String>)] = [
         ("meta.headline", \.headline), ("meta.title", \.title), ("meta.caption", \.caption),
+        ("meta.usageTerms", \.usageTerms), ("meta.dateCreated", \.dateCreated),
         ("meta.captionWriter", \.captionWriter), ("meta.keywords", \.keywords), ("meta.creator", \.creator),
         ("meta.creatorTitle", \.creatorTitle), ("meta.credit", \.credit), ("meta.source", \.source),
         ("meta.copyright", \.copyright), ("meta.instructions", \.instructions), ("meta.jobID", \.jobID),
@@ -47,6 +51,8 @@ struct IPTCFields: Codable, Equatable, Sendable {
         headline = try text(.headline)
         title = try text(.title)
         caption = try text(.caption)
+        usageTerms = try text(.usageTerms)
+        dateCreated = try text(.dateCreated)
         captionWriter = try text(.captionWriter)
         keywords = try text(.keywords)
         creator = try text(.creator)
@@ -61,6 +67,24 @@ struct IPTCFields: Codable, Equatable, Sendable {
         state = try text(.state)
         country = try text(.country)
         countryCode = try text(.countryCode)
+    }
+
+    /// `photoshop:DateCreated` aceita só a data, ou data e hora com ou sem fuso.
+    static func date(from text: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        for format in ["yyyy-MM-dd'T'HH:mm:ssXXXXX", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mmXXXXX", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: text) { return date }
+        }
+        return nil
+    }
+
+    static func text(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return formatter.string(from: date)
     }
 
     /// Como fica em `Photo.keywords` (nil sem palavras-chave).
@@ -141,6 +165,13 @@ enum MetadataWriter {
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
     }
 
+    /// Um modelo de file info como ficheiro .xmp (o formato dos stationery pads do Photo Mechanic).
+    static func xmpData(for fields: IPTCFields) -> Data? {
+        let metadata = CGImageMetadataCreateMutable()
+        apply(fields, to: metadata, clearEmpty: false, merging: false)
+        return CGImageMetadataCreateXMPData(metadata, nil) as Data?
+    }
+
     static func readMetadata(for url: URL) -> CGImageMetadata? {
         let sidecar = sidecarURL(for: url)
         if PhotoImporter.isRaw(url), let data = try? Data(contentsOf: sidecar) {
@@ -197,6 +228,8 @@ enum MetadataWriter {
         ("photoshop:Headline", \.headline),
         ("dc:title", \.title),
         ("dc:description", \.caption),
+        ("xmpRights:UsageTerms", \.usageTerms),
+        ("photoshop:DateCreated", \.dateCreated),
         ("photoshop:CaptionWriter", \.captionWriter),
         ("photoshop:AuthorsPosition", \.creatorTitle),
         ("photoshop:Credit", \.credit),

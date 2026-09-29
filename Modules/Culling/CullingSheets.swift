@@ -183,7 +183,8 @@ struct MetadataSheet: View {
 
     private var delimiterCharacter: Character { delimiter.first ?? "=" }
 
-    private static let storageKey = "metadata.lastFields"
+    /// Também é o "stationery pad" que o File Info aplica.
+    static let storageKey = "metadata.lastFields"
     private static let templatesKey = "metadata.captionTemplates"
 
     struct SavedCaption: Codable, Hashable, Identifiable {

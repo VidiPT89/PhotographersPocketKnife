@@ -120,14 +120,23 @@ enum MetadataReader {
         }
 
         let iptc = iptcFields(for: url)
-        for (key, path) in IPTCFields.labelKeys { add(key, iptc[keyPath: path]) }
+        // A data de criação já aparece em "Data".
+        for (key, path) in IPTCFields.labelKeys where path != \.dateCreated { add(key, iptc[keyPath: path]) }
         return fields
     }
 
     /// O "file info" gravado na foto (ou no .xmp ao lado, num RAW).
     static func iptcFields(for url: URL) -> IPTCFields {
+        MetadataWriter.readMetadata(for: url).map(iptcFields(from:)) ?? IPTCFields()
+    }
+
+    /// Lê um modelo .xmp (do próprio programa ou um stationery pad do Photo Mechanic).
+    static func iptcFields(xmpData data: Data) -> IPTCFields? {
+        CGImageMetadataCreateFromXMPData(data as CFData).map(iptcFields(from:))
+    }
+
+    static func iptcFields(from xmp: CGImageMetadata) -> IPTCFields {
         var fields = IPTCFields()
-        guard let xmp = MetadataWriter.readMetadata(for: url) else { return fields }
         for (path, keyPath) in MetadataWriter.xmpPaths {
             fields[keyPath: keyPath] = xmpString(xmp, path) ?? ""
         }

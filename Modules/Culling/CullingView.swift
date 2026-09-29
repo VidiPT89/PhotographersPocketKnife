@@ -263,9 +263,14 @@ struct CullingToolbar: View {
             Button { c.activeSheet = .rename } label: { Image(systemName: "character.cursor.ibeam") }
                 .hint(app.t("rename.title"))
                 .disabled(!hasTargets)
-            Button { c.activeSheet = .fileInfo } label: { Image(systemName: "info.circle") }
-                .hint(app.t("fileInfo.title"))
-                .disabled(!hasTargets)
+            Button { c.activeSheet = .fileInfo } label: {
+                Label(app.t("fileInfo.title"), systemImage: "info.circle")
+                    .labelStyle(.titleAndIcon)
+                    .lineLimit(1)
+            }
+            .fixedSize()
+            .help(app.t("fileInfo.title") + " (⇧⌘I)")
+            .disabled(visible.isEmpty)
             Button { c.activeSheet = .metadata } label: { Image(systemName: "tag") }
                 .hint(app.t("metadata.title"))
                 .disabled(!hasTargets)

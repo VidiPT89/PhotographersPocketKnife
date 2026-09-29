@@ -237,6 +237,24 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(MetadataReader.iptcFields(for: file).city, "Lisboa")
     }
 
+    func testTemplateAndDateRoundTrip() throws {
+        var fields = IPTCFields()
+        fields.headline = "Final"
+        fields.usageTerms = "Uso editorial"
+        fields.credit = "iVidi"
+        let data = try XCTUnwrap(MetadataWriter.xmpData(for: fields))
+        XCTAssertEqual(MetadataReader.iptcFields(xmpData: data), fields)
+
+        let file = folder.appendingPathComponent("dated.jpg")
+        try writeJPEG(to: file)
+        fields.dateCreated = "2017-11-03T09:14:36"
+        try MetadataWriter.write(fields, to: file, clearEmpty: true)
+        let read = MetadataReader.iptcFields(for: file)
+        XCTAssertEqual(read.usageTerms, "Uso editorial")
+        XCTAssertEqual(IPTCFields.date(from: read.dateCreated), IPTCFields.date(from: "2017-11-03T09:14:36"))
+        XCTAssertNotNil(IPTCFields.date(from: "2017-11-03"))
+    }
+
     func testOldSavedFieldsStillDecode() throws {
         let data = Data(#"{"title":"T","caption":"C","creator":"","copyright":"","keywords":"","city":"","country":""}"#.utf8)
         let fields = try JSONDecoder().decode(IPTCFields.self, from: data)

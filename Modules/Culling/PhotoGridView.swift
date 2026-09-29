@@ -150,6 +150,11 @@ struct PhotoContextMenu: View {
         Button(app.t("context.showInFinder")) {
             NSWorkspace.shared.activateFileViewerSelecting([photo.url])
         }
+        Button(app.t("fileInfo.title") + "…") {
+            app.culling.focusedID = photo.id
+            if !app.culling.selection.contains(photo.id) { app.culling.selection = [photo.id] }
+            app.culling.activeSheet = .fileInfo
+        }
         Button(app.t("context.edit")) {
             app.culling.focusedID = photo.id
             if !app.culling.selection.contains(photo.id) { app.culling.selection = [photo.id] }
