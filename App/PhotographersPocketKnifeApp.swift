@@ -139,6 +139,9 @@ struct AppCommands: Commands {
                 app.pendingExport = true
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
+            Button(app.t("fileInfo.title")) { app.culling.activeSheet = .fileInfo }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(app.module != .culling || app.culling.focusedID == nil && app.culling.selection.isEmpty)
         }
         CommandGroup(after: .pasteboard) {
             Divider()

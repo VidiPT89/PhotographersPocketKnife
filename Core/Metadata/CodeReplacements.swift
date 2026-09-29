@@ -53,8 +53,7 @@ struct CodeReplacements: Equatable, Sendable {
 
     func apply(to fields: IPTCFields, delimiter: Character = "=") -> IPTCFields {
         var result = fields
-        let paths: [WritableKeyPath<IPTCFields, String>] = [\.title, \.caption, \.creator, \.copyright, \.keywords, \.city, \.country]
-        for path in paths {
+        for path in IPTCFields.textPaths {
             result[keyPath: path] = apply(result[keyPath: path], delimiter: delimiter)
         }
         return result

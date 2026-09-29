@@ -187,6 +187,50 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(details["meta.dimensions"], "64 × 48")
     }
 
+    func testFileInfoRoundTripsAndClearsFields() throws {
+        let file = folder.appendingPathComponent("fileinfo.jpg")
+        let raw = folder.appendingPathComponent("IMG_0002.NEF")
+        try writeJPEG(to: file)
+        try Data("fake raw".utf8).write(to: raw)
+        var fields = IPTCFields()
+        fields.headline = "Benfica vence"
+        fields.caption = "Golo aos 90 minutos"
+        fields.credit = "iVidi"
+        fields.jobID = "J-042"
+        fields.sublocation = "Estádio da Luz"
+        fields.countryCode = "PRT"
+        fields.keywords = "futebol, golo"
+        for url in [file, raw] {
+            try MetadataWriter.write(fields, to: url, clearEmpty: true)
+            XCTAssertEqual(MetadataReader.iptcFields(for: url), fields.withKeywords("futebol, golo"), url.lastPathComponent)
+
+            // Na edição foto a foto, apagar um campo apaga-o do ficheiro.
+            var edited = MetadataReader.iptcFields(for: url)
+            edited.credit = ""
+            edited.keywords = ""
+            try MetadataWriter.write(edited, to: url, clearEmpty: true)
+            let read = MetadataReader.iptcFields(for: url)
+            XCTAssertEqual(read.credit, "", url.lastPathComponent)
+            XCTAssertEqual(read.keywords, "", url.lastPathComponent)
+            XCTAssertEqual(read.headline, "Benfica vence", url.lastPathComponent)
+            XCTAssertEqual(read.sublocation, "Estádio da Luz", url.lastPathComponent)
+        }
+
+        // Em lote, campos vazios não mexem no que lá está.
+        var batch = IPTCFields()
+        batch.city = "Lisboa"
+        try MetadataWriter.write(batch, to: file)
+        XCTAssertEqual(MetadataReader.iptcFields(for: file).headline, "Benfica vence")
+        XCTAssertEqual(MetadataReader.iptcFields(for: file).city, "Lisboa")
+    }
+
+    func testOldSavedFieldsStillDecode() throws {
+        let data = Data(#"{"title":"T","caption":"C","creator":"","copyright":"","keywords":"","city":"","country":""}"#.utf8)
+        let fields = try JSONDecoder().decode(IPTCFields.self, from: data)
+        XCTAssertEqual(fields.caption, "C")
+        XCTAssertEqual(fields.headline, "")
+    }
+
     func testRawMetadataGoesToSidecar() throws {
         let raw = folder.appendingPathComponent("IMG_0001.CR3")
         try Data("fake raw".utf8).write(to: raw)
@@ -228,5 +272,13 @@ final class CatalogTests: XCTestCase {
         let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
         CGImageDestinationAddImage(destination, image, nil)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+}
+
+private extension IPTCFields {
+    func withKeywords(_ value: String) -> IPTCFields {
+        var copy = self
+        copy.keywords = value
+        return copy
     }
 }

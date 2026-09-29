@@ -117,15 +117,20 @@ enum MetadataReader {
             add("meta.focal", String(format: "%.0f mm", focal))
         }
 
-        if let xmp = MetadataWriter.readMetadata(for: url) {
-            add("meta.title", xmpString(xmp, "dc:title"))
-            add("meta.caption", xmpString(xmp, "dc:description"))
-            add("meta.creator", xmpString(xmp, "dc:creator"))
-            add("meta.copyright", xmpString(xmp, "dc:rights"))
-            add("meta.keywords", xmpString(xmp, "dc:subject"))
-            add("meta.city", xmpString(xmp, "photoshop:City"))
-            add("meta.country", xmpString(xmp, "photoshop:Country"))
+        let iptc = iptcFields(for: url)
+        for (key, path) in IPTCFields.labelKeys { add(key, iptc[keyPath: path]) }
+        return fields
+    }
+
+    /// O "file info" gravado na foto (ou no .xmp ao lado, num RAW).
+    static func iptcFields(for url: URL) -> IPTCFields {
+        var fields = IPTCFields()
+        guard let xmp = MetadataWriter.readMetadata(for: url) else { return fields }
+        for (path, keyPath) in MetadataWriter.xmpPaths {
+            fields[keyPath: keyPath] = xmpString(xmp, path) ?? ""
         }
+        fields.creator = xmpString(xmp, "dc:creator") ?? ""
+        fields.keywords = xmpString(xmp, "dc:subject") ?? ""
         return fields
     }
 

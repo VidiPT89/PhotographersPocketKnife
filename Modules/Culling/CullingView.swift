@@ -36,6 +36,11 @@ struct CullingView: View {
             case .importFolder(let url): ImportSheet(folder: url)
             case .rename: RenameSheet(photos: culling.targets(in: list))
             case .metadata: MetadataSheet(photos: culling.targets(in: list))
+            case .fileInfo:
+                // Com várias escolhidas percorre só essas; senão todas, a começar na foto em foco.
+                let selected = culling.targets(in: list)
+                let pool = selected.count > 1 ? selected : list
+                FileInfoSheet(photos: pool, start: pool.firstIndex { $0.id == culling.focusedID } ?? 0)
             case .smartCull:
                 let selected = culling.targets(in: list)
                 SmartCullSheet(photos: selected.count > 1 ? selected : list)
@@ -257,6 +262,9 @@ struct CullingToolbar: View {
 
             Button { c.activeSheet = .rename } label: { Image(systemName: "character.cursor.ibeam") }
                 .hint(app.t("rename.title"))
+                .disabled(!hasTargets)
+            Button { c.activeSheet = .fileInfo } label: { Image(systemName: "info.circle") }
+                .hint(app.t("fileInfo.title"))
                 .disabled(!hasTargets)
             Button { c.activeSheet = .metadata } label: { Image(systemName: "tag") }
                 .hint(app.t("metadata.title"))

@@ -1,15 +1,67 @@
 import Foundation
 import ImageIO
 
-/// Campos IPTC editáveis em lote. Campos vazios não são alterados.
+/// Campos IPTC editáveis, os mesmos do "IPTC Info" do Photo Mechanic. Em lote, campos vazios não são alterados.
 struct IPTCFields: Codable, Equatable, Sendable {
+    var headline = ""
     var title = ""
     var caption = ""
-    var creator = ""
-    var copyright = ""
+    var captionWriter = ""
     var keywords = ""
+    var creator = ""
+    var creatorTitle = ""
+    var credit = ""
+    var source = ""
+    var copyright = ""
+    var instructions = ""
+    var jobID = ""
+    var sublocation = ""
     var city = ""
+    var state = ""
     var country = ""
+    var countryCode = ""
+
+    /// Todos os campos de texto, pela ordem da janela.
+    // Constantes; os key paths só não são marcados Sendable.
+    nonisolated(unsafe) static let textPaths: [WritableKeyPath<IPTCFields, String>] = [
+        \.headline, \.title, \.caption, \.captionWriter, \.keywords, \.creator, \.creatorTitle, \.credit, \.source,
+        \.copyright, \.instructions, \.jobID, \.sublocation, \.city, \.state, \.country, \.countryCode,
+    ]
+
+    /// Chave de tradução do rótulo de cada campo.
+    nonisolated(unsafe) static let labelKeys: [(String, WritableKeyPath<IPTCFields, String>)] = [
+        ("meta.headline", \.headline), ("meta.title", \.title), ("meta.caption", \.caption),
+        ("meta.captionWriter", \.captionWriter), ("meta.keywords", \.keywords), ("meta.creator", \.creator),
+        ("meta.creatorTitle", \.creatorTitle), ("meta.credit", \.credit), ("meta.source", \.source),
+        ("meta.copyright", \.copyright), ("meta.instructions", \.instructions), ("meta.jobID", \.jobID),
+        ("meta.sublocation", \.sublocation), ("meta.city", \.city), ("meta.state", \.state),
+        ("meta.country", \.country), ("meta.countryCode", \.countryCode),
+    ]
+
+    init() {}
+
+    /// Modelos gravados por versões anteriores não têm os campos novos.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        func text(_ key: CodingKeys) throws -> String { try container.decodeIfPresent(String.self, forKey: key) ?? "" }
+        headline = try text(.headline)
+        title = try text(.title)
+        caption = try text(.caption)
+        captionWriter = try text(.captionWriter)
+        keywords = try text(.keywords)
+        creator = try text(.creator)
+        creatorTitle = try text(.creatorTitle)
+        credit = try text(.credit)
+        source = try text(.source)
+        copyright = try text(.copyright)
+        instructions = try text(.instructions)
+        jobID = try text(.jobID)
+        sublocation = try text(.sublocation)
+        city = try text(.city)
+        state = try text(.state)
+        country = try text(.country)
+        countryCode = try text(.countryCode)
+    }
 
     var keywordList: [String] {
         keywords.split(separator: ",")
@@ -18,7 +70,7 @@ struct IPTCFields: Codable, Equatable, Sendable {
     }
 
     var isEmpty: Bool {
-        [title, caption, creator, copyright, city, country].allSatisfy(\.isEmpty) && keywordList.isEmpty
+        Self.textPaths.filter { $0 != \.keywords }.allSatisfy { self[keyPath: $0].isEmpty } && keywordList.isEmpty
     }
 }
 
@@ -39,14 +91,17 @@ enum MetadataWriter {
         url.deletingPathExtension().appendingPathExtension("xmp")
     }
 
+    static let iptcCoreNamespace = "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/"
+
     /// Escreve sem recomprimir a imagem. Em RAW usa um ficheiro .xmp ao lado (sidecar).
-    static func write(_ fields: IPTCFields, to url: URL) throws {
-        try update(url) { apply(fields, to: $0) }
+    /// Com `clearEmpty`, um campo vazio apaga o que o ficheiro tinha (edição foto a foto).
+    static func write(_ fields: IPTCFields, to url: URL, clearEmpty: Bool = false) throws {
+        try update(url) { metadata, merging in apply(fields, to: metadata, clearEmpty: clearEmpty, merging: merging) }
     }
 
     /// `xmp:Rating` e `xmp:Label`, que o Lightroom e o Bridge leem (só a pedido, para não poluir as pastas).
     static func writeRating(_ rating: Int, label: ColorLabel, to url: URL) throws {
-        try update(url) { metadata in
+        try update(url) { metadata, _ in
             CGImageMetadataSetValueWithPath(metadata, nil, "xmp:Rating" as CFString, NSNumber(value: min(max(rating, 0), 5)))
             if let name = label.xmpName {
                 CGImageMetadataSetValueWithPath(metadata, nil, "xmp:Label" as CFString, name as CFString)
@@ -54,7 +109,8 @@ enum MetadataWriter {
         }
     }
 
-    private static func update(_ url: URL, _ body: (CGMutableImageMetadata) -> Void) throws {
+    /// `merging` é verdadeiro quando os valores se juntam aos do ficheiro; aí apagar exige `kCFNull`.
+    private static func update(_ url: URL, _ body: (CGMutableImageMetadata, Bool) -> Void) throws {
         if PhotoImporter.isRaw(url) {
             try writeSidecar(for: url, body)
             return
@@ -63,7 +119,7 @@ enum MetadataWriter {
               let type = CGImageSourceGetType(source) else { throw MetadataError.unreadable(url) }
 
         let metadata = CGImageMetadataCreateMutable()
-        body(metadata)
+        body(metadata, true)
 
         let temp = url.deletingLastPathComponent().appendingPathComponent(".ppk-\(UUID().uuidString)-\(url.lastPathComponent)")
         guard let destination = CGImageDestinationCreateWithURL(temp as CFURL, type, 1, nil) else {
@@ -89,7 +145,7 @@ enum MetadataWriter {
         return CGImageSourceCopyMetadataAtIndex(source, 0, nil)
     }
 
-    private static func writeSidecar(for url: URL, _ body: (CGMutableImageMetadata) -> Void) throws {
+    private static func writeSidecar(for url: URL, _ body: (CGMutableImageMetadata, Bool) -> Void) throws {
         let sidecar = sidecarURL(for: url)
         let metadata: CGMutableImageMetadata
         if let data = try? Data(contentsOf: sidecar),
@@ -99,29 +155,54 @@ enum MetadataWriter {
         } else {
             metadata = CGImageMetadataCreateMutable()
         }
-        body(metadata)
+        body(metadata, false)
         guard let xmp = CGImageMetadataCreateXMPData(metadata, nil) else { throw MetadataError.cannotWrite(url) }
         try (xmp as Data).write(to: sidecar, options: .atomic)
     }
 
-    private static func apply(_ fields: IPTCFields, to metadata: CGMutableImageMetadata) {
+    private static func apply(_ fields: IPTCFields, to metadata: CGMutableImageMetadata, clearEmpty: Bool, merging: Bool) {
+        CGImageMetadataRegisterNamespaceForPrefix(metadata, iptcCoreNamespace as CFString, "Iptc4xmpCore" as CFString, nil)
+        func clear(_ path: String) {
+            guard clearEmpty else { return }
+            if merging {
+                CGImageMetadataSetValueWithPath(metadata, nil, path as CFString, kCFNull)
+            } else {
+                CGImageMetadataRemoveTagWithPath(metadata, nil, path as CFString)
+            }
+        }
         func setArray(_ name: String, _ type: CGImageMetadataType, _ values: [String]) {
             let dc = kCGImageMetadataNamespaceDublinCore, prefix = kCGImageMetadataPrefixDublinCore
+            guard !values.isEmpty else { return clear("\(prefix):\(name)") }
             guard let tag = CGImageMetadataTagCreate(dc, prefix, name as CFString, type, values as CFArray) else { return }
             CGImageMetadataSetTagWithPath(metadata, nil, "\(prefix):\(name)" as CFString, tag)
         }
         // Com uma string simples, o ImageIO cria o texto alternativo (x-default) nos campos dc:title/description/rights.
         // Criar a tag .alternateText a partir de um dicionário grava um rdf:Alt vazio.
         func setString(_ path: String, _ value: String) {
-            guard !value.isEmpty else { return }
+            guard !value.isEmpty else { return clear(path) }
             CGImageMetadataSetValueWithPath(metadata, nil, path as CFString, value as CFString)
         }
-        setString("dc:title", fields.title)
-        setString("dc:description", fields.caption)
-        setString("dc:rights", fields.copyright)
-        setString("photoshop:City", fields.city)
-        setString("photoshop:Country", fields.country)
-        if !fields.creator.isEmpty { setArray("creator", .arrayOrdered, [fields.creator]) }
-        if !fields.keywordList.isEmpty { setArray("subject", .arrayUnordered, fields.keywordList) }
+        for (path, keyPath) in xmpPaths { setString(path, fields[keyPath: keyPath]) }
+        setArray("creator", .arrayOrdered, fields.creator.isEmpty ? [] : [fields.creator])
+        setArray("subject", .arrayUnordered, fields.keywordList)
     }
+
+    /// Campos de texto simples e onde vivem no XMP (os mesmos caminhos que o Photo Mechanic e o Lightroom usam).
+    nonisolated(unsafe) static let xmpPaths: [(String, WritableKeyPath<IPTCFields, String>)] = [
+        ("photoshop:Headline", \.headline),
+        ("dc:title", \.title),
+        ("dc:description", \.caption),
+        ("photoshop:CaptionWriter", \.captionWriter),
+        ("photoshop:AuthorsPosition", \.creatorTitle),
+        ("photoshop:Credit", \.credit),
+        ("photoshop:Source", \.source),
+        ("dc:rights", \.copyright),
+        ("photoshop:Instructions", \.instructions),
+        ("photoshop:TransmissionReference", \.jobID),
+        ("Iptc4xmpCore:Location", \.sublocation),
+        ("photoshop:City", \.city),
+        ("photoshop:State", \.state),
+        ("photoshop:Country", \.country),
+        ("Iptc4xmpCore:CountryCode", \.countryCode),
+    ]
 }
