@@ -36,6 +36,8 @@ final class Photo {
     var assessmentData: Data?
     /// Palavras-chave (separadas por vírgulas), também usadas na pesquisa.
     var keywords: String?
+    /// Legenda, headline, evento, pessoas, local… em minúsculas, para a pesquisa. `nil` = ainda não lido do ficheiro.
+    var fileInfoText: String?
     /// Posição GPS em graus decimais, quando a câmara ou o telemóvel a gravou.
     var latitude: Double?
     var longitude: Double?
@@ -54,7 +56,6 @@ final class Photo {
         focalLength = info.focalLength
         latitude = info.latitude
         longitude = info.longitude
-        keywords = info.keywords
         pixelWidth = info.width
         pixelHeight = info.height
         fileSize = info.fileSize
@@ -62,9 +63,17 @@ final class Photo {
         flagRaw = 0
         colorLabelRaw = 0
         importedAt = Date()
+        // Sem XMP fica "" (lido e vazio), para o índice da pesquisa não voltar a ler a foto.
+        updateFileInfo(info.fileInfo ?? IPTCFields())
     }
 
     var url: URL { URL(fileURLWithPath: path) }
+
+    /// O catálogo acompanha o file info gravado na foto, para a pesquisa.
+    func updateFileInfo(_ fields: IPTCFields) {
+        keywords = fields.catalogKeywords
+        fileInfoText = fields.searchText
+    }
 
     var flag: PhotoFlag {
         get { PhotoFlag(rawValue: flagRaw) ?? .none }

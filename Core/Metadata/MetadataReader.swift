@@ -16,8 +16,8 @@ struct ImportedPhotoInfo: Sendable {
     var longitude: Double? = nil
     /// Classificação e revelação lidas de um `.ppk` ao lado da foto, se existir.
     var sidecar: PPKSidecar? = nil
-    /// Palavras-chave que a foto já traz (Photo Mechanic, Lightroom…), para a pesquisa as encontrar.
-    var keywords: String? = nil
+    /// O file info que a foto já traz (Photo Mechanic, Lightroom…), para a pesquisa o encontrar.
+    var fileInfo: IPTCFields? = nil
 }
 
 /// Um campo de metadados; `id` é a chave de tradução do rótulo.

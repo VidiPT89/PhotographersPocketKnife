@@ -31,10 +31,6 @@
 "import.verify" = "Verificar cópias por checksum (SHA-256)";
 "import.backup" = "Backup simultâneo para um segundo destino";
 "import.backupDestination" = "Destino do backup";
-"metadata.templates" = "Modelos de legenda";
-"metadata.loadTemplate" = "Carregar modelo";
-"metadata.templateName" = "Nome do modelo";
-"metadata.event" = "Evento (para {event})";
 "shortcut.zoom" = "Zoom 100 %";
 "shortcut.magnifier" = "Lupa";
 "shortcut.develop" = "Ir para a Edição";
@@ -248,6 +244,15 @@
 "fileInfo.position" = "%d de %d";
 "fileInfo.previous" = "Anterior";
 "fileInfo.next" = "Seguinte";
+"fileInfo.unsaved" = "Guardar as alterações ao file info?";
+"fileInfo.unsavedHint" = "Se não guardares, o que mudaste aqui perde-se.";
+"fileInfo.save" = "Guardar";
+"fileInfo.discard" = "Não guardar";
+"fileInfo.loadFile" = "Ficheiro XMP…";
+"fileInfo.captionTemplates" = "Modelos de legenda";
+"fileInfo.stationeryApply" = "Aplicar Stationery Pad";
+"fileInfo.stationerySave" = "Guardar estes campos como Stationery Pad";
+"fileInfo.stationerySaved" = "Stationery Pad guardado";
 "toast.fileInfo" = "Informação do ficheiro guardada";
 "meta.category" = "Categoria";
 "meta.supplementalCategories" = "Categorias suplementares";
@@ -293,15 +298,13 @@
 "fileInfo.clear" = "Limpar";
 "fileInfo.load" = "Carregar…";
 "fileInfo.saveTemplate" = "Guardar…";
-"fileInfo.stationeryPad" = "Aplicar Stationery Pad";
-"fileInfo.stationeryPadHint" = "Preenche os campos guardados nos metadados em lote";
+"fileInfo.stationeryPad" = "Stationery Pad";
+"fileInfo.stationeryPadHint" = "Um conjunto de campos que preenches muitas vezes, aplicado com um clique";
 "fileInfo.variables" = "Variáveis";
 "fileInfo.recent" = "Valores recentes";
 "fileInfo.noRecent" = "Sem valores recentes";
 "fileInfo.templateEmpty" = "Este ficheiro não tem file info.";
-"metadata.title" = "Metadados IPTC em lote";
 "metadata.applyTo" = "Aplicar a %d fotos";
-"metadata.hint" = "Campos vazios não são alterados. Em ficheiros RAW os metadados são guardados num ficheiro .xmp ao lado.";
 "metadata.failures" = "Não foi possível escrever em %d ficheiros.";
 
 /* Renomear */

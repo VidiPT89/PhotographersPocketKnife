@@ -176,7 +176,7 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(fields.catalogKeywords, "futebol, Benfica")
 
         let info = try XCTUnwrap(PhotoImporter.runReporting(files: [file], options: .init()) { _, _ in }.infos.first)
-        XCTAssertTrue(info.keywords?.contains("Benfica") == true)
+        XCTAssertEqual(info.fileInfo?.catalogKeywords, "futebol, Benfica")
         XCTAssertNil(IPTCFields().catalogKeywords)
     }
 
@@ -319,6 +319,24 @@ final class CatalogTests: XCTestCase {
         let xmp = #"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/" xmpRights:Marked="true"/></rdf:RDF></x:xmpmeta>"#
         try Data(xmp.utf8).write(to: MetadataWriter.sidecarURL(for: raw))
         XCTAssertEqual(MetadataReader.iptcFields(for: raw).copyrightStatus, "True")
+    }
+
+    func testSearchFindsCaptionHeadlineAndPeople() throws {
+        let file = folder.appendingPathComponent("search.jpg")
+        try writeJPEG(to: file)
+        var fields = IPTCFields()
+        fields.headline = "Final da Taça"
+        fields.caption = "Golo de Ronaldo no Jamor"
+        fields.personShown = "Pepe"
+        try MetadataWriter.write(fields, to: file)
+
+        let info = try XCTUnwrap(PhotoImporter.runReporting(files: [file], options: .init()) { _, _ in }.infos.first)
+        let photo = Photo(info: info, sessionName: "Taça")
+        for query in ["jamor", "final da taça", "pepe"] {
+            XCTAssertTrue(photo.fileInfoText?.contains(query) == true, query)
+        }
+        let bare = Photo(info: MetadataReader.basicInfo(for: file), sessionName: "Taça")
+        XCTAssertEqual(bare.fileInfoText, "")
     }
 
     func testOldSavedFieldsStillDecode() throws {

@@ -28,7 +28,7 @@ enum CullingViewMode: String, CaseIterable, Identifiable {
 }
 
 enum CullingSheet: Identifiable {
-    case importFolder(URL), rename, metadata, fileInfo, smartCull, gallery, timeShift, map, denoise
+    case importFolder(URL), rename, fileInfo, smartCull, gallery, timeShift, map, denoise
 
     var id: String {
         switch self {
@@ -37,7 +37,6 @@ enum CullingSheet: Identifiable {
         case .map: "map"
         case .denoise: "denoise"
         case .rename: "rename"
-        case .metadata: "metadata"
         case .fileInfo: "fileInfo"
         case .smartCull: "smartCull"
         case .gallery: "gallery"
@@ -148,7 +147,8 @@ final class CullingModel {
             if let focalLength, photo.focalLength?.rounded() != focalLength { return false }
             if showDuplicatesOnly, duplicateGroups[photo.id] == nil { return false }
             if showIssuesOnly, (cullReport?.issues[photo.id] ?? []).isEmpty { return false }
-            if !query.isEmpty, !photo.fileName.lowercased().contains(query), !(photo.keywords?.lowercased().contains(query) ?? false) {
+            if !query.isEmpty, !photo.fileName.lowercased().contains(query), !(photo.keywords?.lowercased().contains(query) ?? false),
+               !(photo.fileInfoText?.contains(query) ?? false) {
                 return false
             }
             return true
@@ -268,6 +268,21 @@ final class CullingModel {
     }
 
     // MARK: Importação e duplicados
+
+    /// Fotos importadas antes de a pesquisa ler o file info: lê-o uma vez, em segundo plano.
+    func indexFileInfo(_ photos: [Photo]) async {
+        let pending = photos.filter { $0.fileInfoText == nil }.map { (id: $0.id, url: $0.url) }
+        guard !pending.isEmpty else { return }
+        let read = await Task.detached(priority: .utility) {
+            pending.map { job in (job.id, MetadataWriter.readMetadata(for: job.url).map(MetadataReader.iptcFields(from:))) }
+        }.value
+        let byID = Dictionary(read, uniquingKeysWith: { first, _ in first })
+        for photo in photos {
+            guard let entry = byID[photo.id] else { continue }
+            // Sem metadados (ficheiro movido?), mantém as palavras-chave que o catálogo já tinha.
+            if let fields = entry { photo.updateFileInfo(fields) } else { photo.fileInfoText = "" }
+        }
+    }
 
     func importFolder(_ folder: URL, options: PhotoImporter.Options, session: String, context: ModelContext) async {
         let files = await Task.detached(priority: .userInitiated) { PhotoImporter.imageFiles(in: folder) }.value

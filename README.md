@@ -20,7 +20,8 @@
 - ✅ Filter and sort by rating, flag, colour label, camera, lens, ISO, focal length, file name and capture time
 - ✅ Batch rename with templates and conflict detection
 - ✅ File Info (`I` or `⌘I`) laid out like Photo Mechanic's IPTC Info, with every field it offers: description, categories, urgency, genre, event, people shown, scene and subject codes, credits and rights, date and location, workflow and creator contact. Select several photos to fill them all together (untouched fields keep each photo's value), or go one by one, read from each photo and saved as you move with Save & ← / →, with copy and paste, recent values per field, caption variables and XMP templates that also open Photo Mechanic stationery pads
-- ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
+- ✅ Caption variables (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`, `{players}`…) resolved per photo, a Stationery Pad for the fields you fill in often, and a warning before unsaved changes are lost; written without recompressing, with XMP sidecars for RAW
+- ✅ Search finds file names, keywords and the file info itself: caption, headline, event, people shown, location and credit
 - ✅ Code replacements compatible with Photo Mechanic files: load a tab-delimited roster and type `=7=` to get the player's name (`=7#2=` for the next column), expanded live as you type
 - ✅ Automatic player captions: the `{players}` token reads the shirt numbers in each photo on-device and writes the names from the roster
 - ✅ Capture time adjustment to sync several cameras: set the correct time of one frame and the same offset is applied to the whole selection

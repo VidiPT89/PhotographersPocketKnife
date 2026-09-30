@@ -17,6 +17,8 @@ struct FileInfoSheet: View {
     @State var perPhotoCaptureTime = false
     @State var isLoading = true
     @State var isSaving = false
+    /// Passo à espera da resposta a "Guardar alterações?".
+    @State var pendingStep: FileInfoStep?
     @State var message: String?
     @State var codes = CodeReplacements()
     @AppStorage(CodeReplacementStore.delimiterKey) var delimiter = "="
@@ -50,6 +52,18 @@ struct FileInfoSheet: View {
         .onChange(of: fields.headline) { _, value in replaceCodes(value, \.headline) }
         .onChange(of: fields.title) { _, value in replaceCodes(value, \.title) }
         .onAppear { codes = CodeReplacementStore.load() }
+        // Esc dentro de uma caixa de texto fechava a janela sem passar pelo Cancelar (e sem perguntar).
+        .interactiveDismissDisabled(hasChanges)
+        .onExitCommand { request(.close) }
+        .confirmationDialog(app.t("fileInfo.unsaved"), isPresented: Binding(get: { pendingStep != nil }, set: { if !$0 { pendingStep = nil } })) {
+            if let step = pendingStep {
+                Button(app.t("fileInfo.save")) { pendingStep = nil; commit(then: step) }
+                Button(app.t("fileInfo.discard"), role: .destructive) { pendingStep = nil; perform(step) }
+                Button(app.t("common.cancel"), role: .cancel) { pendingStep = nil }
+            }
+        } message: {
+            Text(app.t("fileInfo.unsavedHint"))
+        }
         .task(id: "\(together)|\(photo?.id.uuidString ?? "")") { await load() }
     }
 
@@ -111,7 +125,7 @@ struct FileInfoSheet: View {
     private var sidePanel: some View {
         VStack(spacing: 12) {
             if photos.count > 1 {
-                Picker("", selection: $together) {
+                Picker("", selection: Binding(get: { together }, set: { request(.mode(together: $0)) })) {
                     Text(String(format: app.t("fileInfo.together"), photos.count)).tag(true)
                     Text(app.t("fileInfo.oneByOne")).tag(false)
                 }
@@ -120,6 +134,7 @@ struct FileInfoSheet: View {
                 .disabled(isSaving)
             }
             preview
+            example
             if together {
                 Text(String(format: app.t("fileInfo.togetherHint"), photos.count))
                     .font(Typography.caption)
@@ -169,18 +184,18 @@ struct FileInfoSheet: View {
         Grid(horizontalSpacing: 8, verticalSpacing: 8) {
             if !together {
                 GridRow {
-                    Button { save(then: index - 1) } label: { Label(app.t("fileInfo.savePrevious"), systemImage: "arrow.left") }
+                    Button { commit(then: .go(index - 1)) } label: { Label(app.t("fileInfo.savePrevious"), systemImage: "arrow.left") }
                         .keyboardShortcut("[", modifiers: .command)
                         .disabled(index == 0)
-                    Button { save(then: index + 1) } label: { Label(app.t("fileInfo.saveNext"), systemImage: "arrow.right") }
+                    Button { commit(then: .go(index + 1)) } label: { Label(app.t("fileInfo.saveNext"), systemImage: "arrow.right") }
                         .keyboardShortcut("]", modifiers: .command)
                         .disabled(index >= photos.count - 1)
                 }
                 GridRow {
-                    Button { index -= 1 } label: { Image(systemName: "arrow.left").frame(maxWidth: .infinity) }
+                    Button { request(.go(index - 1)) } label: { Image(systemName: "arrow.left").frame(maxWidth: .infinity) }
                         .disabled(index == 0)
                         .hint(app.t("fileInfo.previous"))
-                    Button { index += 1 } label: { Image(systemName: "arrow.right").frame(maxWidth: .infinity) }
+                    Button { request(.go(index + 1)) } label: { Image(systemName: "arrow.right").frame(maxWidth: .infinity) }
                         .disabled(index >= photos.count - 1)
                         .hint(app.t("fileInfo.next"))
                 }
@@ -200,28 +215,79 @@ struct FileInfoSheet: View {
         HStack(spacing: 8) {
             Group {
                 Button(app.t("fileInfo.clear")) { clear() }
-                Button(app.t("fileInfo.load")) { loadTemplate() }
+                Menu(app.t("fileInfo.load")) {
+                    Button(app.t("fileInfo.loadFile")) { loadTemplate() }
+                    let templates = captionTemplates
+                    if !templates.isEmpty {
+                        Section(app.t("fileInfo.captionTemplates")) {
+                            ForEach(templates, id: \.self) { template in
+                                Button(template.name) {
+                                    fields.title = template.title
+                                    fields.caption = template.caption
+                                }
+                            }
+                        }
+                    }
+                }
+                .fixedSize()
                 Button(app.t("fileInfo.saveTemplate")) { saveTemplate() }
-                Button(app.t("fileInfo.stationeryPad")) { stationeryPad.map(merge) }
-                    .disabled(stationeryPad == nil)
-                    .hint(app.t("fileInfo.stationeryPadHint"))
+                Menu(app.t("fileInfo.stationeryPad")) {
+                    Button(app.t("fileInfo.stationeryApply")) { stationeryPad.map(merge) }
+                        .disabled(stationeryPad == nil)
+                    Button(app.t("fileInfo.stationerySave")) { saveStationeryPad() }
+                }
+                .fixedSize()
+                .hint(app.t("fileInfo.stationeryPadHint"))
+                codesMenu
                 Menu(app.t("fileInfo.variables")) {
-                    ForEach(CaptionTemplate.tokens.filter { $0 != "{players}" }, id: \.self) { token in
+                    ForEach(CaptionTemplate.tokens, id: \.self) { token in
                         Button(token) { fields.caption += (fields.caption.isEmpty || fields.caption.hasSuffix(" ") ? "" : " ") + token }
                     }
+                    Divider()
+                    Text(app.t(codes.isEmpty ? "metadata.playersNeedsRoster" : "metadata.playersHint"))
                 }
                 .fixedSize()
             }
             .disabled(isLoading || photos.isEmpty)
             Spacer()
-            Button(app.t("common.cancel")) { dismiss() }
+            Button(app.t("common.cancel")) { request(.close) }
                 .keyboardShortcut(.cancelAction)
-            Button(together ? String(format: app.t("metadata.applyTo"), photos.count) : "OK") {
-                together ? saveAll() : save(then: nil)
-            }
+            Button(together ? String(format: app.t("metadata.applyTo"), photos.count) : "OK") { commit(then: .close) }
             .keyboardShortcut(.defaultAction)
             .disabled(isLoading || isSaving || photos.isEmpty)
         }
         .padding(12)
+    }
+
+    /// Ficheiro de substituições de código (=7=), como no Photo Mechanic.
+    private var codesMenu: some View {
+        Menu(app.t("codes.title")) {
+            Text(CodeReplacementStore.fileName.map { String(format: app.t("codes.loaded"), $0, codes.count) } ?? app.t("codes.none"))
+            Button(app.t("codes.load")) { loadCodes() }
+            if !codes.isEmpty {
+                Button(app.t("codes.remove")) { removeCodes() }
+            }
+            Picker(app.t("codes.delimiter"), selection: $delimiter) {
+                ForEach(Array(Set(["=", "\\", "/", "#", "%", delimiter])).sorted(), id: \.self) { Text($0).tag($0) }
+            }
+            Divider()
+            Text(app.t("codes.hint"))
+        }
+        .fixedSize()
+    }
+
+    /// Como fica a legenda (ou a headline) com as variáveis, na foto em foco.
+    @ViewBuilder
+    private var example: some View {
+        let text = fields.caption.contains("{") ? fields.caption : fields.headline
+        if text.contains("{"), let photo {
+            let values = codes.apply(to: fields, delimiter: delimiterCharacter)
+            let sample = values.resolvingVariables(context(for: photo, index: index, values: values))
+            Text(app.t("import.example") + ": " + (fields.caption.contains("{") ? sample.caption : sample.headline))
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecondary)
+                .lineLimit(3)
+                .multilineTextAlignment(.center)
+        }
     }
 }

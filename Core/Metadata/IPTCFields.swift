@@ -68,6 +68,15 @@ struct IPTCFields: Codable, Equatable, Sendable {
 
     var keywordList: [String] { Self.list(keywords) }
 
+    /// O texto do file info que a pesquisa encontra (legenda, headline, evento, pessoas, local…), em minúsculas.
+    var searchText: String {
+        [headline, title, caption, event, personShown, category, supplementalCategories, creator, credit,
+         sublocation, city, state, country, jobID]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+            .lowercased()
+    }
+
     var isEmpty: Bool {
         Self.specs.allSatisfy { spec in spec.kind == .text ? self[keyPath: spec.path].isEmpty : Self.list(self[keyPath: spec.path]).isEmpty }
     }
@@ -101,6 +110,12 @@ struct IPTCFields: Codable, Equatable, Sendable {
         headline = CaptionTemplate.resolve(headline, context)
         title = CaptionTemplate.resolve(title, context)
         caption = CaptionTemplate.resolve(caption, context)
+    }
+
+    func resolvingVariables(_ context: CaptionTemplate.Context) -> IPTCFields {
+        var copy = self
+        copy.resolveVariables(context)
+        return copy
     }
 
     // MARK: Várias fotos

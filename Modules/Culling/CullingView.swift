@@ -24,18 +24,19 @@ struct CullingView: View {
                 }
             }
             .animation(Motion.smooth, value: culling.showInfoPanel)
+            // Só na área das fotos: na barra, o toque roubava o foco à caixa de pesquisa.
+            .simultaneousGesture(TapGesture().onEnded { keyboardFocus = true })
         }
         .focusable()
         .focusEffectDisabled()
         .focused($keyboardFocus)
         .onAppear { keyboardFocus = true }
-        .simultaneousGesture(TapGesture().onEnded { keyboardFocus = true })
         .onKeyPress(phases: .down) { press in handleKey(press, list: list) }
+        .task(id: photos.count) { await culling.indexFileInfo(photos) }
         .sheet(item: $culling.activeSheet) { sheet in
             switch sheet {
             case .importFolder(let url): ImportSheet(folder: url)
             case .rename: RenameSheet(photos: culling.targets(in: list))
-            case .metadata: MetadataSheet(photos: culling.targets(in: list))
             case .fileInfo:
                 // Com várias escolhidas, preenche-as todas juntas; senão percorre todas, a começar na foto em foco.
                 let selected = culling.targets(in: list)
@@ -271,9 +272,6 @@ struct CullingToolbar: View {
             .fixedSize()
             .help(app.t("fileInfo.title") + " (I · ⌘I)")
             .disabled(visible.isEmpty)
-            Button { c.activeSheet = .metadata } label: { Image(systemName: "tag") }
-                .hint(app.t("metadata.title"))
-                .disabled(!hasTargets)
 
             Menu {
                 Button(app.t("culling.presentation"), systemImage: "play.rectangle") {

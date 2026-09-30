@@ -31,10 +31,6 @@
 "import.verify" = "Verify copies with checksums (SHA-256)";
 "import.backup" = "Back up to a second destination at the same time";
 "import.backupDestination" = "Backup destination";
-"metadata.templates" = "Caption templates";
-"metadata.loadTemplate" = "Load template";
-"metadata.templateName" = "Template name";
-"metadata.event" = "Event (for {event})";
 "shortcut.zoom" = "Zoom 100 %";
 "shortcut.magnifier" = "Magnifier";
 "shortcut.develop" = "Go to Develop";
@@ -248,6 +244,15 @@
 "fileInfo.position" = "%d of %d";
 "fileInfo.previous" = "Previous";
 "fileInfo.next" = "Next";
+"fileInfo.unsaved" = "Save the changes to the file info?";
+"fileInfo.unsavedHint" = "If you don't save, what you changed here is lost.";
+"fileInfo.save" = "Save";
+"fileInfo.discard" = "Don't save";
+"fileInfo.loadFile" = "XMP file…";
+"fileInfo.captionTemplates" = "Caption templates";
+"fileInfo.stationeryApply" = "Apply Stationery Pad";
+"fileInfo.stationerySave" = "Save these fields as the Stationery Pad";
+"fileInfo.stationerySaved" = "Stationery Pad saved";
 "toast.fileInfo" = "File info saved";
 "meta.category" = "Category";
 "meta.supplementalCategories" = "Supplemental categories";
@@ -293,15 +298,13 @@
 "fileInfo.clear" = "Clear";
 "fileInfo.load" = "Load…";
 "fileInfo.saveTemplate" = "Save…";
-"fileInfo.stationeryPad" = "Apply Stationery Pad";
-"fileInfo.stationeryPadHint" = "Fills in the fields saved in batch metadata";
+"fileInfo.stationeryPad" = "Stationery Pad";
+"fileInfo.stationeryPadHint" = "A set of fields you fill in often, applied with one click";
 "fileInfo.variables" = "Variables";
 "fileInfo.recent" = "Recent values";
 "fileInfo.noRecent" = "No recent values";
 "fileInfo.templateEmpty" = "This file has no file info.";
-"metadata.title" = "Batch IPTC metadata";
 "metadata.applyTo" = "Apply to %d photos";
-"metadata.hint" = "Empty fields are left unchanged. For RAW files, metadata is saved to a .xmp sidecar file.";
 "metadata.failures" = "Could not write to %d files.";
 
 /* Rename */

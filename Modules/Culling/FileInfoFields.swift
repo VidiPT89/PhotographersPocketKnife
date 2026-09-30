@@ -131,32 +131,3 @@ struct IPTCPicker: View {
         }
     }
 }
-
-/// Os campos em secções de formulário, para a janela de metadados em lote.
-struct IPTCFormSections: View {
-    @Environment(AppState.self) private var app
-    @Binding var fields: IPTCFields
-
-    var body: some View {
-        ForEach(IPTCGroup.allCases, id: \.self) { group in
-            Section(app.t(group.labelKey)) {
-                ForEach(IPTCFields.specs.filter { $0.group == group && $0.name != "dateCreated" }) { spec in
-                    field(spec)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func field(_ spec: IPTCFieldSpec) -> some View {
-        let text = Binding(get: { fields[keyPath: spec.path] }, set: { fields[keyPath: spec.path] = $0 })
-        switch spec.control {
-        case .urgency, .copyrightStatus:
-            LabeledContent(app.t(spec.labelKey)) { IPTCPicker(spec: spec, text: text) }
-        case .box(let lines):
-            TextField(app.t(spec.labelKey), text: text, axis: .vertical).lineLimit(min(lines, 2)...max(lines, 2))
-        case .line, .date:
-            TextField(app.t(spec.labelKey), text: text)
-        }
-    }
-}
