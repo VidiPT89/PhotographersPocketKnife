@@ -7,6 +7,7 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
     case loupe, compare
     case zoom, magnifier, develop, crop, presentation, smaller, larger
     case focusPeaking
+    case fileInfo
 
     var id: String { rawValue }
 
@@ -42,6 +43,7 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
         case .smaller: "minus.magnifyingglass"
         case .larger: "plus.magnifyingglass"
         case .focusPeaking: "scope"
+        case .fileInfo: "info.circle"
         }
     }
 
@@ -72,6 +74,7 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
         case .smaller: "-"
         case .larger: "="
         case .focusPeaking: "k"
+        case .fileInfo: "i"
         }
     }
 }

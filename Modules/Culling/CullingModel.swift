@@ -252,6 +252,7 @@ final class CullingModel {
         case .focusPeaking:
             if viewMode == .grid { viewMode = .loupe }
             focusPeaking.toggle()
+        case .fileInfo: if !list.isEmpty { activeSheet = .fileInfo }
         case .develop, .crop: break // tratados pela app (mudam de módulo)
         }
     }

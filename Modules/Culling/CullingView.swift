@@ -37,10 +37,10 @@ struct CullingView: View {
             case .rename: RenameSheet(photos: culling.targets(in: list))
             case .metadata: MetadataSheet(photos: culling.targets(in: list))
             case .fileInfo:
-                // Com várias escolhidas percorre só essas; senão todas, a começar na foto em foco.
+                // Com várias escolhidas, preenche-as todas juntas; senão percorre todas, a começar na foto em foco.
                 let selected = culling.targets(in: list)
                 let pool = selected.count > 1 ? selected : list
-                FileInfoSheet(photos: pool, start: pool.firstIndex { $0.id == culling.focusedID } ?? 0)
+                FileInfoSheet(photos: pool, start: pool.firstIndex { $0.id == culling.focusedID } ?? 0, together: selected.count > 1)
             case .smartCull:
                 let selected = culling.targets(in: list)
                 SmartCullSheet(photos: selected.count > 1 ? selected : list)
@@ -269,7 +269,7 @@ struct CullingToolbar: View {
                     .lineLimit(1)
             }
             .fixedSize()
-            .help(app.t("fileInfo.title") + " (⇧⌘I)")
+            .help(app.t("fileInfo.title") + " (I · ⌘I)")
             .disabled(visible.isEmpty)
             Button { c.activeSheet = .metadata } label: { Image(systemName: "tag") }
                 .hint(app.t("metadata.title"))

@@ -255,6 +255,56 @@ final class CatalogTests: XCTestCase {
         XCTAssertNotNil(IPTCFields.date(from: "2017-11-03"))
     }
 
+    func testEveryPhotoMechanicFieldRoundTrips() throws {
+        var fields = IPTCFields()
+        for (n, spec) in IPTCFields.specs.enumerated() {
+            switch spec.control {
+            case .date: fields[keyPath: spec.path] = "2017-11-03T09:14:36"
+            case .urgency: fields[keyPath: spec.path] = "2"
+            case .copyrightStatus: fields[keyPath: spec.path] = "True"
+            default: fields[keyPath: spec.path] = spec.kind == .bag ? "a\(n), b\(n)" : "valor \(n)"
+            }
+        }
+        let jpeg = folder.appendingPathComponent("all.jpg")
+        let raw = folder.appendingPathComponent("IMG_0003.NEF")
+        try writeJPEG(to: jpeg)
+        try Data("fake raw".utf8).write(to: raw)
+        for url in [jpeg, raw] {
+            try MetadataWriter.write(fields, to: url, clearEmpty: true)
+            let read = MetadataReader.iptcFields(for: url)
+            for spec in IPTCFields.specs where spec.name != "dateCreated" {
+                XCTAssertEqual(read[keyPath: spec.path], fields[keyPath: spec.path], "\(spec.name) em \(url.lastPathComponent)")
+            }
+            XCTAssertEqual(IPTCFields.date(from: read.dateCreated), IPTCFields.date(from: fields.dateCreated))
+
+            // Apagar um campo do contacto não leva os outros.
+            var edited = read
+            edited.contactPhone = ""
+            try MetadataWriter.write(edited, to: url, clearEmpty: true)
+            let again = MetadataReader.iptcFields(for: url)
+            XCTAssertEqual(again.contactPhone, "", url.lastPathComponent)
+            XCTAssertEqual(again.contactEmail, fields.contactEmail, url.lastPathComponent)
+        }
+    }
+
+    func testCommonFieldsAndReplacingOnlyChangedOnes() throws {
+        var a = IPTCFields(), b = IPTCFields()
+        a.credit = "iVidi"; b.credit = "iVidi"
+        a.caption = "Golo"; b.caption = "Defesa"
+        let common = IPTCFields.common([a, b])
+        XCTAssertEqual(common.fields.credit, "iVidi")
+        XCTAssertEqual(common.fields.caption, "")
+        XCTAssertEqual(common.mixed, ["caption"])
+
+        var edits = common.fields
+        edits.city = "Lisboa"
+        let changed = IPTCFields.specs.filter { edits[keyPath: $0.path] != common.fields[keyPath: $0.path] }
+        XCTAssertEqual(changed.map(\.name), ["city"])
+        let result = b.replacing(changed, from: edits)
+        XCTAssertEqual(result.city, "Lisboa")
+        XCTAssertEqual(result.caption, "Defesa")
+    }
+
     func testOldSavedFieldsStillDecode() throws {
         let data = Data(#"{"title":"T","caption":"C","creator":"","copyright":"","keywords":"","city":"","country":""}"#.utf8)
         let fields = try JSONDecoder().decode(IPTCFields.self, from: data)

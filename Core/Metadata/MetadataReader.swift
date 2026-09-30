@@ -121,7 +121,7 @@ enum MetadataReader {
 
         let iptc = iptcFields(for: url)
         // A data de criação já aparece em "Data".
-        for (key, path) in IPTCFields.labelKeys where path != \.dateCreated { add(key, iptc[keyPath: path]) }
+        for spec in IPTCFields.specs where !["dateCreated", "copyrightStatus"].contains(spec.name) { add(spec.labelKey, iptc[keyPath: spec.path]) }
         return fields
     }
 
@@ -137,11 +137,9 @@ enum MetadataReader {
 
     static func iptcFields(from xmp: CGImageMetadata) -> IPTCFields {
         var fields = IPTCFields()
-        for (path, keyPath) in MetadataWriter.xmpPaths {
-            fields[keyPath: keyPath] = xmpString(xmp, path) ?? ""
+        for spec in IPTCFields.specs {
+            fields[keyPath: spec.path] = xmpString(xmp, spec.xmp) ?? ""
         }
-        fields.creator = xmpString(xmp, "dc:creator") ?? ""
-        fields.keywords = xmpString(xmp, "dc:subject") ?? ""
         return fields
     }
 

@@ -128,7 +128,7 @@ struct AppCommands: Commands {
         }
         CommandGroup(after: .newItem) {
             Button(app.t("culling.import")) { FilePanels.chooseImportFolder(app) }
-                .keyboardShortcut("i")
+                .keyboardShortcut("i", modifiers: [.command, .shift])
             Button(app.t("export.title")) {
                 app.module = .editing
                 app.pendingExport = false
@@ -139,8 +139,9 @@ struct AppCommands: Commands {
                 app.pendingExport = true
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
+            // ⌘I, como no Photo Mechanic.
             Button(app.t("fileInfo.title")) { app.culling.activeSheet = .fileInfo }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .keyboardShortcut("i")
                 .disabled(app.module != .culling)
         }
         CommandGroup(after: .pasteboard) {

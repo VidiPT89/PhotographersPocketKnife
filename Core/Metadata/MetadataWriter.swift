@@ -1,108 +1,6 @@
 import Foundation
 import ImageIO
 
-/// Campos IPTC editáveis, os mesmos do "IPTC Info" do Photo Mechanic. Em lote, campos vazios não são alterados.
-struct IPTCFields: Codable, Equatable, Sendable {
-    var headline = ""
-    var title = ""
-    var caption = ""
-    var usageTerms = ""
-    /// `yyyy-MM-ddTHH:mm:ss`, como o `photoshop:DateCreated`.
-    var dateCreated = ""
-    var captionWriter = ""
-    var keywords = ""
-    var creator = ""
-    var creatorTitle = ""
-    var credit = ""
-    var source = ""
-    var copyright = ""
-    var instructions = ""
-    var jobID = ""
-    var sublocation = ""
-    var city = ""
-    var state = ""
-    var country = ""
-    var countryCode = ""
-
-    /// Todos os campos de texto, pela ordem da janela.
-    // Constantes; os key paths só não são marcados Sendable.
-    nonisolated(unsafe) static let textPaths: [WritableKeyPath<IPTCFields, String>] = [
-        \.headline, \.title, \.caption, \.usageTerms, \.dateCreated, \.captionWriter, \.keywords, \.creator, \.creatorTitle, \.credit, \.source,
-        \.copyright, \.instructions, \.jobID, \.sublocation, \.city, \.state, \.country, \.countryCode,
-    ]
-
-    /// Chave de tradução do rótulo de cada campo.
-    nonisolated(unsafe) static let labelKeys: [(String, WritableKeyPath<IPTCFields, String>)] = [
-        ("meta.headline", \.headline), ("meta.title", \.title), ("meta.caption", \.caption),
-        ("meta.usageTerms", \.usageTerms), ("meta.dateCreated", \.dateCreated),
-        ("meta.captionWriter", \.captionWriter), ("meta.keywords", \.keywords), ("meta.creator", \.creator),
-        ("meta.creatorTitle", \.creatorTitle), ("meta.credit", \.credit), ("meta.source", \.source),
-        ("meta.copyright", \.copyright), ("meta.instructions", \.instructions), ("meta.jobID", \.jobID),
-        ("meta.sublocation", \.sublocation), ("meta.city", \.city), ("meta.state", \.state),
-        ("meta.country", \.country), ("meta.countryCode", \.countryCode),
-    ]
-
-    init() {}
-
-    /// Modelos gravados por versões anteriores não têm os campos novos.
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        func text(_ key: CodingKeys) throws -> String { try container.decodeIfPresent(String.self, forKey: key) ?? "" }
-        headline = try text(.headline)
-        title = try text(.title)
-        caption = try text(.caption)
-        usageTerms = try text(.usageTerms)
-        dateCreated = try text(.dateCreated)
-        captionWriter = try text(.captionWriter)
-        keywords = try text(.keywords)
-        creator = try text(.creator)
-        creatorTitle = try text(.creatorTitle)
-        credit = try text(.credit)
-        source = try text(.source)
-        copyright = try text(.copyright)
-        instructions = try text(.instructions)
-        jobID = try text(.jobID)
-        sublocation = try text(.sublocation)
-        city = try text(.city)
-        state = try text(.state)
-        country = try text(.country)
-        countryCode = try text(.countryCode)
-    }
-
-    /// `photoshop:DateCreated` aceita só a data, ou data e hora com ou sem fuso.
-    static func date(from text: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        for format in ["yyyy-MM-dd'T'HH:mm:ssXXXXX", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mmXXXXX", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: text) { return date }
-        }
-        return nil
-    }
-
-    static func text(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        return formatter.string(from: date)
-    }
-
-    /// Como fica em `Photo.keywords` (nil sem palavras-chave).
-    var catalogKeywords: String? {
-        keywordList.isEmpty ? nil : keywordList.joined(separator: ", ")
-    }
-
-    var keywordList: [String] {
-        keywords.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
-
-    var isEmpty: Bool {
-        Self.textPaths.filter { $0 != \.keywords }.allSatisfy { self[keyPath: $0].isEmpty } && keywordList.isEmpty
-    }
-}
-
 enum MetadataError: LocalizedError {
     case unreadable(URL)
     case cannotWrite(URL)
@@ -120,7 +18,20 @@ enum MetadataWriter {
         url.deletingPathExtension().appendingPathExtension("xmp")
     }
 
-    static let iptcCoreNamespace = "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/"
+    /// Espaços de nomes que o ImageIO não conhece à partida.
+    static let extraNamespaces = [
+        "Iptc4xmpCore": "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/",
+        "Iptc4xmpExt": "http://iptc.org/std/Iptc4xmpExt/2008-02-29/",
+    ]
+
+    private static func namespace(for prefix: String) -> CFString? {
+        switch prefix {
+        case "dc": kCGImageMetadataNamespaceDublinCore
+        case "photoshop": kCGImageMetadataNamespacePhotoshop
+        case "xmpRights": kCGImageMetadataNamespaceXMPRights
+        default: extraNamespaces[prefix] as CFString?
+        }
+    }
 
     /// Escreve sem recomprimir a imagem. Em RAW usa um ficheiro .xmp ao lado (sidecar).
     /// Com `clearEmpty`, um campo vazio apaga o que o ficheiro tinha (edição foto a foto).
@@ -197,50 +108,53 @@ enum MetadataWriter {
     }
 
     private static func apply(_ fields: IPTCFields, to metadata: CGMutableImageMetadata, clearEmpty: Bool, merging: Bool) {
-        CGImageMetadataRegisterNamespaceForPrefix(metadata, iptcCoreNamespace as CFString, "Iptc4xmpCore" as CFString, nil)
+        for (prefix, namespace) in extraNamespaces {
+            CGImageMetadataRegisterNamespaceForPrefix(metadata, namespace as CFString, prefix as CFString, nil)
+        }
         func clear(_ path: String) {
             guard clearEmpty else { return }
             if merging {
                 CGImageMetadataSetValueWithPath(metadata, nil, path as CFString, kCFNull)
+            } else if let dot = path.firstIndex(of: ".") {
+                removeStructField(String(path[..<dot]), String(path[path.index(after: dot)...]))
             } else {
                 CGImageMetadataRemoveTagWithPath(metadata, nil, path as CFString)
             }
         }
-        func setArray(_ name: String, _ type: CGImageMetadataType, _ values: [String]) {
-            let dc = kCGImageMetadataNamespaceDublinCore, prefix = kCGImageMetadataPrefixDublinCore
-            guard !values.isEmpty else { return clear("\(prefix):\(name)") }
-            guard let tag = CGImageMetadataTagCreate(dc, prefix, name as CFString, type, values as CFArray) else { return }
-            CGImageMetadataSetTagWithPath(metadata, nil, "\(prefix):\(name)" as CFString, tag)
+        // O ImageIO rebenta (CFRelease) a apagar um campo dentro de uma estrutura; reescreve-se a estrutura sem ele.
+        func removeStructField(_ parent: String, _ child: String) {
+            guard let tag = CGImageMetadataCopyTagWithPath(metadata, nil, parent as CFString),
+                  var fields = CGImageMetadataTagCopyValue(tag) as? [String: AnyObject] else { return }
+            let name = child.split(separator: ":").last.map(String.init) ?? child
+            fields.removeValue(forKey: name)
+            fields.removeValue(forKey: child)
+            CGImageMetadataRemoveTagWithPath(metadata, nil, parent as CFString)
+            guard !fields.isEmpty,
+                  let namespace = CGImageMetadataTagCopyNamespace(tag), let prefix = CGImageMetadataTagCopyPrefix(tag),
+                  let structName = CGImageMetadataTagCopyName(tag),
+                  let rebuilt = CGImageMetadataTagCreate(namespace, prefix, structName, .structure, fields as CFDictionary)
+            else { return }
+            CGImageMetadataSetTagWithPath(metadata, nil, parent as CFString, rebuilt)
         }
-        // Com uma string simples, o ImageIO cria o texto alternativo (x-default) nos campos dc:title/description/rights.
-        // Criar a tag .alternateText a partir de um dicionário grava um rdf:Alt vazio.
-        func setString(_ path: String, _ value: String) {
-            guard !value.isEmpty else { return clear(path) }
-            CGImageMetadataSetValueWithPath(metadata, nil, path as CFString, value as CFString)
+        for spec in IPTCFields.specs {
+            let value = fields[keyPath: spec.path].trimmingCharacters(in: .whitespacesAndNewlines)
+            switch spec.kind {
+            case .text:
+                // Com uma string simples, o ImageIO cria o texto alternativo (x-default) nos campos dc:title/description/rights.
+                // Criar a tag .alternateText a partir de um dicionário grava um rdf:Alt vazio.
+                guard !value.isEmpty else { clear(spec.xmp); continue }
+                CGImageMetadataSetValueWithPath(metadata, nil, spec.xmp as CFString, value as CFString)
+            case .bag, .seq:
+                // O autor é um só nome (pode ter vírgulas); as outras listas separam-se por vírgulas.
+                let values = spec.kind == .seq ? (value.isEmpty ? [] : [value]) : IPTCFields.list(value)
+                let parts = spec.xmp.split(separator: ":", maxSplits: 1).map(String.init)
+                guard !values.isEmpty else { clear(spec.xmp); continue }
+                guard parts.count == 2, let namespace = namespace(for: parts[0]),
+                      let tag = CGImageMetadataTagCreate(namespace, parts[0] as CFString, parts[1] as CFString,
+                                                         spec.kind == .seq ? .arrayOrdered : .arrayUnordered, values as CFArray)
+                else { continue }
+                CGImageMetadataSetTagWithPath(metadata, nil, spec.xmp as CFString, tag)
+            }
         }
-        for (path, keyPath) in xmpPaths { setString(path, fields[keyPath: keyPath]) }
-        setArray("creator", .arrayOrdered, fields.creator.isEmpty ? [] : [fields.creator])
-        setArray("subject", .arrayUnordered, fields.keywordList)
     }
-
-    /// Campos de texto simples e onde vivem no XMP (os mesmos caminhos que o Photo Mechanic e o Lightroom usam).
-    nonisolated(unsafe) static let xmpPaths: [(String, WritableKeyPath<IPTCFields, String>)] = [
-        ("photoshop:Headline", \.headline),
-        ("dc:title", \.title),
-        ("dc:description", \.caption),
-        ("xmpRights:UsageTerms", \.usageTerms),
-        ("photoshop:DateCreated", \.dateCreated),
-        ("photoshop:CaptionWriter", \.captionWriter),
-        ("photoshop:AuthorsPosition", \.creatorTitle),
-        ("photoshop:Credit", \.credit),
-        ("photoshop:Source", \.source),
-        ("dc:rights", \.copyright),
-        ("photoshop:Instructions", \.instructions),
-        ("photoshop:TransmissionReference", \.jobID),
-        ("Iptc4xmpCore:Location", \.sublocation),
-        ("photoshop:City", \.city),
-        ("photoshop:State", \.state),
-        ("photoshop:Country", \.country),
-        ("Iptc4xmpCore:CountryCode", \.countryCode),
-    ]
 }

@@ -19,7 +19,7 @@
 - ✅ Star ratings (0–5), pick/reject and colour labels, all on the keyboard with Photo Mechanic–style defaults — every shortcut can be remapped
 - ✅ Filter and sort by rating, flag, colour label, camera, lens, ISO, focal length, file name and capture time
 - ✅ Batch rename with templates and conflict detection
-- ✅ File Info (`⇧⌘I`) laid out like Photo Mechanic's IPTC Info: headline, caption, rights, credit, location and more, read from each photo and saved as you move with Save & ← / →, with copy and paste, recent values per field, caption variables and XMP templates that also open Photo Mechanic stationery pads
+- ✅ File Info (`I` or `⌘I`) laid out like Photo Mechanic's IPTC Info, with every field it offers: description, categories, urgency, genre, event, people shown, scene and subject codes, credits and rights, date and location, workflow and creator contact. Select several photos to fill them all together (untouched fields keep each photo's value), or go one by one, read from each photo and saved as you move with Save & ← / →, with copy and paste, recent values per field, caption variables and XMP templates that also open Photo Mechanic stationery pads
 - ✅ Batch IPTC with caption templates (`{date}`, `{event}`, `{camera}`, `{city}`, `{seq}`…), written without recompressing, with XMP sidecars for RAW
 - ✅ Code replacements compatible with Photo Mechanic files: load a tab-delimited roster and type `=7=` to get the player's name (`=7#2=` for the next column), expanded live as you type
 - ✅ Automatic player captions: the `{players}` token reads the shirt numbers in each photo on-device and writes the names from the roster
@@ -115,7 +115,7 @@ Prefer a ready-made build? Download the latest version from [Releases](https://g
 
 ## 📖 Usage
 
-1. Watch the splash screen, then press `⌘I` to ingest a card or folder — choose the folder structure, checksum verification and a backup destination
+1. Watch the splash screen, then press `⇧⌘I` to ingest a card or folder — choose the folder structure, checksum verification and a backup destination
 2. In **Cull**, fly through the take with the arrow keys, rate with `0`–`5`, label with `6`–`9` or `V`, and mark keepers with `P` (or `X` to reject, `U` to clear)
 3. Press `Space` for the loupe, `Z` for 100 %, `L` for the magnifier, `C` to compare the selection and `F` for presentation mode
 4. Press `T` to jump to **Develop** — adjust, grade, add masks (`M`), crop (`R`) and check the result against the original with `\`
