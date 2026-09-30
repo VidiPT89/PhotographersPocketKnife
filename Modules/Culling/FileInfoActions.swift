@@ -14,8 +14,8 @@ extension FileInfoSheet {
 
     /// Junta os campos preenchidos de `other` aos atuais.
     func merge(_ other: IPTCFields) {
-        for path in IPTCFields.textPaths where !other[keyPath: path].isEmpty {
-            fields[keyPath: path] = other[keyPath: path]
+        for spec in IPTCFields.specs where !other[keyPath: spec.path].isEmpty {
+            fields[keyPath: spec.path] = other[keyPath: spec.path]
         }
     }
 
@@ -69,7 +69,7 @@ extension FileInfoSheet {
             mixed = common.mixed
             perPhotoCaptureTime = false
         } else {
-            guard let photo else { return }
+            guard let photo else { isLoading = false; return }
             let url = photo.url
             var read = await Task.detached(priority: .userInitiated) { MetadataReader.iptcFields(for: url) }.value
             guard !Task.isCancelled else { return }
@@ -84,7 +84,7 @@ extension FileInfoSheet {
 
     private func context(for photo: Photo, index: Int, values: IPTCFields) -> CaptionTemplate.Context {
         CaptionTemplate.Context(
-            date: photo.captureDate, camera: photo.camera, city: values.city, country: values.country,
+            date: photo.captureDate, event: values.event, camera: photo.camera, city: values.city, country: values.country,
             creator: values.creator, fileName: photo.fileName, sequence: index + 1
         )
     }

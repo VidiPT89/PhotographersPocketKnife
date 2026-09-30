@@ -305,6 +305,22 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(result.caption, "Defesa")
     }
 
+    func testCodesSkipAddressesAndCopyrightStatusIsNormalised() throws {
+        let codes = CodeReplacements.parse("7\tRonaldo")
+        var fields = IPTCFields()
+        fields.caption = "Golo de =7="
+        fields.copyrightURL = "https://ividi.dev/?a=7=b"
+        let applied = codes.apply(to: fields)
+        XCTAssertEqual(applied.caption, "Golo de Ronaldo")
+        XCTAssertEqual(applied.copyrightURL, "https://ividi.dev/?a=7=b")
+
+        let raw = folder.appendingPathComponent("IMG_0004.NEF")
+        try Data("fake raw".utf8).write(to: raw)
+        let xmp = #"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/" xmpRights:Marked="true"/></rdf:RDF></x:xmpmeta>"#
+        try Data(xmp.utf8).write(to: MetadataWriter.sidecarURL(for: raw))
+        XCTAssertEqual(MetadataReader.iptcFields(for: raw).copyrightStatus, "True")
+    }
+
     func testOldSavedFieldsStillDecode() throws {
         let data = Data(#"{"title":"T","caption":"C","creator":"","copyright":"","keywords":"","city":"","country":""}"#.utf8)
         let fields = try JSONDecoder().decode(IPTCFields.self, from: data)

@@ -283,7 +283,7 @@ struct MetadataSheet: View {
 
     private func context(for photo: Photo, index: Int, values: IPTCFields) -> CaptionTemplate.Context {
         CaptionTemplate.Context(
-            date: photo.captureDate, event: event, camera: photo.camera, city: values.city,
+            date: photo.captureDate, event: event.isEmpty ? values.event : event, camera: photo.camera, city: values.city,
             country: values.country, creator: values.creator, fileName: photo.fileName, sequence: index + 1
         )
     }

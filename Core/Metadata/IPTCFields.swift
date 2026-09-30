@@ -149,6 +149,14 @@ struct IPTCFieldSpec: @unchecked Sendable, Identifiable {
 
     var id: String { name }
     var labelKey: String { "meta.\(name)" }
+
+    /// Texto escrito à mão, onde as substituições de código (=7=) fazem sentido; endereços e valores fixos ficam de fora.
+    var isFreeText: Bool {
+        switch control {
+        case .line, .box: !["copyrightURL", "contactEmail", "contactWebsite"].contains(name)
+        case .date, .urgency, .copyrightStatus: false
+        }
+    }
 }
 
 extension IPTCFields {
@@ -198,9 +206,4 @@ extension IPTCFields {
         .init(name: "contactEmail", xmp: contact + "CiEmailWork", path: \.contactEmail, group: .contact),
         .init(name: "contactWebsite", xmp: contact + "CiUrlWork", path: \.contactWebsite, group: .contact),
     ]
-
-    /// Todos os campos de texto, pela ordem da janela.
-    nonisolated(unsafe) static let textPaths = specs.map(\.path)
-
-    static func spec(_ name: String) -> IPTCFieldSpec? { specs.first { $0.name == name } }
 }

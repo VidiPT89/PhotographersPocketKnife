@@ -198,18 +198,21 @@ struct FileInfoSheet: View {
 
     private var bottomBar: some View {
         HStack(spacing: 8) {
-            Button(app.t("fileInfo.clear")) { clear() }
-            Button(app.t("fileInfo.load")) { loadTemplate() }
-            Button(app.t("fileInfo.saveTemplate")) { saveTemplate() }
-            Button(app.t("fileInfo.stationeryPad")) { stationeryPad.map(merge) }
-                .disabled(stationeryPad == nil)
-                .hint(app.t("fileInfo.stationeryPadHint"))
-            Menu(app.t("fileInfo.variables")) {
-                ForEach(CaptionTemplate.tokens.filter { $0 != "{players}" }, id: \.self) { token in
-                    Button(token) { fields.caption += (fields.caption.isEmpty || fields.caption.hasSuffix(" ") ? "" : " ") + token }
+            Group {
+                Button(app.t("fileInfo.clear")) { clear() }
+                Button(app.t("fileInfo.load")) { loadTemplate() }
+                Button(app.t("fileInfo.saveTemplate")) { saveTemplate() }
+                Button(app.t("fileInfo.stationeryPad")) { stationeryPad.map(merge) }
+                    .disabled(stationeryPad == nil)
+                    .hint(app.t("fileInfo.stationeryPadHint"))
+                Menu(app.t("fileInfo.variables")) {
+                    ForEach(CaptionTemplate.tokens.filter { $0 != "{players}" }, id: \.self) { token in
+                        Button(token) { fields.caption += (fields.caption.isEmpty || fields.caption.hasSuffix(" ") ? "" : " ") + token }
+                    }
                 }
+                .fixedSize()
             }
-            .fixedSize()
+            .disabled(isLoading || photos.isEmpty)
             Spacer()
             Button(app.t("common.cancel")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
@@ -217,9 +220,8 @@ struct FileInfoSheet: View {
                 together ? saveAll() : save(then: nil)
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(isLoading || isSaving)
+            .disabled(isLoading || isSaving || photos.isEmpty)
         }
-        .disabled(isLoading)
         .padding(12)
     }
 }

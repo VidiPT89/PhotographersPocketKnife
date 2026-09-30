@@ -140,6 +140,12 @@ enum MetadataReader {
         for spec in IPTCFields.specs {
             fields[keyPath: spec.path] = xmpString(xmp, spec.xmp) ?? ""
         }
+        // O Lightroom grava "True"/"False"; outros programas usam minúsculas ou 1/0.
+        switch fields.copyrightStatus.lowercased() {
+        case "true", "1": fields.copyrightStatus = "True"
+        case "false", "0": fields.copyrightStatus = "False"
+        default: fields.copyrightStatus = ""
+        }
         return fields
     }
 
