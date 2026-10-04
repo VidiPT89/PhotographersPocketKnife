@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      # Unit tests only: the UI tests live in their own scheme because they need
+      # Accessibility permission to drive the app, which a CI runner can't grant.
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project PhotographersPocketKnife.xcodeproj \
+            -scheme PhotographersPocketKnife \
+            -destination platform=macOS \
+            CODE_SIGNING_ALLOWED=NO
