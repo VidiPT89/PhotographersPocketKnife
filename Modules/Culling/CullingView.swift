@@ -140,7 +140,18 @@ struct CullingToolbar: View {
     let photos: [Photo]
     let visible: [Photo]
 
+    // Com a barra lateral aberta e a janela no mínimo (1100 pt), a barra completa não cabe e o
+    // NavigationSplitView encolhia a barra lateral abaixo do mínimo, cortando-a à esquerda.
+    // Quando falta espaço, entra a versão só com ícones.
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            bar(compact: false)
+            bar(compact: true)
+        }
+    }
+
+    @ViewBuilder
+    private func bar(compact: Bool) -> some View {
         @Bindable var c = app.culling
         let cameras = Set(photos.compactMap(\.camera)).sorted()
         let lenses = Set(photos.compactMap(\.lens)).sorted()
@@ -192,8 +203,10 @@ struct CullingToolbar: View {
                 Button(app.t("filter.clear")) { c.clearFilters() }
             } label: {
                 Label(app.t("filter.title"), systemImage: c.hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    .toolbarLabelStyle(compact: compact)
             }
             .fixedSize()
+            .help(app.t("filter.title"))
 
             Menu {
                 Picker(app.t("sort.title"), selection: $c.sort) {
@@ -202,12 +215,14 @@ struct CullingToolbar: View {
                 Toggle(app.t("sort.ascending"), isOn: $c.sortAscending)
             } label: {
                 Label(app.t("sort.title"), systemImage: "arrow.up.arrow.down")
+                    .toolbarLabelStyle(compact: compact)
             }
             .fixedSize()
+            .help(app.t("sort.title"))
 
             TextField(app.t("filter.search"), text: $c.searchText)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 140)
+                .frame(width: compact ? 100 : 140)
 
             Spacer()
 
@@ -223,7 +238,7 @@ struct CullingToolbar: View {
                     ProgressView().controlSize(.mini)
                 } else {
                     Label(app.t("cull.title"), systemImage: "wand.and.stars")
-                        .labelStyle(.titleAndIcon)
+                        .toolbarLabelStyle(compact: compact)
                         .lineLimit(1)
                         .foregroundStyle(Brand.orange)
                 }
@@ -266,7 +281,7 @@ struct CullingToolbar: View {
                 .disabled(!hasTargets)
             Button { c.activeSheet = .fileInfo } label: {
                 Label(app.t("fileInfo.title"), systemImage: "info.circle")
-                    .labelStyle(.titleAndIcon)
+                    .toolbarLabelStyle(compact: compact)
                     .lineLimit(1)
             }
             .fixedSize()

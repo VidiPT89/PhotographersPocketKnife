@@ -6,7 +6,7 @@
 [![Request Feature](https://img.shields.io/badge/Request-Feature-blue)](https://github.com/VidiPT89/PhotographersPocketKnife/issues)
 [![CI](https://github.com/VidiPT89/PhotographersPocketKnife/actions/workflows/ci.yml/badge.svg)](https://github.com/VidiPT89/PhotographersPocketKnife/actions/workflows/ci.yml)
 
-![Cull module: a 16-photo shoot in the contact sheet, with filters, smart selection, histogram and metadata (UI in Portuguese, the app is bilingual)](assets/cull.jpg)
+![Cull module: the catalog sidebar, a 16-photo shoot in the contact sheet, the culling toolbar, histogram and metadata (UI in Portuguese, the app is bilingual)](assets/cull.jpg)
 
 ## ✨ Features
 
