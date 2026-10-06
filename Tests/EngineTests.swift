@@ -9,6 +9,38 @@ final class EngineTests: XCTestCase {
 
     // MARK: Remoção generativa
 
+    func testSelectionCacheDistinguishesSimilarExposuresAndOrigins() {
+        let extent = CGRect(x: 0, y: 0, width: 600, height: 400)
+        let a = CIImage(color: CIColor(red: 0.2, green: 0.2, blue: 0.2)).cropped(to: extent)
+        let b = CIImage(color: CIColor(red: 0.205, green: 0.205, blue: 0.205)).cropped(to: extent)
+        XCTAssertNotEqual(SmartSelection.fingerprint(a), SmartSelection.fingerprint(b))
+        XCTAssertEqual(SmartSelection.fingerprint(a), SmartSelection.fingerprint(a))
+        XCTAssertNotEqual(SmartSelection.fingerprint(a), SmartSelection.fingerprint(a.transformed(by: .init(translationX: 0.5, y: 0))))
+    }
+
+    func testDistantRemovalRegionsKeepLocalContextAndTranslatedCoordinates() {
+        let extent = CGRect(x: 100, y: 200, width: 2000, height: 1200)
+        let a = CGRect(x: 200, y: 300, width: 100, height: 100)
+        let b = CGRect(x: 1800, y: 1200, width: 100, height: 100)
+        let mask = CIImage(color: .white).cropped(to: a)
+            .composited(over: CIImage(color: .white).cropped(to: b))
+            .composited(over: CIImage(color: .black).cropped(to: extent))
+        let regions = ObjectRemover.regions(of: mask, extent: extent)
+        XCTAssertEqual(regions.count, 2)
+        XCTAssertTrue(regions.contains { $0.contains(a) })
+        XCTAssertTrue(regions.contains { $0.contains(b) })
+        XCTAssertTrue(regions.allSatisfy { extent.contains($0) && $0.width < 200 && $0.height < 200 })
+        XCTAssertTrue(ObjectRemover.regions(of: CIImage(color: .black).cropped(to: extent), extent: extent).isEmpty)
+    }
+
+    func testGenerativeWindowsRejectEmptyAndOutsideGeometry() {
+        let extent = CGRect(x: 0, y: 0, width: 800, height: 600)
+        XCTAssertTrue(GenerativeInpainter.windows(for: .zero, in: extent).isEmpty)
+        XCTAssertTrue(GenerativeInpainter.windows(for: extent, in: .zero).isEmpty)
+        XCTAssertTrue(GenerativeInpainter.windows(for: .infinite, in: extent).isEmpty)
+        XCTAssertTrue(GenerativeInpainter.windows(for: extent.offsetBy(dx: 900, dy: 0), in: extent).isEmpty)
+    }
+
     /// Um objecto grande vai ao modelo numa só janela com contexto à volta. Em janelas encadeadas que
     /// eram quase só buraco, cada uma via o borrão da anterior e o resultado era uma mancha.
     func testGenerativeRemovalSeesALargeHoleInOneWindowWithContext() {

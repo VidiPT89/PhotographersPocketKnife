@@ -242,7 +242,7 @@ final class EditingModel {
         let found = await Task.detached(priority: .userInitiated) {
             ImageRenderer.shared.hasObject(url: url, recipe: recipe, at: point, maxPixel: maxPixel)
         }.value
-        guard found, self.url == url else { return false }
+        guard found, self.url == url, self.recipe == recipe else { return false }
         addRemoval(Removal(objectPoint: point))
         return true
     }
@@ -261,7 +261,7 @@ final class EditingModel {
                 return ImageRenderer.shared.autoEnhanced(url: url, recipe: recipe, maxPixel: 1024)
             }.value
             isAutoEnhancing = false
-            guard self.url == url, let enhanced else { return }
+            guard self.url == url, self.recipe == recipe, let enhanced else { return }
             self.recipe = enhanced
             commit(style == nil ? "history.auto" : "history.style")
             flashPreset()

@@ -44,13 +44,13 @@ final class GenerativeInpainter: @unchecked Sendable {
     static let downloadBytes: Int64 = 94_000_000
 
     enum InpaintError: LocalizedError {
+        case downloadFailed
         case unpackFailed
-        case modelMissing
 
         var errorDescription: String? {
             switch self {
+            case .downloadFailed: "Could not download the model"
             case .unpackFailed: "Could not unpack the model"
-            case .modelMissing: "The model is not installed"
             }
         }
     }
@@ -91,6 +91,8 @@ final class GenerativeInpainter: @unchecked Sendable {
         unzip.arguments = ["-q", "-o", zip.path, "-d", work.path]
         try unzip.run()
         unzip.waitUntilExit()
+        guard unzip.terminationStatus == 0 else { throw InpaintError.unpackFailed }
+        try Task.checkCancellation()
         progress(0.9)
 
         guard let package = fm.enumerator(at: work, includingPropertiesForKeys: nil)?
@@ -106,6 +108,7 @@ final class GenerativeInpainter: @unchecked Sendable {
 
     private func download(to destination: URL, progress: @Sendable @escaping (Double) -> Void) async throws {
         let (bytes, response) = try await URLSession.shared.bytes(from: Self.downloadURL)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw InpaintError.downloadFailed }
         let expected = response.expectedContentLength > 0 ? response.expectedContentLength : Self.downloadBytes
         var data = Data()
         data.reserveCapacity(Int(expected))
@@ -118,6 +121,7 @@ final class GenerativeInpainter: @unchecked Sendable {
                 progress(min(done, 1))
             }
         }
+        try Task.checkCancellation()
         try data.write(to: destination)
     }
 
@@ -196,6 +200,10 @@ final class GenerativeInpainter: @unchecked Sendable {
     /// As janelas não precisam de ser quadradas: o `samples` estica-as para o tamanho do modelo e o
     /// `patch` desfaz o esticão, e a LaMa aguenta bem uma proporção até ~2:1.
     static func windows(for bounds: CGRect, in e: CGRect) -> [CGRect] {
+        guard !e.isEmpty, !e.isInfinite, !e.isNull,
+              !bounds.isEmpty, !bounds.isInfinite, !bounds.isNull else { return [] }
+        let bounds = bounds.intersection(e)
+        guard !bounds.isEmpty, !bounds.isNull else { return [] }
         let long = max(bounds.width, bounds.height), short = min(bounds.width, bounds.height)
         let limit = min(e.width, e.height)
 
@@ -301,15 +309,16 @@ final class GenerativeInpainter: @unchecked Sendable {
 
         guard let features = try? MLDictionaryFeatureProvider(dictionary: ["image": input, "mask": holeInput]),
               let prediction = try? model.prediction(from: features),
-              let output = prediction.featureValue(for: "output")?.multiArrayValue else { return nil }
+              let output = prediction.featureValue(for: "output")?.multiArrayValue,
+              output.dataType == .float32,
+              output.shape.map(\.intValue) == [1, 3, side, side],
+              output.strides.map(\.intValue) == [plane * 3, plane, side, 1] else { return nil }
 
         var rgba = [Float](repeating: 1, count: plane * 4)
         output.withUnsafeBufferPointer(ofType: Float.self) { buffer in
-            // A entrada vai em 0…1 mas a saída desta conversão vem em 0…255. Confirma-se pela amplitude
-            // em vez de se assumir: outra conversão do mesmo modelo pode devolver 0…1.
-            var peak: Float = 0
-            for i in 0..<min(buffer.count, plane * 3) { peak = max(peak, abs(buffer[i])) }
-            let divisor: Float = peak > 2 ? 255 : 1
+            // O modelo instalado multiplica por 255 e limita a saída a 0…255 (model.mil).
+            // Inferir a escala pelo máximo clareava até 255× uma fotografia quase preta.
+            let divisor: Float = 255
             for i in 0..<plane {
                 rgba[i * 4] = min(max(buffer[i] / divisor, 0), 1)
                 rgba[i * 4 + 1] = min(max(buffer[plane + i] / divisor, 0), 1)

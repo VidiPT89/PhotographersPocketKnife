@@ -63,6 +63,56 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(PPKSidecar.read(for: renamed)?.rating, 4)
     }
 
+    func testRenameRejectsSplittingASharedRAWJPEGSidecar() throws {
+        let raw = folder.appendingPathComponent("one.NEF"), jpeg = folder.appendingPathComponent("one.jpg")
+        try Data("raw".utf8).write(to: raw)
+        try Data("jpeg".utf8).write(to: jpeg)
+        try Data("shared".utf8).write(to: MetadataWriter.sidecarURL(for: raw))
+        XCTAssertThrowsError(try BatchRenamer.apply([
+            .init(from: raw, to: folder.appendingPathComponent("first.NEF")),
+            .init(from: jpeg, to: folder.appendingPathComponent("second.jpg")),
+        ]))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 3)
+        XCTAssertEqual(try Data(contentsOf: MetadataWriter.sidecarURL(for: raw)), Data("shared".utf8))
+    }
+
+    func testRenameRollsBackWhenALaterSourceIsMissing() throws {
+        let photo = folder.appendingPathComponent("one.jpg")
+        let sidecar = MetadataWriter.sidecarURL(for: photo)
+        try Data("photo".utf8).write(to: photo)
+        try Data("metadata".utf8).write(to: sidecar)
+        XCTAssertThrowsError(try BatchRenamer.apply([
+            .init(from: photo, to: folder.appendingPathComponent("renamed.jpg")),
+            .init(from: folder.appendingPathComponent("missing.jpg"), to: folder.appendingPathComponent("other.jpg")),
+        ]))
+        XCTAssertEqual(try Data(contentsOf: photo), Data("photo".utf8))
+        XCTAssertEqual(try Data(contentsOf: sidecar), Data("metadata".utf8))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 2)
+    }
+
+    func testRenameRejectsOrphanSidecarCollisionBeforeMovingPhotos() throws {
+        let photo = folder.appendingPathComponent("one.jpg"), target = folder.appendingPathComponent("two.jpg")
+        try Data("photo".utf8).write(to: photo)
+        try Data("original".utf8).write(to: MetadataWriter.sidecarURL(for: photo))
+        try Data("existing".utf8).write(to: MetadataWriter.sidecarURL(for: target))
+        XCTAssertThrowsError(try BatchRenamer.apply([.init(from: photo, to: target)]))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photo.path))
+        XCTAssertEqual(try Data(contentsOf: MetadataWriter.sidecarURL(for: target)), Data("existing".utf8))
+    }
+
+    func testRenameRollsBackFinalMovesWhenDestinationFolderIsMissing() throws {
+        let a = folder.appendingPathComponent("a.jpg"), b = folder.appendingPathComponent("b.jpg")
+        try Data("a".utf8).write(to: a)
+        try Data("b".utf8).write(to: b)
+        XCTAssertThrowsError(try BatchRenamer.apply([
+            .init(from: a, to: folder.appendingPathComponent("done.jpg")),
+            .init(from: b, to: folder.appendingPathComponent("missing/b.jpg")),
+        ]))
+        XCTAssertEqual(try Data(contentsOf: a), Data("a".utf8))
+        XCTAssertEqual(try Data(contentsOf: b), Data("b".utf8))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 2)
+    }
+
     func testSanitizeBlocksPathTraversalAndControlCharacters() {
         XCTAssertEqual(RenameTemplate.sanitize(".."), "")
         XCTAssertEqual(RenameTemplate.sanitize("."), "")

@@ -82,31 +82,58 @@ enum BatchRenamer {
     /// Renomeia em duas fases (nome temporário → nome final) para suportar cadeias A→B, B→C.
     static func apply(_ plans: [Plan]) throws {
         let fm = FileManager.default
-        // Os sidecars acompanham a foto: sem eles, a classificação (.ppk) e o XMP ficariam no nome antigo.
-        let sidecarKinds: [(url: (URL) -> URL, suffix: String)] = [
-            ({ MetadataWriter.sidecarURL(for: $0) }, "xmp"),
-            ({ PPKSidecar.url(for: $0) }, "ppk"),
-        ]
-        var staged: [(temp: URL, sidecarTemps: [URL?], plan: Plan)] = []
+        // Fotografias e sidecars fazem parte da mesma operação. Uma falha nunca é ignorada.
+        var moves: [(from: URL, to: URL, temp: URL)] = []
+        var seen: [URL: URL] = [:]
         for plan in plans where plan.from != plan.to {
-            let dir = plan.from.deletingLastPathComponent()
-            let temp = dir.appendingPathComponent(".ppk-rename-\(UUID().uuidString)")
-            try fm.moveItem(at: plan.from, to: temp)
-            // Cada sidecar também passa por um nome temporário, senão entra na cadeia de outro plano.
-            let sidecarTemps = sidecarKinds.map { kind -> URL? in
-                let sidecar = kind.url(plan.from)
-                guard fm.fileExists(atPath: sidecar.path) else { return nil }
-                let candidate = dir.appendingPathComponent(".ppk-rename-\(UUID().uuidString).\(kind.suffix)")
-                return (try? fm.moveItem(at: sidecar, to: candidate)) != nil ? candidate : nil
+            let pairs = [(plan.from, plan.to),
+                         (MetadataWriter.sidecarURL(for: plan.from), MetadataWriter.sidecarURL(for: plan.to)),
+                         (PPKSidecar.url(for: plan.from), PPKSidecar.url(for: plan.to))]
+            for (index, pair) in pairs.enumerated() {
+                guard index == 0 || fm.fileExists(atPath: pair.0.path) else { continue }
+                if let target = seen[pair.0] {
+                    // Um XMP partilhado por RAW+JPEG não pode seguir dois nomes diferentes.
+                    guard target == pair.1 else { throw CocoaError(.fileWriteFileExists) }
+                    continue
+                }
+                seen[pair.0] = pair.1
+                moves.append((pair.0, pair.1, pair.0.deletingLastPathComponent()
+                    .appendingPathComponent(".ppk-rename-\(UUID().uuidString)")))
             }
-            staged.append((temp, sidecarTemps, plan))
         }
-        for (temp, sidecarTemps, plan) in staged {
-            try fm.moveItem(at: temp, to: plan.to)
-            for (kind, sidecarTemp) in zip(sidecarKinds, sidecarTemps) {
-                guard let sidecarTemp else { continue }
-                try? fm.moveItem(at: sidecarTemp, to: kind.url(plan.to))
+        let expanded = moves.map { Plan(from: $0.from, to: $0.to) }
+        guard conflicts(expanded).isEmpty else {
+            throw CocoaError(.fileWriteFileExists)
+        }
+        var staged = 0, completed = 0
+        do {
+            for move in moves {
+                try fm.moveItem(at: move.from, to: move.temp)
+                staged += 1
             }
+            for move in moves {
+                try fm.moveItem(at: move.temp, to: move.to)
+                completed += 1
+            }
+        } catch {
+            // Primeiro desfazer os destinos finais para libertar ciclos A→B, B→A.
+            var recoveryErrors: [String] = []
+            for move in moves.prefix(completed).reversed() {
+                do { try fm.moveItem(at: move.to, to: move.temp) }
+                catch { recoveryErrors.append("\(move.to.path): \(error.localizedDescription)") }
+            }
+            for move in moves.prefix(staged).reversed() {
+                guard fm.fileExists(atPath: move.temp.path) else { continue }
+                do { try fm.moveItem(at: move.temp, to: move.from) }
+                catch { recoveryErrors.append("\(move.temp.path): \(error.localizedDescription)") }
+            }
+            if !recoveryErrors.isEmpty {
+                throw NSError(domain: "PhotographersPocketKnife.BatchRenamer", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: error.localizedDescription + "\n" + recoveryErrors.joined(separator: "\n"),
+                    NSUnderlyingErrorKey: error,
+                ])
+            }
+            throw error
         }
     }
 }

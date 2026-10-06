@@ -126,6 +126,49 @@ final class RemovalDiagnosticTests: XCTestCase {
         }
     }
 
+    func testGenerativeRemovalErasesDistantObjectsAndPreservesMiddle() throws {
+        guard ProcessInfo.processInfo.environment["PPK_GENERATIVE"] != nil,
+              GenerativeInpainter.shared.isInstalled else { throw XCTSkip("generative off") }
+        GenerativeInpainter.shared.isEnabled = true
+        ObjectRemover.shared.clearCaches()
+        let extent = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+        let background = CIImage(color: CIColor(red: 0.2, green: 0.45, blue: 0.2)).cropped(to: extent)
+        var image = background
+        for point in [CGPoint(x: 200, y: 200), CGPoint(x: 1400, y: 800)] {
+            image = CIImage(color: CIColor(red: 0.9, green: 0.1, blue: 0.1))
+                .cropped(to: CGRect(x: point.x - 25, y: point.y - 25, width: 50, height: 50))
+                .composited(over: image)
+        }
+        let removals = [CurvePoint(x: 0.125, y: 0.8), CurvePoint(x: 0.875, y: 0.2)].map {
+            Removal(strokes: [BrushStroke(points: [$0], size: 0.1)])
+        }
+        let result = ObjectRemover.shared.apply(removals, to: image, reference: image)
+        for point in [CGPoint(x: 200, y: 200), CGPoint(x: 1400, y: 800)] {
+            let value = try pixel(result, at: point)
+            XCTAssertLessThan(value.r, 0.4)
+            XCTAssertGreaterThan(value.g, value.r)
+        }
+        let middle = try pixel(result, at: CGPoint(x: 800, y: 500))
+        let original = try pixel(image, at: CGPoint(x: 800, y: 500))
+        XCTAssertEqual(middle.r, original.r, accuracy: 0.001)
+        XCTAssertEqual(middle.g, original.g, accuracy: 0.001)
+    }
+
+    func testGenerativeRemovalPreservesNearBlackExposure() throws {
+        guard ProcessInfo.processInfo.environment["PPK_GENERATIVE"] != nil,
+              GenerativeInpainter.shared.isInstalled else { throw XCTSkip("generative off") }
+        let extent = CGRect(x: 0, y: 0, width: 800, height: 800)
+        let image = CIImage(color: CIColor(red: 0.001, green: 0.001, blue: 0.001)).cropped(to: extent)
+        let bounds = CGRect(x: 360, y: 360, width: 80, height: 80)
+        let mask = CIImage(color: .white).cropped(to: bounds)
+            .composited(over: CIImage(color: .black).cropped(to: extent))
+        let output = try XCTUnwrap(GenerativeInpainter.shared.fill(image, mask: mask, bounds: bounds))
+        let value = try pixel(output, at: CGPoint(x: 400, y: 400))
+        XCTAssertLessThan(value.r, 0.03, "Dark model output must still be divided by 255")
+        XCTAssertLessThan(value.g, 0.03)
+        XCTAssertLessThan(value.b, 0.03)
+    }
+
     private func pixel(_ image: CIImage, at point: CGPoint) throws -> (r: Float, g: Float, b: Float) {
         var rgba = [Float](repeating: 0, count: 4)
         ImageRenderer.shared.context.render(image, toBitmap: &rgba, rowBytes: 16, bounds: CGRect(origin: point, size: CGSize(width: 1, height: 1)),

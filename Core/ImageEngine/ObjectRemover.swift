@@ -13,8 +13,6 @@ final class ObjectRemover: @unchecked Sendable {
 
     private struct Solution {
         let region: CGRect
-        let width: Int
-        let height: Int
         let hole: [Bool]
         let field: Inpainter.Field
         /// Resolução a que a textura é copiada: a da região, até ao tecto do `maxFillSide`.
@@ -93,13 +91,19 @@ final class ObjectRemover: @unchecked Sendable {
             // Junta suave: sem isto via-se a fronteira exacta da máscara.
             let soft = widened.clampedToExtent().applyingGaussianBlur(sigma: 1.5).cropped(to: e)
             let grown = bounds.insetBy(dx: -grow, dy: -grow)
-            guard let invented = GenerativeInpainter.shared.fill(reference, mask: soft, bounds: grown) else { return nil }
-            // O modelo trabalhou a `side` px sobre a janela maior; numa exportação isso é muito menos do
-            // que a foto, e o detalhe vem da própria foto.
-            let widest = GenerativeInpainter.windows(for: grown, in: e).map { max($0.width, $0.height) }.max() ?? 1
-            let modelScale = CGFloat(GenerativeInpainter.side) / max(widest, 1)
-            let filled = GenerativeDetail.sharpen(invented, reference: reference, mask: soft, bounds: grown,
+            // Zonas afastadas mantêm a resolução do modelo e a textura da sua própria vizinhança.
+            // Uma caixa única para dois objetos nos cantos reduzia a fotografia inteira a 800 px.
+            let regions = Self.regions(of: widened, extent: e)
+            guard !regions.isEmpty else { return nil }
+            var filled = reference
+            for region in regions {
+                let localMask = soft.cropped(to: region)
+                guard let invented = GenerativeInpainter.shared.fill(filled, mask: localMask, bounds: region) else { return nil }
+                let widest = GenerativeInpainter.windows(for: region, in: e).map { max($0.width, $0.height) }.max() ?? 1
+                let modelScale = CGFloat(GenerativeInpainter.side) / max(widest, 1)
+                filled = GenerativeDetail.sharpen(invented, reference: filled, mask: soft, bounds: region,
                                                   modelScale: modelScale) ?? invented
+            }
             generated = Generated(filled: filled, mask: soft, bounds: grown)
             lock.withLock {
                 generatedCache[key] = generated
@@ -152,7 +156,7 @@ final class ObjectRemover: @unchecked Sendable {
         let pixelSize = Double(region.width) / Double(fillWidth)
         let blendMask = holeMask.clampedToExtent().applyingGaussianBlur(sigma: max(pixelSize, 1) * 1.2).cropped(to: e)
 
-        let solution = Solution(region: region, width: width, height: height, hole: hole, field: field,
+        let solution = Solution(region: region, hole: hole, field: field,
                                 fillWidth: fillWidth, fillHeight: fillHeight, blendMask: blendMask)
         lock.withLock {
             cache[key] = solution
@@ -256,6 +260,45 @@ final class ObjectRemover: @unchecked Sendable {
             }
         }
         return true
+    }
+
+    /// Componentes da máscara numa grelha limitada; caixas próximas juntam-se para manter letras e
+    /// contornos do mesmo objeto numa passagem. A margem conserva também a transição suave da máscara.
+    static func regions(of mask: CIImage, extent e: CGRect) -> [CGRect] {
+        guard e.width > 0, e.height > 0, !e.isInfinite else { return [] }
+        let scale = min(256 / max(e.width, e.height), 1)
+        let w = max(Int(e.width * scale), 1), h = max(Int(e.height * scale), 1)
+        guard let sample = pixels(of: mask, region: e, width: w, height: h) else { return [] }
+        var pending = (0..<(w * h)).map { sample.pixels[$0 * 3] > 0.05 }
+        let sx = e.width / CGFloat(w), sy = e.height / CGFloat(h)
+        var boxes: [CGRect] = []
+        for seed in pending.indices where pending[seed] {
+            pending[seed] = false
+            var queue = [seed], cursor = 0
+            var minX = seed % w, maxX = minX, minY = seed / w, maxY = minY
+            while cursor < queue.count {
+                let index = queue[cursor]; cursor += 1
+                let x = index % w, y = index / w
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
+                for ny in max(y - 1, 0)...min(y + 1, h - 1) {
+                    for nx in max(x - 1, 0)...min(x + 1, w - 1) where pending[ny * w + nx] {
+                        pending[ny * w + nx] = false
+                        queue.append(ny * w + nx)
+                    }
+                }
+            }
+            var box = CGRect(x: e.minX + CGFloat(minX) * sx, y: e.maxY - CGFloat(maxY + 1) * sy,
+                             width: CGFloat(maxX - minX + 1) * sx, height: CGFloat(maxY - minY + 1) * sy)
+                .insetBy(dx: -max(sx * 2, 8), dy: -max(sy * 2, 8)).intersection(e)
+            // Recomeçar após cada união apanha também ligações transitivas.
+            while let index = boxes.firstIndex(where: { $0.intersects(box) }) {
+                box = box.union(boxes.remove(at: index))
+            }
+            boxes.append(box)
+        }
+        // Máscaras muito fragmentadas não devem lançar centenas de inferências.
+        return boxes.count > 16 ? [boxes.reduce(CGRect.null) { $0.union($1) }] : boxes
     }
 
     private static func boundingBox(of mask: CIImage, extent e: CGRect) -> CGRect? {

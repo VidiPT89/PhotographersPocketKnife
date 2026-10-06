@@ -1,6 +1,7 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import Vision
+import CryptoKit
 
 /// Seleções automáticas com o Vision, no próprio Mac (sem rede): o sujeito principal e o objeto num ponto.
 /// A análise é feita sobre a foto sem ajustes e fica em cache, por isso mexer nos sliders não a repete.
@@ -449,18 +450,19 @@ final class SmartSelection: @unchecked Sendable {
         return best
     }
 
-    /// Impressão digital barata do conteúdo (8×8 píxeis + tamanho), para reutilizar análises caras.
+    /// Amostra de 32×32 sem descartar bits: fotos parecidas não devem partilhar máscaras e preenchimentos.
     static func fingerprint(_ image: CIImage) -> String {
         let e = image.extent
         let renderer = ImageRenderer.shared
         let f = CIFilter.lanczosScaleTransform()
         f.inputImage = image.transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY)).clampedToExtent()
-        f.scale = Float(8 / max(e.height, 1))
+        let side = 32
+        f.scale = Float(CGFloat(side) / max(e.height, 1))
         f.aspectRatio = Float(e.height / max(e.width, 1))
-        var bytes = [UInt8](repeating: 0, count: 8 * 8 * 4)
+        var bytes = [UInt8](repeating: 0, count: side * side * 4)
         if let small = f.outputImage {
-            renderer.context.render(small, toBitmap: &bytes, rowBytes: 32, bounds: CGRect(x: 0, y: 0, width: 8, height: 8), format: .RGBA8, colorSpace: renderer.sRGB)
+            renderer.context.render(small, toBitmap: &bytes, rowBytes: side * 4, bounds: CGRect(x: 0, y: 0, width: side, height: side), format: .RGBA8, colorSpace: renderer.sRGB)
         }
-        return "\(Int(e.width))x\(Int(e.height))@\(Int(e.minX)),\(Int(e.minY)):" + bytes.map { String(format: "%02x", $0 >> 3) }.joined()
+        return "\(e):" + SHA256.hash(data: Data(bytes)).map { String(format: "%02x", $0) }.joined()
     }
 }

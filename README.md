@@ -139,6 +139,15 @@ xcodebuild -project PhotographersPocketKnife.xcodeproj \
 
 Unit tests cover the edit pipeline (curves, HSL, colour grading, masks, clipping, DNG export), recipe and settings migrations, history and snapshots, ingest with checksums, sidecars, batch renaming, IPTC and XMP writing, export options, WebDAV commands, transfer speed, hot folder rules, duplicate detection, filters, shortcuts, localisation and a 10 000-photo catalog. A golden-image test compares a reference render with a ΔE tolerance, so colour regressions fail loudly.
 
+To also exercise the installed LaMa model (lettering, distant objects, near-black images and edit caching):
+
+```bash
+TEST_RUNNER_PPK_GENERATIVE=1 xcodebuild -project PhotographersPocketKnife.xcodeproj \
+  -scheme PhotographersPocketKnife -destination 'platform=macOS' test
+```
+
+This opt-in test can download the model if it is missing. Real-photo benchmarks, SAM selection and transfer integration tests require their own fixtures or local servers; skipped tests do not validate those workflows.
+
 UI tests (splash, modules, language and theme) run in their own scheme, using a separate preferences domain and an in-memory catalog:
 
 ```bash
