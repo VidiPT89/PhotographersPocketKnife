@@ -409,6 +409,7 @@ struct FilmStrip: View {
                         ThumbnailView(url: photo.url, maxPixel: 320, recipeData: photo.recipeData)
                             .frame(width: 96, height: 68)
                             .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .contentShape(Rectangle())
                             .overlay(RoundedRectangle(cornerRadius: 5).stroke(focused ? Brand.orange : .clear, lineWidth: 2))
                             .scaleEffect(focused ? 1.04 : 1)
                             .opacity(photo.flag == .reject ? 0.45 : 1)

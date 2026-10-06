@@ -130,6 +130,7 @@ struct PhotoCell: View {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeOut(duration: 0.7)) { flagPulse = 0 }
         }
         .shadow(color: Brand.orange.opacity(isFocused ? 0.4 : 0), radius: 10)
+        .contentShape(Rectangle())
         .hoverLift(scale: 1.025)
         .opacity(photo.flag == .reject ? 0.45 : 1)
         .saturation(photo.flag == .reject ? 0.2 : 1)

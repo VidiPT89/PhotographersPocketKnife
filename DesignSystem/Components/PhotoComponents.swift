@@ -38,6 +38,8 @@ struct ThumbnailView: View {
         }
         .frame(minWidth: 0, minHeight: 0)
         .clipped()
+        // O recorte visual não limita os cliques da imagem ampliada por aspectFill.
+        .contentShape(Rectangle())
         .task(id: "\(url.path)|\(maxPixel)|\(recipeData?.hashValue ?? 0)") {
             await load()
         }
