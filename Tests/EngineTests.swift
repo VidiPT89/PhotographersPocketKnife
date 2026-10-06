@@ -9,6 +9,30 @@ final class EngineTests: XCTestCase {
 
     // MARK: Remoção generativa
 
+    func testWindowFeatheringNeverRevealsUnfilledOriginal() throws {
+        let extent = CGRect(x: 0, y: 0, width: 1200, height: 600)
+        let window = CGRect(x: 200, y: 100, width: 400, height: 400)
+        let white = CIImage(color: .white).cropped(to: extent)
+        let black = CIImage(color: .black).cropped(to: extent)
+        let fresh = GenerativeInpainter.blendMask(white, window: window, extent: extent, covered: black)
+        let overlapping = GenerativeInpainter.blendMask(white, window: window, extent: extent, covered: white)
+        let edge = CGRect(x: 201, y: 299, width: 1, height: 1)
+        XCTAssertEqual(try pixel(fresh.cropped(to: edge)).r, 1, accuracy: 0.001)
+        XCTAssertLessThan(try pixel(overlapping.cropped(to: edge)).r, 0.5)
+        let empty = GenerativeInpainter.blendMask(black, window: window, extent: extent, covered: black)
+        XCTAssertEqual(try pixel(empty).r, 0, accuracy: 0.001)
+    }
+
+    func testLongStrokeWindowsIncludeContextBeyondBothTips() {
+        let extent = CGRect(x: 0, y: 0, width: 1600, height: 600)
+        let bounds = CGRect(x: 100, y: 280, width: 1400, height: 40)
+        let windows = GenerativeInpainter.windows(for: bounds, in: extent)
+        XCTAssertGreaterThan(windows.count, 1)
+        XCTAssertLessThan(windows.first!.minX, bounds.minX - 30)
+        XCTAssertGreaterThan(windows.last!.maxX, bounds.maxX + 30)
+        XCTAssertTrue(windows.allSatisfy { extent.contains($0) })
+    }
+
     func testSelectionCacheDistinguishesSimilarExposuresAndOrigins() {
         let extent = CGRect(x: 0, y: 0, width: 600, height: 400)
         let a = CIImage(color: CIColor(red: 0.2, green: 0.2, blue: 0.2)).cropped(to: extent)

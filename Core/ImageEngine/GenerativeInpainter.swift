@@ -164,28 +164,29 @@ final class GenerativeInpainter: @unchecked Sendable {
         let windows = Self.windows(for: bounds, in: e)
         guard !windows.isEmpty else { return nil }
 
-        let single = windows.count == 1
         var working = image
-        var filledAny = false
+        var covered = CIImage(color: .black).cropped(to: e)
         for window in windows {
-            guard let patch = patch(for: working, mask: mask, window: window) else { continue }
-            filledAny = true
-            // Só o que é buraco *dentro desta janela* é substituído; o resto fica para as outras.
-            // A máscara esbate-se na margem da janela para as janelas se cruzarem em vez de encostarem:
-            // cada uma inventa conteúdo diferente para a mesma textura, e um corte a direito deixaria
-            // uma risca visível entre elas.
-            let localMask = single ? mask.cropped(to: window)
-                : mask.applyingFilter("CIMultiplyCompositing",
-                                      parameters: [kCIInputBackgroundImageKey: Self.taper(window, in: e)])
-                    .cropped(to: window)
+            // Uma falha não pode deixar uma remoção parcial guardada como se estivesse concluída.
+            guard let patch = patch(for: working, mask: mask, window: window) else { return nil }
+            let localMask = Self.blendMask(mask, window: window, extent: e, covered: covered)
             working = patch
                 .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: working,
                                                                 kCIInputMaskImageKey: localMask])
                 .cropped(to: e)
+            covered = CIImage(color: .white).cropped(to: window).composited(over: covered)
         }
-        // Sem nenhuma janela preenchida, devolver a foto intacta deixava a remoção a não fazer nada, em
-        // silêncio, e ficava em cache; assim segue o motor por cópia.
-        return filledAny ? working : nil
+        return working
+    }
+
+    /// Só esbater entre dois preenchimentos já gerados. Onde ainda está o original, a janela tem de
+    /// substituir a máscara inteira; esbater aí deixava o objeto a transparecer nos extremos do traço.
+    static func blendMask(_ mask: CIImage, window: CGRect, extent: CGRect, covered: CIImage) -> CIImage {
+        let fresh = covered.applyingFilter("CIColorInvert")
+        let weight = taper(window, in: extent)
+            .applyingFilter("CIMaximumCompositing", parameters: [kCIInputBackgroundImageKey: fresh])
+        return mask.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: weight])
+            .cropped(to: window)
     }
 
     /// Onde o modelo vai olhar. Há dois casos, e confundi-los era o que dava manchas:
@@ -211,7 +212,11 @@ final class GenerativeInpainter: @unchecked Sendable {
         let tileSide = min(max(short * 4, 384), limit)
         if long > tileSide * 1.5, short * 3 < tileSide {
             let step = tileSide * 0.55
-            let spanX = max(bounds.width - tileSide, 0), spanY = max(bounds.height - tileSide, 0)
+            // Contexto também para lá das duas pontas: não encostar o objeto à borda do modelo.
+            let reach = max(short * 2, tileSide * 0.12)
+            let area = bounds.insetBy(dx: bounds.width >= bounds.height ? -reach : 0,
+                                      dy: bounds.height > bounds.width ? -reach : 0).intersection(e)
+            let spanX = max(area.width - tileSide, 0), spanY = max(area.height - tileSide, 0)
             let columns = Int(ceil(spanX / step)) + 1, rows = Int(ceil(spanY / step)) + 1
             if columns * rows <= 24 {
                 let strideX = columns > 1 ? spanX / CGFloat(columns - 1) : 0
@@ -219,8 +224,8 @@ final class GenerativeInpainter: @unchecked Sendable {
                 var out: [CGRect] = []
                 for row in 0..<rows {
                     for column in 0..<columns {
-                        let centre = CGPoint(x: bounds.midX - spanX / 2 + CGFloat(column) * strideX,
-                                             y: bounds.midY - spanY / 2 + CGFloat(row) * strideY)
+                        let centre = CGPoint(x: area.midX - spanX / 2 + CGFloat(column) * strideX,
+                                             y: area.midY - spanY / 2 + CGFloat(row) * strideY)
                         out.append(fit(CGSize(width: tileSide, height: tileSide), centredOn: centre, in: e))
                     }
                 }
@@ -285,10 +290,18 @@ final class GenerativeInpainter: @unchecked Sendable {
     private func patch(for image: CIImage, mask: CIImage, window: CGRect) -> CIImage? {
         guard let model = model() else { return nil }
         let side = Self.side
+        // A redução Lanczos mistura píxeis do objeto com a vizinhança da máscara. Uma margem de
+        // três píxeis do modelo impede esses vestígios de servirem de guia para o reconstruir.
+        // Só a entrada do modelo cresce; a máscara de composição conserva a área escolhida.
+        let inputMask = mask.clampedToExtent()
+            .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: max(window.width, window.height) / CGFloat(side) * 3])
+            .cropped(to: image.extent)
         guard let photo = Self.samples(of: image, region: window, side: side),
-              let holes = Self.samples(of: mask, region: window, side: side) else { return nil }
+              let holes = Self.samples(of: inputMask, region: window, side: side) else { return nil }
         // Janela sem nada para apagar: não vale a pena acordar o modelo.
-        guard (0..<(side * side)).contains(where: { holes[$0 * 4] > 0.5 }) else { return nil }
+        guard (0..<(side * side)).contains(where: { holes[$0 * 4] > 0.5 }) else {
+            return image.cropped(to: window)
+        }
 
         guard let input = try? MLMultiArray(shape: [1, 3, NSNumber(value: side), NSNumber(value: side)], dataType: .float32),
               let holeInput = try? MLMultiArray(shape: [1, 1, NSNumber(value: side), NSNumber(value: side)], dataType: .float32)

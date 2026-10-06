@@ -169,6 +169,29 @@ final class RemovalDiagnosticTests: XCTestCase {
         XCTAssertLessThan(value.b, 0.03)
     }
 
+    /// Os extremos de um fio comprido não podem conservar o original por causa da transição entre janelas.
+    func testLongRemovalLeavesNoOriginalAtWindowEdges() throws {
+        guard ProcessInfo.processInfo.environment["PPK_GENERATIVE"] != nil,
+              GenerativeInpainter.shared.isInstalled else { throw XCTSkip("generative off") }
+        let extent = CGRect(x: 0, y: 0, width: 1600, height: 600)
+        let bounds = CGRect(x: 100, y: 280, width: 1400, height: 40)
+        let background = CIImage(color: CIColor(red: 0.15, green: 0.5, blue: 0.15)).cropped(to: extent)
+        let image = CIImage(color: CIColor(red: 0.95, green: 0.02, blue: 0.02)).cropped(to: bounds)
+            .composited(over: background)
+        let mask = CIImage(color: .white).cropped(to: bounds)
+            .composited(over: CIImage(color: .black).cropped(to: extent))
+        let result = try XCTUnwrap(GenerativeInpainter.shared.fill(image, mask: mask, bounds: bounds))
+        let expected = try pixel(background, at: CGPoint(x: 800, y: 300))
+        for x in [101.0, 110, 350, 800, 1250, 1490, 1498] {
+            let sample = try pixel(result, at: CGPoint(x: x, y: 300))
+            XCTAssertLessThan(sample.r, expected.r + 0.15, "Original red wire survives at x=\(x)")
+            XCTAssertGreaterThan(sample.g, sample.r, "The background must replace the whole wire")
+        }
+        let outside = try pixel(result, at: CGPoint(x: 800, y: 100))
+        let original = try pixel(image, at: CGPoint(x: 800, y: 100))
+        XCTAssertEqual(outside.g, original.g, accuracy: 0.001)
+    }
+
     private func pixel(_ image: CIImage, at point: CGPoint) throws -> (r: Float, g: Float, b: Float) {
         var rgba = [Float](repeating: 0, count: 4)
         ImageRenderer.shared.context.render(image, toBitmap: &rgba, rowBytes: 16, bounds: CGRect(origin: point, size: CGSize(width: 1, height: 1)),
