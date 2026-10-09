@@ -220,6 +220,8 @@ final class TransferQueue {
     /// `sources` liga cada ficheiro exportado à foto de origem, para a marcar como enviada.
     func enqueue(files: [URL], destination: UploadDestination, event: String, sources: [URL: UUID] = [:]) {
         guard !files.isEmpty else { return }
+        // A fila sobrevive a um reinício: com sandbox, os ficheiros têm de continuar acessíveis.
+        FolderAccess.shared.remember(files)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         let folder = RemotePath.folder(template: destination.remoteFolderTemplate, date: Date(), event: event)
         for file in files {

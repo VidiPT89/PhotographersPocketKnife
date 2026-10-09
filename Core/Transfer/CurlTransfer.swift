@@ -159,6 +159,9 @@ enum SFTPCommand {
             "-o", "ConnectTimeout=20",
             "-o", "NumberOfPasswordPrompts=1",
         ]
+        if let knownHosts = sandboxKnownHostsFile {
+            args += ["-o", "UserKnownHostsFile=\(knownHosts.path)"]
+        }
         if !endpoint.password.isEmpty {
             args += ["-o", "PreferredAuthentications=password,keyboard-interactive"]
         }
@@ -185,6 +188,15 @@ enum SFTPCommand {
         return "\"" + safe.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
+    /// Com sandbox, o ~/.ssh do utilizador está fora de alcance: as chaves dos servidores ficam na pasta da app.
+    static var sandboxKnownHostsFile: URL? {
+        guard FolderAccess.isSandboxed else { return nil }
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("PhotographersPocketKnife", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("known_hosts")
+    }
+
     static func environment(password: String) -> [String: String]? {
         guard !password.isEmpty, let askpass = askpassScript() else { return nil }
         return ["SSH_ASKPASS": askpass.path, "SSH_ASKPASS_REQUIRE": "force", "PPK_SSH_PASSWORD": password, "DISPLAY": ":0"]
@@ -192,6 +204,10 @@ enum SFTPCommand {
 
     private static func askpassScript() -> URL? {
         let fm = FileManager.default
+        // O sandbox não deixa executar ficheiros criados pela app; o que vem dentro do pacote pode correr.
+        if let bundled = Bundle.main.url(forResource: "askpass", withExtension: "sh"), fm.isExecutableFile(atPath: bundled.path) {
+            return bundled
+        }
         let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PhotographersPocketKnife", isDirectory: true)
         let url = dir.appendingPathComponent("askpass.sh")

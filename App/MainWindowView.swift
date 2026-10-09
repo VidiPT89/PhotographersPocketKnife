@@ -48,7 +48,8 @@ struct MainWindowView: View {
         .toolbar(app.culling.presenting ? .hidden : .visible, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                PillPicker(selection: $app.module, options: AppModule.allCases) { module, _ in
+                PillPicker(selection: $app.module, options: AppModule.allCases,
+                           accessibilityName: { app.t($0.labelKey) }) { module, _ in
                     Label(app.t(module.labelKey), systemImage: module.icon)
                         .labelStyle(.titleAndIcon)
                         .font(.system(size: 12, weight: .semibold))

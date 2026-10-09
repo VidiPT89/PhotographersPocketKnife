@@ -62,6 +62,54 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: YES
+  # Mac App Store: o mesmo código, com App Sandbox e sem Sparkle (a loja trata das atualizações).
+  PhotographersPocketKnifeAppStore:
+    type: application
+    platform: macOS
+    sources:
+      - App
+      - Core
+      - DesignSystem
+      - Modules
+      - Localization
+    entitlements:
+      path: App/PhotographersPocketKnifeAppStore.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.network.client: true
+    info:
+      path: App/Info-AppStore.plist
+      properties:
+        CFBundleDisplayName: Photographer's Pocket Knife
+        CFBundleName: PhotographersPocketKnife
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.photography
+        NSHumanReadableCopyright: "© 2026 David Arsénio Martins"
+        NSPrincipalClass: NSApplication
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Folder
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.folder]
+          - CFBundleTypeName: Photo
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.image, public.camera-raw-image]
+    settings:
+      base:
+        PRODUCT_NAME: PhotographersPocketKnife
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ividi.PhotographersPocketKnife
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) APPSTORE
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: S769436W24
+        ENABLE_HARDENED_RUNTIME: YES
   PhotographersPocketKnifeTests:
     type: bundle.unit-test
     platform: macOS
@@ -72,6 +120,20 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PhotographersPocketKnife.app/Contents/MacOS/PhotographersPocketKnife"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  # Os mesmos testes, a correr dentro da app com sandbox (ex.: envios pelo curl/sftp do sistema).
+  PhotographersPocketKnifeAppStoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: PhotographersPocketKnifeAppStore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: S769436W24
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PhotographersPocketKnife.app/Contents/MacOS/PhotographersPocketKnife"
         BUNDLE_LOADER: "$(TEST_HOST)"
   PhotographersPocketKnifeUITests:
@@ -93,6 +155,15 @@ schemes:
     test:
       targets:
         - PhotographersPocketKnifeTests
+  PhotographersPocketKnifeAppStore:
+    build:
+      targets:
+        PhotographersPocketKnifeAppStore: all
+    test:
+      targets:
+        - PhotographersPocketKnifeAppStoreTests
+    archive:
+      config: Release
   # Testes de interface à parte: precisam de permissão de Acessibilidade para controlar a app.
   PhotographersPocketKnifeUITests:
     build:

@@ -312,11 +312,13 @@ final class CullingModel {
     }
 
     func importFolder(_ folder: URL, options: PhotoImporter.Options, session: String, context: ModelContext) async {
+        FolderAccess.shared.remember(folder)
         let files = await Task.detached(priority: .userInitiated) { PhotoImporter.imageFiles(in: folder) }.value
         await importFiles(files, options: options, session: session, context: context)
     }
 
     func importFiles(_ files: [URL], options: PhotoImporter.Options, session: String, context: ModelContext) async {
+        FolderAccess.shared.remember(files)
         isImporting = true
         importProgress = 0
         // Publica só quando a percentagem inteira sobe: importar milhares de ficheiros não deve acordar

@@ -64,6 +64,8 @@ struct PillPicker<Value: Hashable, Label: View>: View {
     @Binding var selection: Value
     let options: [Value]
     var compact = false
+    /// Na barra de ferramentas, os botões chegavam por vezes à acessibilidade todos com o nome do primeiro.
+    var accessibilityName: ((Value) -> String)?
     @ViewBuilder let label: (Value, Bool) -> Label
 
     @Namespace private var namespace
@@ -76,11 +78,21 @@ struct PillPicker<Value: Hashable, Label: View>: View {
                 } label: {
                     label(option, option == selection)
                 }
+                .modifier(OptionalAccessibilityLabel(text: accessibilityName?(option)))
+                .accessibilityAddTraits(option == selection ? .isSelected : [])
             }
         }
         .padding(3)
         .background(Capsule().fill(Palette.panel))
         .overlay(Capsule().stroke(Palette.separator, lineWidth: 1))
+    }
+}
+
+private struct OptionalAccessibilityLabel: ViewModifier {
+    let text: String?
+
+    func body(content: Content) -> some View {
+        if let text { content.accessibilityLabel(Text(text)) } else { content }
     }
 }
 

@@ -431,7 +431,9 @@ enum FilePanels {
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
         panel.prompt = prompt
-        return panel.runModal() == .OK ? panel.url : nil
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        FolderAccess.shared.remember(url)
+        return url
     }
 
     static func chooseImportFolder(_ app: AppState) {

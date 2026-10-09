@@ -1,13 +1,18 @@
 import SwiftUI
 import SwiftData
+#if !APPSTORE
 import Sparkle
+#endif
 
 @main
 struct PhotographersPocketKnifeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState = AppState(defaults: Self.makeDefaults())
     private let container: ModelContainer
+    #if !APPSTORE
+    // Na versão da Mac App Store as atualizações chegam pela loja.
     private let updater = SPUStandardUpdaterController(startingUpdater: !Self.isUITesting, updaterDelegate: nil, userDriverDelegate: nil)
+    #endif
 
     /// Nos testes de interface a app usa preferências próprias e um catálogo em memória (não toca nos dados reais).
     static let isUITesting = ProcessInfo.processInfo.arguments.contains("-ppk-ui-testing")
@@ -22,6 +27,8 @@ struct PhotographersPocketKnifeApp: App {
     private static var catalogError: String?
 
     init() {
+        // Antes do catálogo: com sandbox, as fotos só se leem depois de reaberto o acesso às pastas.
+        FolderAccess.shared.restore()
         do {
             container = try ModelContainer(
                 for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
@@ -55,6 +62,8 @@ struct PhotographersPocketKnifeApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // Pastas abertas pelo Finder vão para a janela que já existe, em vez de abrirem outra.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 .environment(appState)
                 .modelContainer(container)
                 .preferredColorScheme(appState.theme.colorScheme)
@@ -74,9 +83,14 @@ struct PhotographersPocketKnifeApp: App {
                     warnIfCatalogFailed()
                 }
         }
-        .handlesExternalEvents(matching: [])
+        // Com `matching: []`, abrir uma pasta pelo Finder com a app fechada não criava janela nenhuma.
+        .handlesExternalEvents(matching: ["*"])
         .windowStyle(.hiddenTitleBar)
+        #if APPSTORE
+        .commands { AppCommands(app: appState) }
+        #else
         .commands { AppCommands(app: appState, updater: updater.updater) }
+        #endif
 
         Settings {
             SettingsView()
@@ -126,12 +140,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct AppCommands: Commands {
     let app: AppState
+    #if !APPSTORE
     let updater: SPUUpdater
+    #endif
 
     var body: some Commands {
+        #if !APPSTORE
         CommandGroup(after: .appInfo) {
             Button(app.t("menu.checkUpdates")) { updater.checkForUpdates() }
         }
+        #endif
         CommandGroup(after: .newItem) {
             Button(app.t("culling.import")) { FilePanels.chooseImportFolder(app) }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
