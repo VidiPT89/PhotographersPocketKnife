@@ -153,8 +153,9 @@ private struct SidebarBrand: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Image(nsImage: NSApp.applicationIconImage)
+            Image("BrandIcon")
                 .resizable()
+                .interpolation(.high)
                 .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 0) {
                 Text("Photographer's Pocket Knife")

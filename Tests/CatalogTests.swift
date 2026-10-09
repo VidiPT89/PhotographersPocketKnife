@@ -407,6 +407,19 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: raw), Data("fake raw".utf8))
     }
 
+    func testInvalidExistingXMPSidecarIsNeverOverwritten() throws {
+        let raw = folder.appendingPathComponent("damaged.CR3")
+        let sidecar = MetadataWriter.sidecarURL(for: raw)
+        let original = Data("<x:xmpmeta>interrupted write, recoverable content".utf8)
+        try original.write(to: sidecar)
+        var fields = IPTCFields()
+        fields.city = "Lisboa"
+        XCTAssertThrowsError(try MetadataWriter.write(fields, to: raw))
+        XCTAssertEqual(try Data(contentsOf: sidecar), original)
+        XCTAssertThrowsError(try MetadataWriter.writeRating(4, label: .green, to: raw))
+        XCTAssertEqual(try Data(contentsOf: sidecar), original)
+    }
+
     // MARK: Duplicados
 
     func testPerceptualHashGroupsSimilarImages() throws {

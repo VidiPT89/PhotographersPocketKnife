@@ -74,7 +74,7 @@ struct SplashScreenView: View {
                 .scaleEffect(apertureOpen ? 1 : 0.6)
 
             // O ícone entra a rodar ligeiramente e assenta, como uma lâmina a abrir.
-            Image(nsImage: NSApp.applicationIconImage)
+            Image("BrandIcon")
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 280, height: 280)

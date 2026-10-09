@@ -21,6 +21,12 @@ guard let source = CGImageSourceCreateWithURL(logoURL as CFURL, nil),
     exit(1)
 }
 
+// O emblema ocupa apenas parte da imagem. Uma fonte de 1024 px obrigava a ampliá-lo.
+guard logo.width >= 2048, logo.height == logo.width else {
+    print("O logótipo original deve ser quadrado e ter pelo menos 2048 px.")
+    exit(1)
+}
+
 // Emblema no logótipo de 2048 px (origem no canto superior esquerdo): margem para a seta à direita,
 // e o corte em baixo fica acima do nome escrito.
 let scale = CGFloat(logo.width) / 2048
@@ -105,5 +111,21 @@ for size in [16, 32, 64, 128, 256, 512] {
     write(resized(icon, to: size), to: iconSet.appendingPathComponent("icon_\(size).png"))
 }
 write(icon, to: iconSet.appendingPathComponent("icon_512@2x.png"))
+
+// A interface não deve ampliar a representação pequena escolhida pelo AppKit para o Dock.
+let brandSet = assets.appendingPathComponent("BrandIcon.imageset")
+try FileManager.default.createDirectory(at: brandSet, withIntermediateDirectories: true)
+write(resized(icon, to: 512), to: brandSet.appendingPathComponent("brand.png"))
+write(icon, to: brandSet.appendingPathComponent("brand@2x.png"))
+let contents = """
+{
+  "images": [
+    { "filename": "brand.png", "idiom": "mac", "scale": "1x" },
+    { "filename": "brand@2x.png", "idiom": "mac", "scale": "2x" }
+  ],
+  "info": { "author": "xcode", "version": 1 }
+}
+"""
+try contents.write(to: brandSet.appendingPathComponent("Contents.json"), atomically: true, encoding: .utf8)
 
 print("Ícone gerado a partir de \(logoURL.lastPathComponent).")

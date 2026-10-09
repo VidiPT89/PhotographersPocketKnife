@@ -99,9 +99,13 @@ enum MetadataWriter {
     private static func writeSidecar(for url: URL, _ body: (CGMutableImageMetadata, Bool) -> Void) throws {
         let sidecar = sidecarURL(for: url)
         let metadata: CGMutableImageMetadata
-        if let data = try? Data(contentsOf: sidecar),
-           let existing = CGImageMetadataCreateFromXMPData(data as CFData),
-           let copy = CGImageMetadataCreateMutableCopy(existing) {
+        if FileManager.default.fileExists(atPath: sidecar.path) {
+            // Não tratar um XMP ilegível como se não existisse: pode conter ajustes de outra app.
+            let data = try Data(contentsOf: sidecar)
+            guard let existing = CGImageMetadataCreateFromXMPData(data as CFData),
+                  let copy = CGImageMetadataCreateMutableCopy(existing) else {
+                throw MetadataError.unreadable(sidecar)
+            }
             metadata = copy
         } else {
             metadata = CGImageMetadataCreateMutable()
