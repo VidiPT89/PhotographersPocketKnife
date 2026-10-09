@@ -36,8 +36,8 @@ enum DNGWriter {
             .long(278, [UInt32(preview.height)]),
             .long(279, [UInt32(preview.data.count)]),
             .short(284, [1]),
-            .rational(282, [(UInt32(clamping: dpi), 1)]),
-            .rational(283, [(UInt32(clamping: dpi), 1)]),
+            .rational(282, [(UInt32(clamping: dpi), UInt32(1))]),
+            .rational(283, [(UInt32(clamping: dpi), UInt32(1))]),
             .short(296, [2]),
             .ascii(305, "PhotographersPocketKnife"),
             .ascii(306, dateString()),
@@ -68,8 +68,8 @@ enum DNGWriter {
             .long(278, [UInt32(height)]),
             .long(279, [UInt32(rawData.count)]),
             .short(284, [1]),
-            .rational(282, [(UInt32(clamping: dpi), 1)]),
-            .rational(283, [(UInt32(clamping: dpi), 1)]),
+            .rational(282, [(UInt32(clamping: dpi), UInt32(1))]),
+            .rational(283, [(UInt32(clamping: dpi), UInt32(1))]),
             .short(296, [2]),
             .short(50713, [1, 1]), // BlackLevelRepeatDim
             .long(50714, [0, 0, 0]), // BlackLevel
