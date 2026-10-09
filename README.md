@@ -119,7 +119,13 @@ Pick the `PhotographersPocketKnife` scheme and run (`⌘R`).
 
 > The Xcode project is generated with XcodeGen from `project.yml`. If you add or move Swift files, regenerate it with `xcodegen generate`.
 
-Prefer a ready-made build? Download the latest version from [Releases](https://github.com/VidiPT89/PhotographersPocketKnife/releases/latest). The first time, right-click the app and choose **Open**.
+Prefer a ready-made build? Download the latest version from [Releases](https://github.com/VidiPT89/PhotographersPocketKnife/releases/latest), unzip it and move the app to **Applications**. The app is not notarized by Apple, so macOS blocks it the first time:
+
+1. Open the app and click **OK** on the warning
+2. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the app's name
+3. Confirm with your Mac's password
+
+Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/PhotographersPocketKnife.app`. This is only needed once; later versions arrive through the built-in updater.
 
 ## 📖 Usage
 
