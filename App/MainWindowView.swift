@@ -153,9 +153,9 @@ private struct SidebarBrand: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            EyeApertureMark()
-                .frame(width: 26)
-                .shadow(color: Brand.orange.opacity(0.5), radius: 5)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 0) {
                 Text("Photographer's Pocket Knife")
                     .font(.system(size: 11, weight: .bold, design: .rounded))

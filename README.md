@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.jpg" alt="Photographer's Pocket Knife logo" width="360"></p>
+
 # Photographer's Pocket Knife 🔪📷
 
 > A native macOS photography workflow app: cull like Photo Mechanic, develop RAW files non-destructively, and deliver over FTP/SFTP/WebDAV/S3 — all in one window, one catalog, no round trips.

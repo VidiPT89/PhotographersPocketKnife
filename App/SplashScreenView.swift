@@ -73,12 +73,16 @@ struct SplashScreenView: View {
                 .blur(radius: 18)
                 .scaleEffect(apertureOpen ? 1 : 0.6)
 
-            // O olho abre e, logo a seguir, o diafragma da íris.
-            EyeApertureMark(eyeOpenness: apertureOpen ? 1 : 0.04, irisOpenness: apertureOpen ? 0.55 : 0)
-                .frame(width: 200)
-                .shadow(color: Brand.orange.opacity(0.6), radius: 26)
+            // O ícone entra a rodar ligeiramente e assenta, como uma lâmina a abrir.
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 280, height: 280)
+                .scaleEffect(apertureOpen ? 1 : 0.7)
+                .rotationEffect(.degrees(apertureOpen || reduceMotion ? 0 : -12))
+                .shadow(color: Brand.orange.opacity(0.45), radius: 24)
         }
-        .frame(height: 170)
+        .frame(height: 250)
     }
 
     private var titleText: some View {

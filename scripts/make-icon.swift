@@ -1,119 +1,109 @@
-// Gera o ícone da app (1024 px): um olho cuja íris é o diafragma de uma objetiva, cores de ividi.dev.
-// Uso: swift scripts/make-icon.swift App/Resources/Assets.xcassets/AppIcon.appiconset
+// Gera o ícone da app a partir do logótipo (`assets/logo.jpg`).
+// O ícone usa só o emblema: o nome escrito por baixo seria ilegível a 16–32 px.
+// Uso: swift scripts/make-icon.swift assets/logo.jpg App/Resources/Assets.xcassets
 import Foundation
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
-func rgb(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
-    CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: a)
+let arguments = CommandLine.arguments
+guard arguments.count == 3 else {
+    print("Uso: swift scripts/make-icon.swift <logótipo> <Assets.xcassets>")
+    exit(1)
+}
+let logoURL = URL(fileURLWithPath: arguments[1])
+let assets = URL(fileURLWithPath: arguments[2], isDirectory: true)
+let space = CGColorSpace(name: CGColorSpace.sRGB)!
+
+guard let source = CGImageSourceCreateWithURL(logoURL as CFURL, nil),
+      let logo = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+    print("Não foi possível ler \(logoURL.path)")
+    exit(1)
 }
 
-let size = 1024
-let space = CGColorSpace(name: CGColorSpace.sRGB)!
-let ctx = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+// Emblema no logótipo de 2048 px (origem no canto superior esquerdo): margem para a seta à direita,
+// e o corte em baixo fica acima do nome escrito.
+let scale = CGFloat(logo.width) / 2048
+let emblemRect = CGRect(x: 395 * scale, y: 290 * scale, width: 1210 * scale, height: 1115 * scale)
+let emblem = logo.cropping(to: emblemRect.integral)!
 
-// Grelha de ícones do macOS: forma de 824 px centrada, raio ~185.
+func context(_ width: Int, _ height: Int) -> CGContext {
+    let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.interpolationQuality = .high
+    return ctx
+}
+
+/// Máscara em tons de cinzento: opaca no centro, a desvanecer nas orlas, para o recorte não se notar.
+func featherMask(width: Int, height: Int, feather: CGFloat) -> CGImage {
+    let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+    let w = CGFloat(width), h = CGFloat(height)
+    for step in 0..<Int(feather) {
+        let inset = CGFloat(step)
+        let t = inset / feather
+        ctx.setFillColor(gray: t * t * (3 - 2 * t), alpha: 1)
+        ctx.fill(CGRect(x: inset, y: inset, width: w - inset * 2, height: h - inset * 2))
+    }
+    return ctx.makeImage()!
+}
+
+/// Cor média de um canto do logótipo: o fundo do ícone continua o do próprio logótipo.
+func backgroundColor() -> CGColor {
+    let ctx = context(1, 1)
+    ctx.draw(logo.cropping(to: CGRect(x: 40 * scale, y: 40 * scale, width: 160 * scale, height: 160 * scale))!,
+             in: CGRect(x: 0, y: 0, width: 1, height: 1))
+    let p = ctx.data!.assumingMemoryBound(to: UInt8.self)
+    return CGColor(srgbRed: CGFloat(p[0]) / 255, green: CGFloat(p[1]) / 255, blue: CGFloat(p[2]) / 255, alpha: 1)
+}
+
+func drawEmblem(in ctx: CGContext, rect: CGRect, feather: CGFloat) {
+    let mask = featherMask(width: emblem.width, height: emblem.height, feather: feather)
+    ctx.saveGState()
+    ctx.clip(to: rect, mask: mask)
+    ctx.draw(emblem, in: rect)
+    ctx.restoreGState()
+}
+
+func fitted(_ size: CGSize, in box: CGRect) -> CGRect {
+    let factor = min(box.width / size.width, box.height / size.height)
+    let fit = CGSize(width: size.width * factor, height: size.height * factor)
+    return CGRect(x: box.midX - fit.width / 2, y: box.midY - fit.height / 2, width: fit.width, height: fit.height)
+}
+
+func write(_ image: CGImage, to url: URL) {
+    let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { fatalError("Não foi possível escrever \(url.path)") }
+}
+
+func resized(_ image: CGImage, to size: Int) -> CGImage {
+    let ctx = context(size, size)
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: size, height: size))
+    return ctx.makeImage()!
+}
+
+// Ícone: grelha do macOS, forma de 824 px centrada em 1024, raio ~185, com sombra.
+let iconCtx = context(1024, 1024)
 let body = CGRect(x: 100, y: 100, width: 824, height: 824)
 let bodyPath = CGPath(roundedRect: body, cornerWidth: 185, cornerHeight: 185, transform: nil)
+iconCtx.saveGState()
+iconCtx.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: CGColor(gray: 0, alpha: 0.45))
+iconCtx.addPath(bodyPath)
+iconCtx.setFillColor(backgroundColor())
+iconCtx.fillPath()
+iconCtx.restoreGState()
+iconCtx.saveGState()
+iconCtx.addPath(bodyPath)
+iconCtx.clip()
+drawEmblem(in: iconCtx, rect: fitted(CGSize(width: emblem.width, height: emblem.height), in: body.insetBy(dx: 30, dy: 30)), feather: 60 * scale)
+iconCtx.restoreGState()
+let icon = iconCtx.makeImage()!
 
-ctx.saveGState()
-ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: rgb(0x000000, 0.45))
-ctx.addPath(bodyPath); ctx.setFillColor(rgb(0x0A0A0F)); ctx.fillPath()
-ctx.restoreGState()
-
-ctx.saveGState()
-ctx.addPath(bodyPath); ctx.clip()
-let bg = CGGradient(colorsSpace: space, colors: [rgb(0x24242E), rgb(0x0A0A0F)] as CFArray, locations: [0, 1])!
-ctx.drawLinearGradient(bg, start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
-let glow = CGGradient(colorsSpace: space, colors: [rgb(0xD97706, 0.45), rgb(0xD97706, 0)] as CFArray, locations: [0, 1])!
-ctx.drawRadialGradient(glow, startCenter: CGPoint(x: 512, y: 512), startRadius: 0, endCenter: CGPoint(x: 512, y: 512), endRadius: 440, options: [])
-ctx.restoreGState()
-
-let center = CGPoint(x: 512, y: 512)
-
-// Contorno do olho: duas curvas que se encontram nos cantos.
-let halfWidth: CGFloat = 330
-let lid: CGFloat = 250
-let eye = CGMutablePath()
-eye.move(to: CGPoint(x: center.x - halfWidth, y: center.y))
-eye.addCurve(to: CGPoint(x: center.x + halfWidth, y: center.y),
-             control1: CGPoint(x: center.x - halfWidth * 0.45, y: center.y + lid), control2: CGPoint(x: center.x + halfWidth * 0.45, y: center.y + lid))
-eye.addCurve(to: CGPoint(x: center.x - halfWidth, y: center.y),
-             control1: CGPoint(x: center.x + halfWidth * 0.45, y: center.y - lid), control2: CGPoint(x: center.x - halfWidth * 0.45, y: center.y - lid))
-eye.closeSubpath()
-
-// Branco do olho escuro, com brilho âmbar vindo da íris.
-ctx.saveGState()
-ctx.setShadow(offset: .zero, blur: 50, color: rgb(0xF59E0B, 0.35))
-ctx.addPath(eye); ctx.setFillColor(rgb(0x15151C)); ctx.fillPath()
-ctx.restoreGState()
-
-// Íris = diafragma de 6 lâminas, cortado pelas pálpebras.
-let radius: CGFloat = 178
-let inner: CGFloat = radius * 0.36
-let twist = Double.pi / 12
-func p(_ r: CGFloat, _ a: Double) -> CGPoint { CGPoint(x: center.x + r * CGFloat(cos(a)), y: center.y + r * CGFloat(sin(a))) }
-let blades = CGMutablePath()
-for i in 0..<6 {
-    let a = Double(i) * .pi / 3 + .pi / 6, b = a + .pi / 3
-    blades.move(to: p(radius, a))
-    blades.addArc(center: center, radius: radius, startAngle: CGFloat(a), endAngle: CGFloat(b), clockwise: false)
-    blades.addLine(to: p(inner, b + twist))
-    blades.addLine(to: p(inner, a + twist))
-    blades.closeSubpath()
+let iconSet = assets.appendingPathComponent("AppIcon.appiconset")
+for size in [16, 32, 64, 128, 256, 512] {
+    write(resized(icon, to: size), to: iconSet.appendingPathComponent("icon_\(size).png"))
 }
+write(icon, to: iconSet.appendingPathComponent("icon_512@2x.png"))
 
-ctx.saveGState()
-ctx.addPath(eye); ctx.clip()
-// Anel da íris.
-ctx.addEllipse(in: CGRect(x: center.x - radius - 14, y: center.y - radius - 14, width: (radius + 14) * 2, height: (radius + 14) * 2))
-ctx.setFillColor(rgb(0x0A0A0F)); ctx.fillPath()
-ctx.saveGState()
-ctx.addPath(blades); ctx.clip()
-let bladeGradient = CGGradient(colorsSpace: space, colors: [rgb(0xFBBF24), rgb(0xF59E0B), rgb(0xB45309)] as CFArray, locations: [0, 0.5, 1])!
-ctx.drawLinearGradient(bladeGradient, start: CGPoint(x: 360, y: 700), end: CGPoint(x: 660, y: 320), options: [])
-ctx.restoreGState()
-ctx.addPath(blades); ctx.setStrokeColor(rgb(0x0A0A0F, 0.6)); ctx.setLineWidth(6); ctx.strokePath()
-// Pupila: o hexágono aberto no centro, com fundo quase preto.
-let pupil = CGMutablePath()
-for i in 0..<6 {
-    let point = p(inner * 0.98, Double(i) * .pi / 3 + .pi / 6 + twist)
-    if i == 0 { pupil.move(to: point) } else { pupil.addLine(to: point) }
-}
-pupil.closeSubpath()
-ctx.addPath(pupil); ctx.setFillColor(rgb(0x050507)); ctx.fillPath()
-// Anel metálico da objetiva à volta da íris.
-ctx.saveGState()
-ctx.setLineWidth(12)
-ctx.addEllipse(in: CGRect(x: center.x - radius - 10, y: center.y - radius - 10, width: (radius + 10) * 2, height: (radius + 10) * 2))
-ctx.replacePathWithStrokedPath(); ctx.clip()
-let ring = CGGradient(colorsSpace: space, colors: [rgb(0xFFFFFF, 0.85), rgb(0xF59E0B, 0.4), rgb(0xB45309, 0.25)] as CFArray, locations: [0, 0.5, 1])!
-ctx.drawLinearGradient(ring, start: CGPoint(x: 512, y: 700), end: CGPoint(x: 512, y: 320), options: [])
-ctx.restoreGState()
-// Reflexo de luz na córnea.
-ctx.addEllipse(in: CGRect(x: center.x - 92, y: center.y + 58, width: 46, height: 46))
-ctx.setFillColor(rgb(0xFFFFFF, 0.9)); ctx.fillPath()
-ctx.addEllipse(in: CGRect(x: center.x - 38, y: center.y + 108, width: 18, height: 18))
-ctx.setFillColor(rgb(0xFFFFFF, 0.6)); ctx.fillPath()
-ctx.restoreGState()
-
-// Pálpebras: contorno com gradiente branco → âmbar.
-ctx.saveGState()
-ctx.setLineWidth(26)
-ctx.setLineJoin(.round)
-ctx.addPath(eye)
-ctx.replacePathWithStrokedPath(); ctx.clip()
-let lids = CGGradient(colorsSpace: space, colors: [rgb(0xFFF7E6), rgb(0xFBBF24), rgb(0xD97706)] as CFArray, locations: [0, 0.45, 1])!
-ctx.drawLinearGradient(lids, start: CGPoint(x: 512, y: 780), end: CGPoint(x: 512, y: 240), options: [])
-ctx.restoreGState()
-
-// Contorno subtil da forma.
-ctx.addPath(bodyPath); ctx.setStrokeColor(rgb(0xFFFFFF, 0.08)); ctx.setLineWidth(3); ctx.strokePath()
-
-let out = URL(fileURLWithPath: CommandLine.arguments[1])
-let image = ctx.makeImage()!
-let master = out.appendingPathComponent("icon_1024.png")
-let dest = CGImageDestinationCreateWithURL(master as CFURL, UTType.png.identifier as CFString, 1, nil)!
-CGImageDestinationAddImage(dest, image, nil); CGImageDestinationFinalize(dest)
-print(master.path)
+print("Ícone gerado a partir de \(logoURL.lastPathComponent).")
