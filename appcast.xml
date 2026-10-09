@@ -6,6 +6,14 @@
     <language>pt-PT</language>
     <!-- ITEMS -->
     <item>
+      <title>0.12.0</title>
+      <pubDate>Fri, 09 Oct 2026 10:05:23 +0000</pubDate>
+      <sparkle:version>74</sparkle:version>
+      <sparkle:shortVersionString>0.12.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/VidiPT89/PhotographersPocketKnife/releases/download/v0.12.0/PhotographersPocketKnife-0.12.0-macOS.zip" sparkle:edSignature="bQ9zvz5tPkcbKj6U8noO3KEPA12asI6CruRzJvAGoJ5rjIkas4SIsHABTJSWfQHa/2Scn8JxVytj2EU9i8G6Aw==" length="7526248" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>0.11.0</title>
       <pubDate>Wed, 30 Sep 2026 00:30:47 +0000</pubDate>
       <sparkle:version>64</sparkle:version>
