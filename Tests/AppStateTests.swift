@@ -10,26 +10,26 @@ final class AppStateTests: XCTestCase {
         return defaults
     }()
 
-    func testDefaultsAreDarkAndPortuguese() {
+    func testDefaultsAreDarkAndEnglish() {
         let state = AppState(defaults: defaults)
         XCTAssertEqual(state.theme, .dark)
-        XCTAssertEqual(state.language, .pt)
+        XCTAssertEqual(state.language, .en)
     }
 
     func testThemeAndLanguagePersist() {
         let state = AppState(defaults: defaults)
         state.theme = .light
-        state.language = .en
+        state.language = .pt
         let reloaded = AppState(defaults: defaults)
         XCTAssertEqual(reloaded.theme, .light)
-        XCTAssertEqual(reloaded.language, .en)
+        XCTAssertEqual(reloaded.language, .pt)
     }
 
     func testLanguageSwitchesAtRuntime() {
         let state = AppState(defaults: defaults)
-        XCTAssertEqual(state.t("module.editing"), "Edição")
-        state.language = .en
         XCTAssertEqual(state.t("module.editing"), "Editing")
+        state.language = .pt
+        XCTAssertEqual(state.t("module.editing"), "Edição")
     }
 
     func testBothLanguagesHaveSameKeys() throws {

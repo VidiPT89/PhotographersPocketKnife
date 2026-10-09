@@ -30,8 +30,8 @@ struct Toast: Equatable, Identifiable {
 }
 
 enum AppLanguage: String, CaseIterable, Identifiable {
-    case pt = "pt-PT"
     case en = "en"
+    case pt = "pt-PT"
     var id: String { rawValue }
 
     var shortLabel: String { self == .pt ? "PT" : "EN" }
@@ -94,7 +94,7 @@ final class AppState {
         self.defaults = defaults
         // Dark é o default: ambiente de trabalho do fotógrafo.
         theme = AppTheme(rawValue: defaults.string(forKey: Keys.theme) ?? "") ?? .dark
-        let lang = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .pt
+        let lang = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .en
         language = lang
         module = AppModule(rawValue: defaults.string(forKey: Keys.module) ?? "") ?? .culling
         bundle = Self.bundle(for: lang)
