@@ -51,6 +51,8 @@ struct UploadHistoryView: View {
                 records.forEach(context.delete)
                 try? context.save()
             }
+            Button(app.t("common.cancel"), role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         }
     }
 

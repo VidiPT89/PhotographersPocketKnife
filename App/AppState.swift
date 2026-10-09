@@ -85,6 +85,7 @@ final class AppState {
     let hotFolder = HotFolderService()
     let watchFolder = WatchFolderService()
     let denoise = DenoiseQueue()
+    let sidecars = SidecarAutosave()
     let shortcuts: ShortcutStore
 
     private var bundle: Bundle

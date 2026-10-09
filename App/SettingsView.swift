@@ -112,6 +112,10 @@ private struct GeneralSettings: View {
                 ForEach(AppTheme.allCases) { Label(app.t($0.labelKey), systemImage: $0.icon).tag($0) }
             }
             .pickerStyle(.segmented)
+            Toggle(isOn: Binding(get: { app.sidecars.isEnabled }, set: { app.sidecars.isEnabled = $0 })) {
+                Text(app.t("settings.autosaveSidecars"))
+                Text(app.t("settings.autosaveSidecarsHint"))
+            }
             HStack {
                 Button(app.t("settings.clearCache")) {
                     ThumbnailCache.shared.clearDisk()

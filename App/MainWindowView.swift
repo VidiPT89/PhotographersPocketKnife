@@ -137,7 +137,9 @@ struct SidebarView: View {
                 CatalogService.remove(photos.filter { $0.sessionName == name }, from: context)
                 pendingRemoval = nil
             }
+            // O Enter não deve tirar um dia de trabalho do catálogo: a predefinição é cancelar.
             Button(app.t("common.cancel"), role: .cancel) { pendingRemoval = nil }
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text(app.t("sidebar.removeFolderMessage"))
         }

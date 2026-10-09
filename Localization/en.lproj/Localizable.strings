@@ -755,3 +755,5 @@
 "export.stop" = "Stop";
 "toast.exportStopped" = "Export stopped: %d exported, nothing sent";
 "export.retryFailed" = "Retry the %d that failed";
+"settings.autosaveSidecars" = "Save ratings next to the originals";
+"settings.autosaveSidecarsHint" = "A .ppk file beside each photo, kept up to date on its own: stars, flags, labels and edits survive even without the catalog. The image itself is not changed.";

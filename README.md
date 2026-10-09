@@ -31,7 +31,7 @@
 - ✅ Code replacements compatible with Photo Mechanic files: load a tab-delimited roster and type `=7=` to get the player's name (`=7#2=` for the next column), expanded live as you type
 - ✅ Automatic player captions: the `{players}` token reads the shirt numbers in each photo on-device and writes the names from the roster
 - ✅ Capture time adjustment to sync several cameras: set the correct time of one frame and the same offset is applied to the whole selection
-- ✅ The **Save sidecars** action writes ratings and edits to `.ppk` files next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
+- ✅ Ratings, flags, labels and edits are saved on their own to small `.ppk` files next to the originals (can be switched off in Settings), so the work survives even without the catalog; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
 - ✅ Duplicate detection two ways: similar photos by perceptual hashing, or identical files (same size and SHA-256, even under another name or folder) with one click to remove the extra copies from the catalog
 - ✅ Photo map: photos with GPS appear on a map, and clicking one opens it in the loupe
 - ✅ Contact sheet PDF (A4) of the selection, with file name, stars, date and camera under each frame

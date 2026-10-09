@@ -755,3 +755,5 @@
 "export.stop" = "Parar";
 "toast.exportStopped" = "Exportação parada: %d exportadas, nada enviado";
 "export.retryFailed" = "Repetir as %d que falharam";
+"settings.autosaveSidecars" = "Guardar classificações junto dos originais";
+"settings.autosaveSidecarsHint" = "Um ficheiro .ppk ao lado de cada foto, atualizado sozinho: estrelas, marcação, etiqueta e revelação sobrevivem mesmo sem o catálogo. A imagem não é alterada.";

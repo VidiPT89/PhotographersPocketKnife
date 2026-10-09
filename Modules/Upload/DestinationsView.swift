@@ -79,6 +79,8 @@ struct DestinationsView: View {
             presenting: pendingDelete
         ) { destination in
             Button(app.t("destination.deleteButton"), role: .destructive) { delete(destination) }
+            Button(app.t("common.cancel"), role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: { _ in
             Text(app.t("destination.deleteMessage"))
         }

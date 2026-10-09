@@ -227,6 +227,38 @@ final class CullWorkflowTests: XCTestCase {
     }
 
     @MainActor
+    func testSidecarIsWrittenOnItsOwnWhenTheCatalogSaves() async throws {
+        let container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = container.mainContext
+        let url = folder.appendingPathComponent("DSC_1.jpg")
+        try writeJPEG(to: url)
+        let shot = photo(url.path)
+        context.insert(shot)
+        try context.save()
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "PPKSidecarAutosave-\(UUID().uuidString)"))
+        let autosave = SidecarAutosave(defaults: defaults)
+        XCTAssertTrue(autosave.isEnabled, "On by default, like Photo Mechanic")
+        autosave.delay = .milliseconds(10)
+        autosave.attach(context: context)
+
+        shot.rating = 4
+        shot.colorLabel = .green
+        try context.save()
+        for _ in 0..<100 where PPKSidecar.read(for: url) == nil { try await Task.sleep(for: .milliseconds(20)) }
+        let saved = try XCTUnwrap(PPKSidecar.read(for: url))
+        XCTAssertEqual(saved.rating, 4)
+        XCTAssertEqual(saved.label, "green")
+
+        autosave.isEnabled = false
+        shot.rating = 1
+        try context.save()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(PPKSidecar.read(for: url)?.rating, 4, "Switched off, the files are left alone")
+    }
+
+    @MainActor
     private func photo(_ path: String) -> Photo {
         Photo(info: ImportedPhotoInfo(url: URL(fileURLWithPath: path), captureDate: nil, camera: nil, lens: nil, width: 1, height: 1, fileSize: 1), sessionName: "S")
     }

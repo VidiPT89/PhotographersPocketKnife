@@ -1,5 +1,7 @@
 import Foundation
 import CryptoKit
+import SwiftData
+import AppKit
 
 /// Ficheiro `.ppk` (JSON) ao lado da foto: a classificação e a revelação sobrevivem mesmo sem o catálogo.
 struct PPKSidecar: Codable, Equatable, Sendable {
@@ -128,5 +130,81 @@ enum CaptionTemplate {
             result = result.replacingOccurrences(of: "  ", with: " ")
         }
         return result.trimmingCharacters(in: .whitespaces)
+    }
+}
+
+/// Grava os `.ppk` sozinho, como o Photo Mechanic faz com os XMP: sempre que o catálogo guarda
+/// alterações a fotos (estrelas, marcação, etiqueta, revelação), por qualquer caminho da app.
+@Observable
+@MainActor
+final class SidecarAutosave {
+    private let defaults: UserDefaults
+    var isEnabled: Bool { didSet { defaults.set(isEnabled, forKey: Self.key) } }
+    /// Espera para juntar alterações seguidas (arrastar um cursor, percorrer fotos a classificar).
+    @ObservationIgnored var delay: Duration = .milliseconds(800)
+
+    @ObservationIgnored private var context: ModelContext?
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var pending: Set<PersistentIdentifier> = []
+    @ObservationIgnored private var flushTask: Task<Void, Never>?
+    private static let key = "sidecars.autosave"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        isEnabled = defaults.object(forKey: Self.key) as? Bool ?? true
+    }
+
+    func attach(context: ModelContext) {
+        guard self.context == nil else { return }
+        self.context = context
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: ModelContext.didSave, object: context, queue: .main) { [weak self] note in
+            let ids = note.userInfo?[ModelContext.NotificationKey.updatedIdentifiers.rawValue] as? [PersistentIdentifier] ?? []
+            MainActor.assumeIsolated { self?.schedule(ids) }
+        })
+        // Fechar a app logo a seguir a classificar: grava o catálogo e os .ppk antes de sair.
+        observers.append(center.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushBeforeQuit() }
+        })
+    }
+
+    private func flushBeforeQuit() {
+        guard let context else { return }
+        try? context.save()
+        flushTask?.cancel()
+        Self.write(takePending(from: context))
+    }
+
+    private func takePending(from context: ModelContext) -> [(url: URL, sidecar: PPKSidecar)] {
+        let photos = pending.compactMap { context.registeredModel(for: $0) as Photo? }
+        pending = []
+        return CatalogService.sidecars(for: photos)
+    }
+
+    nonisolated private static func write(_ items: [(url: URL, sidecar: PPKSidecar)]) {
+        for item in items {
+            // Igual ao que lá está: não toca no ficheiro (a data de modificação conta para a importação).
+            guard PPKSidecar.read(for: item.url) != item.sidecar,
+                  FileManager.default.fileExists(atPath: item.url.path) else { continue }
+            try? item.sidecar.write(for: item.url)
+        }
+    }
+
+    private func schedule(_ ids: [PersistentIdentifier]) {
+        guard isEnabled, !ids.isEmpty else { return }
+        pending.formUnion(ids)
+        flushTask?.cancel()
+        flushTask = Task { [weak self, delay] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.flush()
+        }
+    }
+
+    /// Escreve já o que estiver pendente (também usado pelos testes).
+    func flush() async {
+        guard let context else { return }
+        let items = takePending(from: context)
+        await Task.detached(priority: .utility) { Self.write(items) }.value
     }
 }

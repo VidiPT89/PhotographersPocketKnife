@@ -68,6 +68,7 @@ struct PhotographersPocketKnifeApp: App {
                         appState.transfers.restore(from: queueURL)
                     }
                     appState.hotFolder.attach(context: container.mainContext)
+                    if !Self.isUITesting { appState.sidecars.attach(context: container.mainContext) }
                     if !Self.isUITesting { appState.watchFolder.attach(context: container.mainContext, culling: appState.culling) }
                     appDelegate.attach { urls in openFromFinder(urls) }
                     warnIfCatalogFailed()
