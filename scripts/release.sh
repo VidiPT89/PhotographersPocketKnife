@@ -51,5 +51,8 @@ git add project.yml appcast.xml
 git commit -q -m "Release $VERSION"
 git tag "v$VERSION"
 git push -q origin main --tags
-gh release create "v$VERSION" "$ZIP" --title "PhotographersPocketKnife $VERSION" --notes "$NOTES"
+# Cópia com nome fixo: o botão de download do README aponta sempre para a versão mais recente.
+LATEST_ZIP="build/PhotographersPocketKnife-macOS.zip"
+cp "$ZIP" "$LATEST_ZIP"
+gh release create "v$VERSION" "$ZIP" "$LATEST_ZIP" --title "PhotographersPocketKnife $VERSION" --notes "$NOTES"
 echo "Release $VERSION publicada."

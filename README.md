@@ -2,6 +2,8 @@
 
 > A native macOS photography workflow app: cull like Photo Mechanic, develop RAW files non-destructively, and deliver over FTP/SFTP/WebDAV/S3 — all in one window, one catalog, no round trips.
 
+**[⬇️ Download for Mac](https://github.com/VidiPT89/PhotographersPocketKnife/releases/latest/download/PhotographersPocketKnife-macOS.zip)** (macOS 14 or later, Apple silicon and Intel) — this is the app itself; the green **Code** button only downloads the source code. See [opening it the first time](#-quick-start).
+
 [![Report Bug](https://img.shields.io/badge/Report-Bug-red)](https://github.com/VidiPT89/PhotographersPocketKnife/issues)
 [![Request Feature](https://img.shields.io/badge/Request-Feature-blue)](https://github.com/VidiPT89/PhotographersPocketKnife/issues)
 [![CI](https://github.com/VidiPT89/PhotographersPocketKnife/actions/workflows/ci.yml/badge.svg)](https://github.com/VidiPT89/PhotographersPocketKnife/actions/workflows/ci.yml)
