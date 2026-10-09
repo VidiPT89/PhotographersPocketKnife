@@ -14,6 +14,8 @@ final class HotFolderService {
     var event: String { didSet { defaults.set(event, forKey: Keys.event) } }
     var exportFolderPath: String { didSet { defaults.set(exportFolderPath, forKey: Keys.folder) } }
     private(set) var activeExports = 0
+    private(set) var failures: [String] = []
+    @ObservationIgnored var onFailure: ((String) -> Void)?
 
     @ObservationIgnored private var context: ModelContext?
     /// Fotos já tratadas nesta sessão (voltar a pôr a etiqueta não duplica o envio).
@@ -38,6 +40,11 @@ final class HotFolderService {
             .appendingPathComponent("PhotographersPocketKnife/HotFolder", isDirectory: true)
     }
 
+    /// O fotógrafo viu os avisos: saem do módulo de envio.
+    func clearFailures() {
+        failures = []
+    }
+
     func shouldProcess(_ photo: Photo) -> Bool {
         isEnabled && destinationID != nil && photo.colorLabel == label && !processed.contains(photo.id)
     }
@@ -50,25 +57,33 @@ final class HotFolderService {
         targets.forEach { processed.insert($0.id) }
 
         let jobs = targets.map { photo in
-            (url: photo.url, recipe: photo.recipeData.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) } ?? EditRecipe())
+            (id: photo.id, url: photo.url, recipe: photo.recipeData.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) } ?? EditRecipe())
         }
         let settings = ExportPresetStore.lastSettings
         let folder = exportFolder
         let event = event
         activeExports += jobs.count
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
         Task {
             var outputs: [URL] = []
+            var sources: [URL: UUID] = [:]
             for job in jobs {
-                if let output = try? await Task.detached(priority: .userInitiated, operation: {
-                    try ImageRenderer.shared.export(url: job.url, recipe: job.recipe, settings: settings, to: folder)
-                }).value {
+                do {
+                    let output = try await Task.detached(priority: .userInitiated) {
+                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        return try ImageRenderer.shared.export(url: job.url, recipe: job.recipe, settings: settings, to: folder)
+                    }.value
                     outputs.append(output)
+                    sources[output] = job.id
+                } catch {
+                    processed.remove(job.id)
+                    let message = "\(job.url.lastPathComponent): \(error.localizedDescription)"
+                    failures.append(message)
+                    onFailure?(message)
                 }
                 activeExports -= 1
             }
-            transfers.enqueue(files: outputs, destination: destination, event: event)
+            transfers.enqueue(files: outputs, destination: destination, event: event, sources: sources)
         }
         return targets.count
     }

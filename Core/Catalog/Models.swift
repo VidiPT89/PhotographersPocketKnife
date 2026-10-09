@@ -42,6 +42,9 @@ final class Photo {
     var latitude: Double?
     var longitude: Double?
     var importedAt: Date
+    /// Último envio concluído desta foto (original ou exportação), para a seleção mostrar o que já seguiu.
+    var deliveredAt: Date?
+    var deliveredTo: String?
 
     init(info: ImportedPhotoInfo, sessionName: String) {
         id = UUID()

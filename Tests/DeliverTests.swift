@@ -210,6 +210,174 @@ final class DeliverTests: XCTestCase {
         XCTAssertTrue(HotFolderService(defaults: defaults).isEnabled, "Settings persist")
     }
 
+    @MainActor
+    func testQueueRestoresInterruptedWorkPausedAndPreservesFailures() throws {
+        let store = folder.appendingPathComponent("queue.json")
+        let queue = TransferQueue()
+        queue.restore(from: store)
+        queue.pause()
+        let destination = UploadDestination(name: "Delivery", transferProtocol: .ftp)
+        queue.enqueue(files: [folder.appendingPathComponent("a.jpg"), folder.appendingPathComponent("b.jpg")], destination: destination, event: "Match")
+        queue.items[0].status = .running
+        queue.items[0].progress = 0.5
+        queue.items[1].status = .failed("Offline")
+        queue.clearFinished() // Persiste o estado atual.
+
+        let restored = TransferQueue()
+        restored.restore(from: store)
+        XCTAssertTrue(restored.isPaused)
+        XCTAssertEqual(restored.items.map(\.id), queue.items.map(\.id))
+        XCTAssertEqual(restored.items[0].status, .pending)
+        XCTAssertEqual(restored.items[0].progress, 0, "After a restart, upload the complete local file")
+        XCTAssertEqual(restored.items[1].status, .failed("Offline"))
+        XCTAssertEqual(restored.items[0].remotePath, queue.items[0].remotePath)
+        restored.remove(restored.items[0])
+        let again = TransferQueue()
+        again.restore(from: store)
+        XCTAssertEqual(again.items.count, 1)
+        XCTAssertEqual(again.items.first?.status, .failed("Offline"))
+    }
+
+    @MainActor
+    func testUnreadableQueueIsPreservedAndErrorIsVisible() throws {
+        let store = folder.appendingPathComponent("queue.json")
+        let damaged = Data("not valid JSON".utf8)
+        try damaged.write(to: store)
+        let queue = TransferQueue()
+        queue.restore(from: store)
+        XCTAssertNotNil(queue.persistenceError)
+        queue.clearFinished()
+        XCTAssertEqual(try Data(contentsOf: store), damaged)
+    }
+
+    @MainActor
+    func testHotFolderFailureCanBeRetriedAndIsReported() async throws {
+        let defaults = UserDefaults(suiteName: "PPKHotFolderFailure-\(UUID().uuidString)")!
+        let service = HotFolderService(defaults: defaults)
+        let container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let destination = UploadDestination(name: "Test", transferProtocol: .ftp)
+        container.mainContext.insert(destination)
+        service.attach(context: container.mainContext)
+        service.isEnabled = true
+        service.destinationID = destination.id
+        service.exportFolderPath = folder.path
+        let photo = Photo(info: ImportedPhotoInfo(url: folder.appendingPathComponent("missing.jpg"), captureDate: nil, camera: nil, lens: nil, width: 10, height: 10, fileSize: 0), sessionName: "Test")
+        photo.colorLabel = .green
+        let queue = TransferQueue()
+        queue.pause()
+        XCTAssertEqual(service.handleLabelChange([photo], transfers: queue), 1)
+        XCTAssertFalse(service.shouldProcess(photo))
+        for _ in 0..<100 where service.activeExports > 0 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(service.activeExports, 0)
+        XCTAssertTrue(service.shouldProcess(photo), "A failed export must not permanently consume the label")
+        XCTAssertEqual(service.failures.count, 1)
+        XCTAssertTrue(service.failures.first?.contains("missing.jpg") == true)
+        XCTAssertTrue(queue.items.isEmpty)
+    }
+
+    func testRAWXMPExportHonoursPrivacyAndCopyrightRules() throws {
+        var fields = IPTCFields()
+        fields.creator = "Photographer"
+        fields.copyright = "Copyright Test"
+        fields.caption = "Private caption"
+        let data = try XCTUnwrap(MetadataWriter.xmpData(for: fields))
+        let metadata = try XCTUnwrap(CGImageMetadataCreateMutableCopy(try XCTUnwrap(CGImageMetadataCreateFromXMPData(data as CFData))))
+        XCTAssertTrue(CGImageMetadataSetValueWithPath(metadata, nil, "exif:GPSLatitude" as CFString, "38,42N" as CFString))
+        let noGPS = try XCTUnwrap(ImageRenderer.exportMetadata(metadata, rule: .noGPS))
+        XCTAssertNil(MetadataReader.xmpString(noGPS, "exif:GPSLatitude"))
+        XCTAssertEqual(MetadataReader.iptcFields(from: noGPS).caption, fields.caption)
+        XCTAssertNotNil(MetadataReader.xmpString(metadata, "exif:GPSLatitude"), "Original metadata remains unchanged")
+        let rights = try XCTUnwrap(ImageRenderer.exportMetadata(metadata, rule: .copyrightOnly))
+        XCTAssertEqual(MetadataReader.iptcFields(from: rights).copyright, fields.copyright)
+        XCTAssertEqual(MetadataReader.iptcFields(from: rights).creator, fields.creator)
+        XCTAssertTrue(MetadataReader.iptcFields(from: rights).caption.isEmpty)
+        XCTAssertNil(ImageRenderer.exportMetadata(metadata, rule: .none))
+    }
+
+    func testExportRejectsInvalidSizeAndPathSuffix() throws {
+        let source = try writeImage(named: "source.jpg", width: 80, height: 60, gps: false)
+        var settings = ExportSettings()
+        settings.resize = true
+        settings.longEdge = 0
+        XCTAssertThrowsError(try ImageRenderer.shared.export(url: source, recipe: EditRecipe(), settings: settings, to: folder))
+        settings.longEdge = 40
+        settings.suffix = "/../../elsewhere"
+        XCTAssertThrowsError(try ImageRenderer.shared.export(url: source, recipe: EditRecipe(), settings: settings, to: folder))
+    }
+
+    func testConcurrentExportsNeverOverwriteEachOtherOrTheOriginal() async throws {
+        let source = try writeImage(named: "same.jpg", width: 80, height: 60, gps: false)
+        let original = try Data(contentsOf: source)
+        let targetFolder = try XCTUnwrap(folder)
+        let outputs = try await withThrowingTaskGroup(of: URL.self) { group in
+            for _ in 0..<4 {
+                group.addTask {
+                    try ImageRenderer.shared.export(url: source, recipe: EditRecipe(), settings: ExportSettings(), to: targetFolder)
+                }
+            }
+            var urls: [URL] = []
+            for try await url in group { urls.append(url) }
+            return urls
+        }
+        XCTAssertEqual(Set(outputs).count, 4)
+        XCTAssertFalse(outputs.contains(source))
+        XCTAssertEqual(try Data(contentsOf: source), original)
+        for url in outputs {
+            XCTAssertNotNil(CGImageSourceCreateWithURL(url as CFURL, nil))
+            XCTAssertEqual(MetadataReader.properties(for: url)[kCGImagePropertyPixelWidth as String] as? Int, 80)
+        }
+    }
+
+    @MainActor
+    func testBatchNotificationDoesNotCountPreviousFailures() {
+        let queue = TransferQueue()
+        let destination = UploadDestination(name: "Deleted destination", transferProtocol: .ftp)
+        var counts: [Int] = []
+        queue.onBatchFinished = { _, failed in counts.append(failed) }
+        queue.enqueue(files: [folder.appendingPathComponent("first.jpg")], destination: destination, event: "")
+        queue.enqueue(files: [folder.appendingPathComponent("second.jpg")], destination: destination, event: "")
+        XCTAssertEqual(counts, [1, 1])
+        XCTAssertEqual(queue.failedCount, 2)
+    }
+
+    @MainActor
+    func testDeliveredUploadMarksTheSourcePhotoAndSurvivesRestart() throws {
+        let container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = container.mainContext
+        let original = folder.appendingPathComponent("DSC_1.NEF"), sentAsIs = folder.appendingPathComponent("DSC_2.JPG")
+        let edited = Photo(info: ImportedPhotoInfo(url: original, captureDate: nil, camera: nil, lens: nil, width: 1, height: 1, fileSize: 1), sessionName: "S")
+        let plain = Photo(info: ImportedPhotoInfo(url: sentAsIs, captureDate: nil, camera: nil, lens: nil, width: 1, height: 1, fileSize: 1), sessionName: "S")
+        let untouched = Photo(info: ImportedPhotoInfo(url: folder.appendingPathComponent("DSC_3.JPG"), captureDate: nil, camera: nil, lens: nil, width: 1, height: 1, fileSize: 1), sessionName: "S")
+        [edited, plain, untouched].forEach(context.insert)
+
+        let store = folder.appendingPathComponent("queue.json")
+        let queue = TransferQueue()
+        queue.attach(context: context)
+        queue.restore(from: store)
+        queue.pause()
+        let destination = UploadDestination(name: "Agency", transferProtocol: .ftp)
+        let export = folder.appendingPathComponent("export/DSC_1.jpg")
+        queue.enqueue(files: [export, sentAsIs], destination: destination, event: "", sources: [export: edited.id])
+        XCTAssertEqual(queue.items[0].sourcePhotoID, edited.id)
+        XCTAssertNil(queue.items[1].sourcePhotoID)
+
+        let restored = TransferQueue()
+        restored.attach(context: context)
+        restored.restore(from: store)
+        XCTAssertEqual(restored.items[0].sourcePhotoID, edited.id, "The link to the photo survives a restart")
+
+        let date = Date(timeIntervalSince1970: 1_000)
+        restored.items.forEach { restored.markDelivered($0, at: date) }
+        XCTAssertEqual(edited.deliveredAt, date, "An export is matched by the photo it came from")
+        XCTAssertEqual(edited.deliveredTo, "Agency")
+        XCTAssertEqual(plain.deliveredAt, date, "An original is matched by its path")
+        XCTAssertNil(untouched.deliveredAt)
+    }
+
     // MARK: Utilitários
 
     private func writeImage(named name: String, width: Int, height: Int, gps: Bool) throws -> URL {

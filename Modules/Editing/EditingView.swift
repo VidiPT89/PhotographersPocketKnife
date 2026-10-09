@@ -37,6 +37,7 @@ struct EditingView: View {
             .sheet(isPresented: $showExport) {
                 ExportSheet(photos: app.culling.targets(in: list).isEmpty ? [photo] : app.culling.targets(in: list), startWithUpload: exportWithUpload)
             }
+            .onChange(of: showExport) { _, shown in if !shown { exportWithUpload = false } }
             .onChange(of: app.pendingExport) { _, _ in consumeExportRequest() }
             .onReceive(NotificationCenter.default.publisher(for: .pasteDevelop)) { _ in
                 guard let clipboard = app.editing.clipboard else { return }

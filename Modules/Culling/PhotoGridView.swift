@@ -4,6 +4,8 @@ import SwiftData
 struct PhotoGridView: View {
     @Environment(AppState.self) private var app
     let list: [Photo]
+    /// RAWs com o JPEG do mesmo disparo escondido (RAW+JPEG juntos).
+    var pairedIDs: Set<UUID> = []
 
     private let spacing: CGFloat = 10
 
@@ -20,7 +22,8 @@ struct PhotoGridView: View {
                                 isSelected: culling.selection.contains(photo.id),
                                 isFocused: culling.focusedID == photo.id,
                                 duplicateGroup: culling.showDuplicatesOnly ? culling.duplicateGroups[photo.id] : nil,
-                                cull: culling.showCullBadges ? culling.cullBadge(for: photo.id) : nil
+                                cull: culling.showCullBadges ? culling.cullBadge(for: photo.id) : nil,
+                                isPaired: pairedIDs.contains(photo.id)
                             )
                             .id(photo.id)
                             .appearAnimation(delay: index < 40 ? Double(index) * 0.018 : 0)
@@ -66,6 +69,7 @@ struct PhotoCell: View {
     let isFocused: Bool
     let duplicateGroup: Int?
     var cull: CullBadge?
+    var isPaired = false
 
     /// Contorno verde/vermelho que pulsa uma vez ao marcar pick/reject.
     @State private var flagPulse = 0.0
@@ -94,10 +98,29 @@ struct PhotoCell: View {
                             .transition(.scale(scale: 0.8).combined(with: .opacity))
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    if photo.deliveredAt != nil {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(4)
+                            .background(Brand.success, in: Circle())
+                            .padding(5)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
                 .animation(Motion.smooth, value: cull)
+                .animation(Motion.smooth, value: photo.deliveredAt)
             HStack(spacing: 4) {
                 StarRating(rating: photo.rating, size: 9)
                 Spacer(minLength: 2)
+                if isPaired {
+                    Text("RAW+JPEG")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Palette.textSecondary)
+                        .padding(.horizontal, 3)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.separator))
+                }
                 if let color = photo.colorLabel.color {
                     Circle().fill(color).frame(width: 8, height: 8)
                 }
@@ -148,8 +171,12 @@ struct PhotoContextMenu: View {
     let list: [Photo]
 
     var body: some View {
-        Button(app.t("context.showInFinder")) {
-            NSWorkspace.shared.activateFileViewerSelecting([photo.url])
+        if FileManager.default.fileExists(atPath: photo.path) {
+            Button(app.t("context.showInFinder")) {
+                NSWorkspace.shared.activateFileViewerSelecting([photo.url])
+            }
+        } else {
+            Button(app.t("context.locateFolder")) { locateFolder() }
         }
         Button(app.t("fileInfo.title") + "…") {
             app.culling.focusedID = photo.id
@@ -170,6 +197,17 @@ struct PhotoContextMenu: View {
             let targets = app.culling.targets(in: list)
             app.culling.selection.subtract(targets.map(\.id))
             CatalogService.remove(targets, from: context)
+        }
+    }
+
+    /// O original desapareceu (disco desligado, pasta movida): reaponta a pasta dele e as subpastas.
+    private func locateFolder() {
+        guard let folder = FilePanels.chooseFolder(prompt: app.t("common.choose")) else { return }
+        let found = CatalogService.relink(from: photo.url.deletingLastPathComponent(), to: folder, in: context)
+        if found > 0 {
+            app.showToast(String(format: app.t("toast.relinked"), found), icon: "externaldrive.fill.badge.checkmark")
+        } else {
+            app.showToast(app.t("toast.relinkNone"), icon: "exclamationmark.triangle.fill")
         }
     }
 }

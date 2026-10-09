@@ -330,7 +330,7 @@ final class EngineTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        let source = folder.appendingPathComponent("source.png")
+        let source = folder.appendingPathComponent("source.jpg")
         // Tamanho realista: o ImageIO lê DNGs minúsculos como TIFF.
         let context = try XCTUnwrap(CGContext(data: nil, width: 2048, height: 1366, bitsPerComponent: 8, bytesPerRow: 0,
                                               space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
@@ -338,14 +338,44 @@ final class EngineTests: XCTestCase {
         context.fill(CGRect(x: 0, y: 0, width: 2048, height: 1366))
         context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
         context.fill(CGRect(x: 0, y: 683, width: 2048, height: 683)) // metade de cima vermelha
-        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, UTType.png.identifier as CFString, 1, nil))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(source as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
         CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
 
+        var fields = IPTCFields()
+        fields.creator = "DNG Author"
+        fields.copyright = "DNG Rights"
+        fields.caption = "DNG Caption"
+        try MetadataWriter.write(fields, to: source)
         var settings = ExportSettings()
         settings.format = .dng
+        settings.metadataRule = .copyrightOnly
+        settings.dpi = 240
+        XCTAssertEqual(MetadataReader.iptcFields(for: source).creator, "DNG Author")
         let output = try ImageRenderer.shared.export(url: source, recipe: EditRecipe(), settings: settings, to: folder)
         XCTAssertEqual(output.pathExtension, "dng")
+        let metadata = try XCTUnwrap(MetadataWriter.readMetadata(for: output))
+        let exportedFields = MetadataReader.iptcFields(from: metadata)
+        XCTAssertEqual(exportedFields.creator, "DNG Author")
+        XCTAssertEqual(exportedFields.copyright, "DNG Rights")
+        XCTAssertTrue(exportedFields.caption.isEmpty)
+        // O descodificador RAW do ImageIO não expõe DPI; verifica os IFDs TIFF no ficheiro.
+        let bytes = [UInt8](try Data(contentsOf: output))
+        func short(_ offset: Int) -> Int { Int(bytes[offset]) | (Int(bytes[offset + 1]) << 8) }
+        func long(_ offset: Int) -> Int { short(offset) | (short(offset + 2) << 16) }
+        func tag(_ number: Int, in ifd: Int) -> Int? {
+            (0..<short(ifd)).map { ifd + 2 + $0 * 12 }.first { short($0) == number }
+        }
+        let previewIFD = long(4)
+        let rawIFD = long(try XCTUnwrap(tag(330, in: previewIFD)) + 8)
+        for ifd in [previewIFD, rawIFD] {
+            for resolutionTag in [282, 283] {
+                let entry = try XCTUnwrap(tag(resolutionTag, in: ifd))
+                let rational = long(entry + 8)
+                XCTAssertEqual(Double(long(rational)) / Double(long(rational + 4)), 240)
+            }
+            XCTAssertEqual(short(try XCTUnwrap(tag(296, in: ifd)) + 8), 2, "Resolution is in inches")
+        }
 
         let imageSource = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
         XCTAssertEqual(CGImageSourceGetType(imageSource) as String?, "com.adobe.raw-image")

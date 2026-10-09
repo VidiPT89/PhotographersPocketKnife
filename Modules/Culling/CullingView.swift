@@ -74,7 +74,9 @@ struct CullingView: View {
             .folderDropTarget { app.culling.activeSheet = .importFolder($0) }
         } else {
             switch app.culling.viewMode {
-            case .grid: PhotoGridView(list: list).transition(.opacity)
+            case .grid:
+                PhotoGridView(list: list, pairedIDs: app.culling.stackPairs ? Set(PhotoPairs.twins(in: photos).keys) : [])
+                    .transition(.opacity)
             case .loupe: LoupeView(list: list).transition(.opacity)
             case .compare: CompareView(list: list).transition(.opacity)
             }
@@ -120,7 +122,7 @@ struct CullingView: View {
             break
         }
         let affected = culling.viewMode == .compare ? 1 : culling.targets(in: list).count
-        withAnimation(Motion.pop) { culling.perform(action, in: list) }
+        withAnimation(Motion.pop) { culling.perform(action, in: list, catalog: photos) }
         if action.isColorLabel, app.hotFolder.isEnabled {
             let started = app.hotFolder.handleLabelChange(culling.targets(in: list), transfers: app.transfers)
             if started > 0 {
@@ -177,6 +179,9 @@ struct CullingToolbar: View {
                 Picker(app.t("filter.flag"), selection: $c.flagFilter) {
                     ForEach(FlagFilter.allCases) { Text(app.t($0.labelKey)).tag($0) }
                 }
+                Picker(app.t("filter.delivery"), selection: $c.deliveryFilter) {
+                    ForEach(DeliveryFilter.allCases) { Text(app.t($0.labelKey)).tag($0) }
+                }
                 Picker(app.t("filter.color"), selection: $c.colorFilter) {
                     Text(app.t("filter.any")).tag(ColorLabel?.none)
                     ForEach(ColorLabel.allCases.dropFirst()) { Text(app.t($0.labelKey)).tag(Optional($0)) }
@@ -200,6 +205,7 @@ struct CullingToolbar: View {
                     Toggle(app.t("filter.issuesOnly"), isOn: $c.showIssuesOnly)
                 }
                 Divider()
+                Toggle(app.t("culling.stackPairs"), isOn: $c.stackPairs)
                 Button(app.t("filter.clear")) { c.clearFilters() }
             } label: {
                 Label(app.t("filter.title"), systemImage: c.hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")

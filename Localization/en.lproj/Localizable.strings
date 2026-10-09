@@ -740,3 +740,18 @@
 "settings.segmentModel" = "AI object selection";
 "settings.segmentHint" = "One click selects just that object or person, even in a group, with tight edges. 93 MB, downloaded once, runs on your Mac.";
 "settings.segmentInstalled" = "Installed. Clicks in object removal now use it; without it the system detector is used, which merges things that touch.";
+
+"upload.persistenceError" = "The transfer queue could not be saved or restored.";
+"export.dngLinear" = "Linear DNG uses 16-bit linear sRGB; it is a developed copy, not the original sensor RAW.";
+"filter.delivery" = "Delivery";
+"deliveryFilter.all" = "All";
+"deliveryFilter.delivered" = "Sent";
+"deliveryFilter.pending" = "Not sent";
+"info.delivered" = "Sent to %@ · %@";
+"culling.stackPairs" = "Stack RAW+JPEG";
+"context.locateFolder" = "Locate Folder…";
+"toast.relinked" = "%d photos found again";
+"toast.relinkNone" = "No catalog photos in that folder";
+"export.stop" = "Stop";
+"toast.exportStopped" = "Export stopped: %d exported, nothing sent";
+"export.retryFailed" = "Retry the %d that failed";

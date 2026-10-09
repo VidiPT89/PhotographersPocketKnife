@@ -20,6 +20,9 @@
 - ✅ Watched folder: photos your camera sends over FTP or Wi-Fi, or that tethering saves, join the catalog on their own as soon as each file has finished writing
 - ✅ Side-by-side compare of 2 or 4 frames with synced zoom and pan
 - ✅ Star ratings (0–5), pick/reject and colour labels, all on the keyboard with Photo Mechanic–style defaults — every shortcut can be remapped
+- ✅ RAW+JPEG stacking: show each pair as one photo, with stars, flags and labels applied to both files
+- ✅ Delivery status in the grid: every photo sent (original or export) shows a badge, the info panel says where and when, and a filter separates sent from not yet sent
+- ✅ Missing originals are marked in the grid (disconnected card or drive), and **Locate Folder…** points the catalog at the new location, subfolders included
 - ✅ Filter and sort by rating, flag, colour label, camera, lens, ISO, focal length, file name and capture time
 - ✅ Batch rename with templates and conflict detection
 - ✅ File Info (`I` or `⌘I`) laid out like Photo Mechanic's IPTC Info, with every field it offers: description, categories, urgency, genre, event, people shown, scene and subject codes, credits and rights, date and location, workflow and creator contact. Select several photos to fill them all together (untouched fields keep each photo's value), or go one by one, read from each photo and saved as you move with Save & ← / →, with copy and paste, recent values per field, caption variables and XMP templates that also open Photo Mechanic stationery pads
@@ -28,7 +31,7 @@
 - ✅ Code replacements compatible with Photo Mechanic files: load a tab-delimited roster and type `=7=` to get the player's name (`=7#2=` for the next column), expanded live as you type
 - ✅ Automatic player captions: the `{players}` token reads the shirt numbers in each photo on-device and writes the names from the roster
 - ✅ Capture time adjustment to sync several cameras: set the correct time of one frame and the same offset is applied to the whole selection
-- ✅ `.ppk` sidecars keep ratings and edits next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
+- ✅ The **Save sidecars** action writes ratings and edits to `.ppk` files next to the originals; XMP ratings and labels are exported for Lightroom and Bridge, and picked up again on import
 - ✅ Duplicate detection two ways: similar photos by perceptual hashing, or identical files (same size and SHA-256, even under another name or folder) with one click to remove the extra copies from the catalog
 - ✅ Photo map: photos with GPS appear on a map, and clicking one opens it in the loupe
 - ✅ Contact sheet PDF (A4) of the selection, with file name, stars, date and camera under each frame
@@ -55,16 +58,16 @@
 - ✅ Before/after toggle (`\`) and a draggable split view
 
 ### 📤 Deliver — export and upload
-- ✅ Export to JPEG, HEIC, TIFF (8/16-bit), PNG and linear DNG
+- ✅ Export to JPEG, HEIC, TIFF (8/16-bit), PNG and linear DNG (a developed 16-bit linear RGB copy, not the original sensor RAW), with collision-safe filenames even during concurrent exports
 - ✅ Resize by long edge or percentage, DPI, sRGB / Display P3 / Adobe RGB, output sharpening for screen, matte or glossy paper
 - ✅ Text watermark with position, size and opacity, and metadata rules (keep all, remove GPS, copyright only, remove all)
-- ✅ Saved export presets and one-step export & upload (`⌘⇧E`)
+- ✅ Saved export presets and one-step export & upload (`⌘⇧E`); a long export can be stopped between photos (nothing is uploaded), and only the photos that failed can be exported again
 - ✅ FTP, FTPS, SFTP (system OpenSSH, with keys or password), WebDAV and S3-compatible destinations
 - ✅ Passwords stored in the macOS Keychain, never on disk, with a built-in connection test
 - ✅ Organised destinations: search, a default destination, duplicate, test one or all at once with a status dot for each, paste a full address (`sftp://user@server:22/photos`) to fill in the fields, live checks for missing or wrong settings, and per-destination statistics
 - ✅ Remote folders built from templates (`{date}`, `{year}`, `{month}`, `{day}`, `{event}`) with one-click tokens and a preview of the full upload address
-- ✅ Transfer queue grouped by destination, with per-file and overall progress, speed, time remaining, pause/resume, automatic retries with back-off and native notifications
-- ✅ Hot folder mode — anything given the chosen colour label is exported and uploaded automatically
+- ✅ Transfer queue saved between launches (interrupted work returns paused for review), grouped by destination, with per-file and overall progress, speed, time remaining, pause/resume, automatic retries with back-off and native notifications
+- ✅ Hot folder mode — anything given the chosen colour label is exported and uploaded automatically; export failures are reported and can be retried by applying the label again
 - ✅ Client galleries: a self-contained web page with lightbox, keyword search, favourites the client can send back by email, and optional downloads — saved locally or uploaded to any destination, no server or subscription needed
 - ✅ Upload history filtered by file, destination and status, with CSV report export of what you see, and drag photos onto a destination in the sidebar to send them straight away
 
@@ -74,6 +77,7 @@
 - ✅ Colour identity from [ividi.dev](https://ividi.dev/) — burnt orange, amber and near-black, with a neutral grey canvas behind photos so nothing skews colour judgement
 - ✅ Animated splash screen with developer credits, then straight into the app
 - ✅ Spring animations, sliding switchers, hover effects and toasts throughout, with full Reduce Motion support
+- ✅ The catalog lives in its own folder (`~/Library/Application Support/PhotographersPocketKnife`); a catalog from an earlier version is copied there once and the old file is left untouched
 - ✅ Diagnostics panel (`⌥⌘D`) with render, decode and export timings
 - ✅ Automatic updates
 

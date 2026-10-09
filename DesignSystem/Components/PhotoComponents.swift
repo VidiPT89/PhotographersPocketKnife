@@ -22,10 +22,20 @@ struct ThumbnailView: View {
     var fit = false
 
     @State private var image: CGImage?
+    /// O ficheiro não está no disco (cartão ou disco desligado, pasta movida).
+    @State private var missing = false
 
     var body: some View {
         ZStack {
-            if let image {
+            if missing {
+                Rectangle()
+                    .fill(Palette.separator.opacity(0.35))
+                    .overlay {
+                        Image(systemName: "externaldrive.badge.exclamationmark")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Brand.burntYellow)
+                    }
+            } else if let image {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .aspectRatio(contentMode: fit ? .fit : .fill)
@@ -62,6 +72,7 @@ struct ThumbnailView: View {
             return ThumbnailCache.shared.thumbnail(for: url, maxPixel: maxPixel)
         }.value
         guard !Task.isCancelled else { return }
+        missing = final == nil && !FileManager.default.fileExists(atPath: url.path)
         withAnimation(.easeOut(duration: 0.2)) { image = final?.cgImage }
     }
 }

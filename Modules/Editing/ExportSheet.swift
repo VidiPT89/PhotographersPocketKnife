@@ -43,11 +43,16 @@ struct ExportSheet: View {
     @State private var presets = ExportPresetStore.presets()
     @State private var presetName = ""
     @AppStorage("export.folder") private var folderPath = ""
+    @AppStorage("upload.tab") private var uploadTab: UploadTab = .queue
     @State private var uploadAfter = false
     @State private var destinationID: UUID?
     @State private var event = ""
     @State private var progress: Double?
+    /// Pedido para parar entre fotos; a que está a ser exportada termina.
+    @State private var stopRequested = false
     @State private var errors: [String] = []
+    /// Fotos que falharam no último lote, para repetir só essas.
+    @State private var failedIDs: Set<UUID> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,6 +79,14 @@ struct ExportSheet: View {
                 Section(app.t("export.andUpload")) {
                     Toggle(app.t("export.uploadAfter"), isOn: $uploadAfter.animation(Motion.snappy))
                     if uploadAfter {
+                        if destinations.isEmpty {
+                            Text(app.t("upload.noDestinations")).foregroundStyle(Palette.textSecondary)
+                            Button(app.t("upload.tab.destinations")) {
+                                uploadTab = .destinations
+                                dismiss()
+                                app.module = .upload
+                            }
+                        }
                         Picker(app.t("upload.destination"), selection: $destinationID) {
                             Text("—").tag(UUID?.none)
                             ForEach(destinations) { Text($0.name).tag(Optional($0.id)) }
@@ -81,20 +94,33 @@ struct ExportSheet: View {
                         TextField(app.t("rename.event"), text: $event)
                     }
                 }
-                if let progress {
-                    BrandProgressBar(value: progress)
-                }
                 ForEach(errors, id: \.self) { Text($0).foregroundStyle(Brand.error) }
+                if !failedIDs.isEmpty, progress == nil {
+                    Button(String(format: app.t("export.retryFailed"), failedIDs.count)) { startExport(only: failedIDs) }
+                }
             }
             .formStyle(.grouped)
+            .disabled(progress != nil)
+
+            if let progress {
+                HStack(spacing: 12) {
+                    BrandProgressBar(value: progress)
+                    Button(app.t("export.stop")) { stopRequested = true }
+                        .disabled(stopRequested)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
 
             SheetButtons(
                 confirmTitle: app.t("export.title"),
                 confirmDisabled: folderPath.isEmpty || progress != nil || (uploadAfter && destinationID == nil),
-                isWorking: progress != nil
+                isWorking: progress != nil,
+                cancelDisabled: progress != nil
             ) { startExport() }
         }
         .frame(width: 560, height: 760)
+        .interactiveDismissDisabled(progress != nil)
         .onAppear { destinationID = destinationID ?? DestinationDefaults.preferredID(among: destinations.map(\.id)) }
     }
 
@@ -158,6 +184,10 @@ struct ExportSheet: View {
             Picker(app.t("export.colorSpace"), selection: $settings.colorSpace) {
                 ForEach(ExportColorSpace.allCases) { Text($0.displayName).tag($0) }
             }
+            .disabled(settings.format == .dng)
+            if settings.format == .dng {
+                Text(app.t("export.dngLinear")).font(.caption).foregroundStyle(Palette.textSecondary)
+            }
             Picker(app.t("export.outputSharpening"), selection: $settings.outputSharpening) {
                 ForEach(OutputSharpening.allCases) { Text(app.t($0.labelKey)).tag($0) }
             }
@@ -185,31 +215,48 @@ struct ExportSheet: View {
         }
     }
 
-    private func startExport() {
+    private func startExport(only retry: Set<UUID>? = nil) {
         let folder = URL(fileURLWithPath: folderPath, isDirectory: true)
         let settings = settings
         ExportPresetStore.lastSettings = settings
-        let jobs = photos.map { photo in
-            (url: photo.url, recipe: photo.recipeData.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) } ?? EditRecipe())
+        let jobs = photos.filter { retry?.contains($0.id) ?? true }.map { photo in
+            (id: photo.id, url: photo.url, recipe: photo.recipeData.flatMap { try? JSONDecoder().decode(EditRecipe.self, from: $0) } ?? EditRecipe())
         }
         let destination = destinations.first { $0.id == destinationID }
+        let uploadAfter = uploadAfter
+        let event = event
         progress = 0
+        stopRequested = false
         errors = []
+        failedIDs = []
 
         Task {
             var outputs: [URL] = []
+            var sources: [URL: UUID] = [:]
             for (index, job) in jobs.enumerated() {
+                guard !stopRequested else { break }
                 let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, Error> in
                     Result { try ImageRenderer.shared.export(url: job.url, recipe: job.recipe, settings: settings, to: folder) }
                 }.value
                 switch result {
-                case .success(let url): outputs.append(url)
-                case .failure(let error): errors.append(error.localizedDescription)
+                case .success(let url):
+                    outputs.append(url)
+                    sources[url] = job.id
+                case .failure(let error):
+                    errors.append("\(job.url.lastPathComponent): \(error.localizedDescription)")
+                    failedIDs.insert(job.id)
                 }
                 withAnimation { progress = Double(index + 1) / Double(jobs.count) }
             }
+            // Parar é sinal de que algo estava errado: o que já saiu fica na pasta, mas não é enviado.
+            if stopRequested {
+                progress = nil
+                app.showToast(String(format: app.t("toast.exportStopped"), outputs.count), icon: "stop.circle.fill")
+                if errors.isEmpty { dismiss() }
+                return
+            }
             if uploadAfter, let destination {
-                app.transfers.enqueue(files: outputs, destination: destination, event: event)
+                app.transfers.enqueue(files: outputs, destination: destination, event: event, sources: sources)
                 app.module = .upload
             }
             progress = nil

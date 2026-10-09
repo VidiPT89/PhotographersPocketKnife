@@ -8,6 +8,12 @@ enum FlagFilter: String, CaseIterable, Identifiable {
     var labelKey: String { "flagFilter.\(rawValue)" }
 }
 
+enum DeliveryFilter: String, CaseIterable, Identifiable {
+    case all, delivered, pending
+    var id: String { rawValue }
+    var labelKey: String { "deliveryFilter.\(rawValue)" }
+}
+
 enum PhotoSort: String, CaseIterable, Identifiable {
     case captureDate, fileName, rating, camera, score
     var id: String { rawValue }
@@ -53,6 +59,11 @@ final class CullingModel {
     var session: String?
     var minRating = 0
     var flagFilter: FlagFilter = .all
+    var deliveryFilter: DeliveryFilter = .all
+    /// RAW+JPEG como uma só foto: o JPEG fica escondido e recebe as mesmas estrelas, marcação e etiqueta.
+    var stackPairs = UserDefaults.standard.bool(forKey: "culling.stackPairs") {
+        didSet { UserDefaults.standard.set(stackPairs, forKey: "culling.stackPairs") }
+    }
     var colorFilter: ColorLabel?
     var camera: String?
     var lens: String?
@@ -110,13 +121,15 @@ final class CullingModel {
     var canUndoAutomaticCull: Bool { !cullUndo.isEmpty }
 
     var hasActiveFilters: Bool {
-        minRating > 0 || flagFilter != .all || colorFilter != nil || camera != nil || lens != nil
+        minRating > 0 || flagFilter != .all || deliveryFilter != .all || colorFilter != nil || camera != nil || lens != nil
             || minISO > 0 || focalLength != nil || showDuplicatesOnly || showIssuesOnly
+            || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func clearFilters() {
         minRating = 0
         flagFilter = .all
+        deliveryFilter = .all
         colorFilter = nil
         camera = nil
         lens = nil
@@ -131,7 +144,9 @@ final class CullingModel {
 
     func visible(_ photos: [Photo]) -> [Photo] {
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        let hiddenTwins = stackPairs ? Set(PhotoPairs.twins(in: photos).values.joined()) : []
         let list = photos.filter { photo in
+            if hiddenTwins.contains(photo.id) { return false }
             if let session, photo.sessionName != session { return false }
             if photo.rating < minRating { return false }
             switch flagFilter {
@@ -139,6 +154,11 @@ final class CullingModel {
             case .picks: if photo.flag != .pick { return false }
             case .rejects: if photo.flag != .reject { return false }
             case .unflagged: if photo.flag != .none { return false }
+            }
+            switch deliveryFilter {
+            case .all: break
+            case .delivered: if photo.deliveredAt == nil { return false }
+            case .pending: if photo.deliveredAt != nil { return false }
             }
             if let colorFilter, photo.colorLabel != colorFilter { return false }
             if let camera, photo.camera != camera { return false }
@@ -221,9 +241,16 @@ final class CullingModel {
 
     // MARK: Ações
 
-    func perform(_ action: CullingAction, in list: [Photo]) {
+    /// `catalog` é o catálogo inteiro, onde estão os JPEG escondidos dos pares RAW+JPEG.
+    func perform(_ action: CullingAction, in list: [Photo], catalog: [Photo]? = nil) {
         // Em comparação, a ação aplica-se só ao painel em foco.
-        let photos = viewMode == .compare ? list.filter { $0.id == focusedID } : targets(in: list)
+        var photos = viewMode == .compare ? list.filter { $0.id == focusedID } : targets(in: list)
+        if stackPairs, action.classifies {
+            let all = catalog ?? list
+            let twins = PhotoPairs.twins(in: all)
+            let ids = Set(photos.flatMap { twins[$0.id] ?? [] }).subtracting(photos.map(\.id))
+            photos += all.filter { ids.contains($0.id) }
+        }
         switch action {
         case .rate0, .rate1, .rate2, .rate3, .rate4, .rate5:
             let value = Int(String(action.rawValue.last ?? "0")) ?? 0

@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 import UserNotifications
 
-enum TransferStatus: Equatable {
+enum TransferStatus: Equatable, Codable {
     case pending, running, waitingRetry, done
     case failed(String)
 }
@@ -14,12 +14,14 @@ enum ConnectionState: Equatable {
 @Observable
 @MainActor
 final class TransferItem: Identifiable {
-    let id = UUID()
+    let id: UUID
     let fileURL: URL
     let destinationID: UUID
     let destinationName: String
     let remotePath: String
     let bytes: Int64
+    /// Foto do catálogo que deu origem ao ficheiro (exportação); `nil` = procura pelo caminho do original.
+    let sourcePhotoID: UUID?
     var status: TransferStatus = .pending
     var progress = 0.0
     var attempts = 0
@@ -27,7 +29,9 @@ final class TransferItem: Identifiable {
     var bytesPerSecond = 0.0
     @ObservationIgnored private var lastSample: (time: Date, progress: Double)?
 
-    init(fileURL: URL, destinationID: UUID, destinationName: String, remotePath: String, bytes: Int64? = nil) {
+    init(id: UUID = UUID(), fileURL: URL, destinationID: UUID, destinationName: String, remotePath: String, bytes: Int64? = nil, sourcePhotoID: UUID? = nil) {
+        self.id = id
+        self.sourcePhotoID = sourcePhotoID
         self.fileURL = fileURL
         self.destinationID = destinationID
         self.destinationName = destinationName
@@ -113,10 +117,66 @@ final class TransferQueue {
     @ObservationIgnored private var context: ModelContext?
     @ObservationIgnored private var running: [UUID: CurlProcess] = [:]
     @ObservationIgnored private var batchActive = false
+    @ObservationIgnored private var batchIDs: Set<UUID> = []
+    @ObservationIgnored private var persistenceURL: URL?
+    private(set) var persistenceError: String?
+
+    private struct SavedItem: Codable {
+        var id: UUID
+        var fileURL: URL
+        var destinationID: UUID
+        var destinationName: String
+        var remotePath: String
+        var bytes: Int64
+        var status: TransferStatus
+        var sourcePhotoID: UUID?
+    }
+
+    /// Recupera o trabalho interrompido em pausa, para o fotógrafo rever antes de retomar.
+    func restore(from url: URL) {
+        guard persistenceURL == nil else { return }
+        persistenceURL = url
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            let saved = try JSONDecoder().decode([SavedItem].self, from: Data(contentsOf: url))
+            items = saved.map { entry in
+                let item = TransferItem(id: entry.id, fileURL: entry.fileURL, destinationID: entry.destinationID,
+                                        destinationName: entry.destinationName, remotePath: entry.remotePath, bytes: entry.bytes,
+                                        sourcePhotoID: entry.sourcePhotoID)
+                switch entry.status {
+                case .running, .waitingRetry: item.status = .pending
+                default: item.status = entry.status
+                }
+                if item.status == .done { item.progress = 1 }
+                return item
+            }
+            isPaused = items.contains { $0.status == .pending }
+            batchActive = isPaused
+            batchIDs = Set(items.filter { $0.status == .pending }.map(\.id))
+        } catch {
+            persistenceError = error.localizedDescription
+            // Um ficheiro que não conseguimos ler fica intacto.
+            persistenceURL = nil
+        }
+    }
+
+    private func saveQueue() {
+        guard let persistenceURL else { return }
+        do {
+            let saved = items.map { SavedItem(id: $0.id, fileURL: $0.fileURL, destinationID: $0.destinationID,
+                destinationName: $0.destinationName, remotePath: $0.remotePath, bytes: $0.bytes, status: $0.status,
+                sourcePhotoID: $0.sourcePhotoID) }
+            try FileManager.default.createDirectory(at: persistenceURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(saved).write(to: persistenceURL, options: .atomic)
+            persistenceError = nil
+        } catch {
+            persistenceError = error.localizedDescription
+        }
+    }
 
     init() {
         let defaults = UserDefaults.standard
-        maxConcurrent = defaults.object(forKey: "transfers.maxConcurrent") as? Int ?? 2
+        maxConcurrent = max(1, defaults.object(forKey: "transfers.maxConcurrent") as? Int ?? 2)
         maxAttempts = defaults.object(forKey: "transfers.maxAttempts") as? Int ?? 3
     }
 
@@ -126,7 +186,7 @@ final class TransferQueue {
 
     var connectionState: ConnectionState {
         if items.contains(where: { $0.status == .running }) { return .transferring }
-        if isPaused, items.contains(where: { $0.status == .pending }) { return .paused }
+        if isPaused, items.contains(where: { $0.status == .pending || $0.status == .waitingRetry }) { return .paused }
         if items.contains(where: { if case .failed = $0.status { true } else { false } }) { return .error }
         return .idle
     }
@@ -157,19 +217,24 @@ final class TransferQueue {
 
     // MARK: Controlo
 
-    func enqueue(files: [URL], destination: UploadDestination, event: String) {
+    /// `sources` liga cada ficheiro exportado à foto de origem, para a marcar como enviada.
+    func enqueue(files: [URL], destination: UploadDestination, event: String, sources: [URL: UUID] = [:]) {
         guard !files.isEmpty else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         let folder = RemotePath.folder(template: destination.remoteFolderTemplate, date: Date(), event: event)
         for file in files {
-            items.append(TransferItem(
+            let item = TransferItem(
                 fileURL: file,
                 destinationID: destination.id,
                 destinationName: destination.name,
-                remotePath: RemotePath.join(folder, file.lastPathComponent)
-            ))
+                remotePath: RemotePath.join(folder, file.lastPathComponent),
+                sourcePhotoID: sources[file]
+            )
+            items.append(item)
+            batchIDs.insert(item.id)
         }
         batchActive = true
+        saveQueue()
         pump()
     }
 
@@ -186,9 +251,14 @@ final class TransferQueue {
     }
 
     func retry(_ item: TransferItem) {
+        guard items.contains(where: { $0.id == item.id }), case .failed = item.status else { return }
+        item.progress = 0
+        item.resetSpeed()
         item.status = .pending
         item.attempts = 0
+        batchIDs.insert(item.id)
         batchActive = true
+        saveQueue()
         pump()
     }
 
@@ -201,25 +271,31 @@ final class TransferQueue {
     func remove(_ item: TransferItem) {
         running[item.id]?.cancel()
         items.removeAll { $0.id == item.id }
+        batchIDs.remove(item.id)
+        saveQueue()
+        pump()
     }
 
     func clearFinished() {
         items.removeAll { $0.status == .done }
+        saveQueue()
     }
 
     // MARK: Execução
 
     private func pump() {
         guard !isPaused else { return }
-        while running.count < maxConcurrent, let next = items.first(where: { $0.status == .pending }) {
+        while running.count < max(1, maxConcurrent), let next = items.first(where: { $0.status == .pending }) {
             start(next)
         }
+        saveQueue()
         finishBatchIfNeeded()
     }
 
     private func start(_ item: TransferItem) {
         guard let destination = fetchDestination(item.destinationID) else {
             item.status = .failed(TransferError.missingDestination.localizedDescription)
+            record(item, error: TransferError.missingDestination.localizedDescription)
             return
         }
         let endpoint = destination.endpoint()
@@ -227,6 +303,8 @@ final class TransferQueue {
         let resume = item.attempts > 0 && item.progress > 0 && [.ftp, .ftps, .sftp].contains(endpoint.transferProtocol)
         let command = TransferCommand.upload(endpoint, file: item.fileURL, remotePath: item.remotePath, resume: resume)
 
+        if !resume { item.progress = 0 }
+        item.resetSpeed()
         item.status = .running
         item.attempts += 1
         let process = CurlProcess(executable: command.executable, environment: command.environment)
@@ -237,9 +315,15 @@ final class TransferQueue {
                 try await process.run(arguments: command.arguments, config: command.input) { progress in
                     Task { @MainActor in item.updateProgress(progress) }
                 }
+                guard items.contains(where: { $0.id == item.id }) else {
+                    running[item.id] = nil
+                    pump()
+                    return
+                }
                 item.progress = 1
                 item.resetSpeed()
                 item.status = .done
+                markDelivered(item)
                 record(item, error: nil)
             } catch TransferError.cancelled {
                 item.resetSpeed()
@@ -252,6 +336,7 @@ final class TransferQueue {
                 record(item, error: error.localizedDescription)
             }
             running[item.id] = nil
+            saveQueue()
             pump()
         }
     }
@@ -260,7 +345,7 @@ final class TransferQueue {
         let delay = pow(2, Double(item.attempts))
         Task {
             try? await Task.sleep(for: .seconds(delay))
-            guard item.status == .waitingRetry else { return }
+            guard items.contains(where: { $0.id == item.id }), item.status == .waitingRetry else { return }
             item.status = .pending
             pump()
         }
@@ -268,12 +353,17 @@ final class TransferQueue {
 
     private func finishBatchIfNeeded() {
         let busy = items.contains { [.pending, .running, .waitingRetry].contains($0.status) }
-        guard batchActive, !busy, !items.isEmpty else { return }
+        guard batchActive, !busy else { return }
         batchActive = false
-        onBatchFinished?(completedCount, failedCount)
+        let batch = items.filter { batchIDs.contains($0.id) }
+        batchIDs = []
+        guard !batch.isEmpty else { return }
+        let completed = batch.filter { $0.status == .done }.count
+        let failed = batch.filter { if case .failed = $0.status { true } else { false } }.count
+        onBatchFinished?(completed, failed)
         let content = UNMutableNotificationContent()
         content.title = localize("notification.uploadDone.title")
-        content.body = String(format: localize("notification.uploadDone.body"), completedCount, failedCount)
+        content.body = String(format: localize("notification.uploadDone.body"), completed, failed)
         content.sound = .default
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
@@ -281,6 +371,22 @@ final class TransferQueue {
     private func fetchDestination(_ id: UUID) -> UploadDestination? {
         let descriptor = FetchDescriptor<UploadDestination>(predicate: #Predicate { $0.id == id })
         return try? context?.fetch(descriptor).first
+    }
+
+    /// A foto de origem fica marcada como enviada: pelo id, quando o ficheiro é uma exportação,
+    /// ou pelo caminho, quando se enviou o próprio original. A gravação fica a cargo de `record`.
+    func markDelivered(_ item: TransferItem, at date: Date = Date()) {
+        guard let context else { return }
+        let descriptor: FetchDescriptor<Photo>
+        if let id = item.sourcePhotoID {
+            descriptor = FetchDescriptor(predicate: #Predicate { $0.id == id })
+        } else {
+            let path = item.fileURL.path
+            descriptor = FetchDescriptor(predicate: #Predicate { $0.path == path })
+        }
+        guard let photo = try? context.fetch(descriptor).first else { return }
+        photo.deliveredAt = date
+        photo.deliveredTo = item.destinationName
     }
 
     private func record(_ item: TransferItem, error: String?) {

@@ -21,6 +21,12 @@ struct InfoPanel: View {
                 }
 
                 PanelHeader(title: app.t("info.metadata"))
+                if let photo, let date = photo.deliveredAt {
+                    let when = date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: Locale(identifier: app.language.rawValue)))
+                    Label(String(format: app.t("info.delivered"), photo.deliveredTo ?? "—", when), systemImage: "paperplane.fill")
+                        .font(Typography.caption)
+                        .foregroundStyle(Brand.success)
+                }
                 if photo == nil {
                     Text(app.t("info.noSelection"))
                         .font(Typography.body)

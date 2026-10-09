@@ -740,3 +740,18 @@
 "settings.segmentModel" = "Seleção de objetos com IA";
 "settings.segmentHint" = "Um clique seleciona só aquele objeto ou pessoa, mesmo num grupo, com as bermas justas. 93 MB, descarregado uma vez, corre no teu Mac.";
 "settings.segmentInstalled" = "Instalado. Os cliques na remoção de objetos passam a usá-lo; sem ele volta a deteção do sistema, que junta o que se toca.";
+
+"upload.persistenceError" = "Não foi possível guardar ou recuperar a fila de envios.";
+"export.dngLinear" = "O DNG linear usa sRGB linear a 16 bits: é uma cópia revelada, não o RAW original do sensor.";
+"filter.delivery" = "Envio";
+"deliveryFilter.all" = "Todas";
+"deliveryFilter.delivered" = "Enviadas";
+"deliveryFilter.pending" = "Por enviar";
+"info.delivered" = "Enviada para %@ · %@";
+"culling.stackPairs" = "Juntar RAW+JPEG";
+"context.locateFolder" = "Localizar pasta…";
+"toast.relinked" = "%d fotos reencontradas";
+"toast.relinkNone" = "Nenhuma foto do catálogo nessa pasta";
+"export.stop" = "Parar";
+"toast.exportStopped" = "Exportação parada: %d exportadas, nada enviado";
+"export.retryFailed" = "Repetir as %d que falharam";

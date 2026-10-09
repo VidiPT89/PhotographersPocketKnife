@@ -97,7 +97,7 @@ enum Inpainter {
         var remaining = holeCount
 
         while remaining > 0 {
-            let layer = boundary(known: known, hole: hole, width: w, height: h)
+            let layer = boundary(known: known, width: w, height: h)
             guard !layer.isEmpty else { break }
             // Primeiro os que têm mais contexto resolvido à volta: são os que decidem a textura com
             // mais informação, e o que eles escolhem guia quem vem atrás.
@@ -143,7 +143,7 @@ enum Inpainter {
     }
 
     /// Píxeis ainda por resolver que já têm um vizinho resolvido: a camada seguinte a preencher.
-    private static func boundary(known: [Bool], hole: [Bool], width w: Int, height h: Int) -> [Int32] {
+    private static func boundary(known: [Bool], width w: Int, height h: Int) -> [Int32] {
         var layer: [Int32] = []
         for y in 0..<h {
             for x in 0..<w where !known[y * w + x] {

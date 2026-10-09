@@ -15,14 +15,17 @@ enum CullingAction: String, CaseIterable, Identifiable, Sendable {
         [.labelRed, .labelYellow, .labelGreen, .labelBlue, .labelPurple].contains(self)
     }
 
-    /// Ações de classificação mostram uma confirmação; as de navegação não.
-    var showsToast: Bool {
+    /// Estrelas, marcação e etiquetas: mudam a foto, não a vista.
+    var classifies: Bool {
         switch self {
         case .rate0, .rate1, .rate2, .rate3, .rate4, .rate5, .pick, .reject, .unflag,
              .labelRed, .labelYellow, .labelGreen, .labelBlue, .labelPurple: true
         default: false
         }
     }
+
+    /// Ações de classificação mostram uma confirmação; as de navegação não.
+    var showsToast: Bool { classifies }
     var labelKey: String { "shortcut.\(rawValue)" }
 
     var icon: String {

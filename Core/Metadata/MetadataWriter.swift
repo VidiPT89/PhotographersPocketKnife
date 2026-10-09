@@ -41,10 +41,14 @@ enum MetadataWriter {
 
     /// `xmp:Rating` e `xmp:Label`, que o Lightroom e o Bridge leem (só a pedido, para não poluir as pastas).
     static func writeRating(_ rating: Int, label: ColorLabel, to url: URL) throws {
-        try update(url) { metadata, _ in
+        try update(url) { metadata, merging in
             CGImageMetadataSetValueWithPath(metadata, nil, "xmp:Rating" as CFString, NSNumber(value: min(max(rating, 0), 5)))
             if let name = label.xmpName {
                 CGImageMetadataSetValueWithPath(metadata, nil, "xmp:Label" as CFString, name as CFString)
+            } else if merging {
+                CGImageMetadataSetValueWithPath(metadata, nil, "xmp:Label" as CFString, kCFNull)
+            } else {
+                CGImageMetadataRemoveTagWithPath(metadata, nil, "xmp:Label" as CFString)
             }
         }
     }

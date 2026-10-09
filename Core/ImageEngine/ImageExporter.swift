@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import AppKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
@@ -143,11 +144,13 @@ extension ExportSettings: Codable {
 enum ExportError: LocalizedError {
     case unreadable(String)
     case cannotWrite(String)
+    case invalidSettings
 
     var errorDescription: String? {
         switch self {
         case .unreadable(let name): "Cannot read \(name)"
         case .cannotWrite(let name): "Cannot export \(name)"
+        case .invalidSettings: "Invalid export size, resolution or file suffix"
         }
     }
 }
@@ -161,6 +164,11 @@ extension ImageRenderer {
     }
 
     private func exportMeasured(url: URL, recipe: EditRecipe, settings: ExportSettings, to folder: URL) throws -> URL {
+        guard settings.dpi > 0,
+              !settings.resize || settings.resizeMode != .longEdge || settings.longEdge > 0,
+              !settings.suffix.contains(where: { $0 == "/" || $0 == ":" || $0 == "\0" }) else {
+            throw ExportError.invalidSettings
+        }
         let source: CIImage?
         if PhotoImporter.isRaw(url) {
             source = decodeRAW(url, maxPixel: nil, lensCorrection: recipe.lensCorrection)
@@ -185,10 +193,18 @@ extension ImageRenderer {
         image = image.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
 
         let baseName = url.deletingPathExtension().lastPathComponent + settings.suffix
-        let target = PhotoImporter.uniqueURL(folder.appendingPathComponent(baseName).appendingPathExtension(settings.format.fileExtension))
+        let target = try Self.reserveExportURL(folder.appendingPathComponent(baseName).appendingPathExtension(settings.format.fileExtension))
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: target) } }
 
         if settings.format == .dng {
-            try DNGWriter.write(image, context: context, to: target, camera: MetadataReader.basicInfo(for: url).camera)
+            let metadata = MetadataWriter.readMetadata(for: url).flatMap { Self.exportMetadata($0, rule: settings.metadataRule) }
+            let xmp = metadata.flatMap { CGImageMetadataCreateXMPData($0, nil) as Data? }
+            let keepsCamera = settings.metadataRule == .all || settings.metadataRule == .noGPS
+            try DNGWriter.write(image, context: context, to: target,
+                                camera: keepsCamera ? MetadataReader.basicInfo(for: url).camera : nil,
+                                xmp: xmp, dpi: settings.dpi)
+            completed = true
             return target
         }
 
@@ -209,14 +225,56 @@ extension ImageRenderer {
         properties.merge(Self.metadata(from: MetadataReader.properties(for: url), rule: settings.metadataRule)) { $1 }
 
         // Em RAW, os IPTC vivem no sidecar XMP: vão com a imagem, exceto se a regra os excluir.
-        let keepsXMP = settings.metadataRule == .all || settings.metadataRule == .noGPS
-        if keepsXMP, PhotoImporter.isRaw(url), let xmp = MetadataWriter.readMetadata(for: url) {
+        if PhotoImporter.isRaw(url), let original = MetadataWriter.readMetadata(for: url),
+           let xmp = Self.exportMetadata(original, rule: settings.metadataRule) {
             CGImageDestinationAddImageAndMetadata(destination, cgImage, xmp, properties as CFDictionary)
         } else {
             CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
         }
         guard CGImageDestinationFinalize(destination) else { throw ExportError.cannotWrite(url.lastPathComponent) }
+        completed = true
         return target
+    }
+
+    /// Reserva o nome antes da escrita: exportação manual e automática podem decorrer ao mesmo tempo.
+    private static func reserveExportURL(_ candidate: URL) throws -> URL {
+        while true {
+            let target = PhotoImporter.uniqueURL(candidate)
+            let descriptor = Darwin.open(target.path, O_WRONLY | O_CREAT | O_EXCL, 0o644)
+            if descriptor >= 0 {
+                Darwin.close(descriptor)
+                return target
+            }
+            guard errno == EEXIST else { throw ExportError.cannotWrite(target.lastPathComponent) }
+        }
+    }
+
+    /// Aplica a mesma política ao XMP externo e aos metadados embebidos.
+    static func exportMetadata(_ original: CGImageMetadata, rule: MetadataRule) -> CGImageMetadata? {
+        switch rule {
+        case .none: return nil
+        case .all: return original
+        case .copyrightOnly:
+            let fields = MetadataReader.iptcFields(from: original)
+            var rights = IPTCFields()
+            rights.creator = fields.creator
+            rights.copyright = fields.copyright
+            rights.copyrightStatus = fields.copyrightStatus
+            rights.copyrightURL = fields.copyrightURL
+            rights.usageTerms = fields.usageTerms
+            return MetadataWriter.xmpData(for: rights).flatMap { CGImageMetadataCreateFromXMPData($0 as CFData) }
+        case .noGPS:
+            guard let copy = CGImageMetadataCreateMutableCopy(original) else { return nil }
+            var paths: [String] = []
+            CGImageMetadataEnumerateTagsUsingBlock(original, nil, nil) { path, tag in
+                if let name = CGImageMetadataTagCopyName(tag), (name as String).hasPrefix("GPS") {
+                    paths.append(path as String)
+                }
+                return true
+            }
+            for path in paths { CGImageMetadataRemoveTagWithPath(copy, nil, path as CFString) }
+            return copy
+        }
     }
 
     private func resized(_ image: CIImage, settings: ExportSettings) -> CIImage {

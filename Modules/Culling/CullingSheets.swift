@@ -172,6 +172,7 @@ struct SheetButtons: View {
     let confirmTitle: String
     var confirmDisabled = false
     var isWorking = false
+    var cancelDisabled = false
     let onConfirm: () -> Void
 
     var body: some View {
@@ -180,6 +181,7 @@ struct SheetButtons: View {
             Spacer()
             Button(app.t("common.cancel")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
+                .disabled(cancelDisabled)
             Button(confirmTitle, action: onConfirm)
                 .keyboardShortcut(.defaultAction)
                 .disabled(confirmDisabled)

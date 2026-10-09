@@ -64,6 +64,26 @@ struct TransferQueueView: View {
                 .background(Brand.orange.opacity(0.12))
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+            if let error = queue.persistenceError {
+                Label(app.t("upload.persistenceError") + " " + error, systemImage: "exclamationmark.triangle.fill")
+                    .font(Typography.caption)
+                    .foregroundStyle(Brand.error)
+                    .padding(8)
+            }
+            if let failure = app.hotFolder.failures.last {
+                HStack {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill")
+                        .font(Typography.caption)
+                        .foregroundStyle(Brand.error)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button { app.hotFolder.clearFailures() } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Palette.textSecondary)
+                        .help(app.t("common.close"))
+                }
+                .padding(8)
+            }
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {

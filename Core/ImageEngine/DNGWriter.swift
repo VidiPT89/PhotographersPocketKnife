@@ -12,7 +12,7 @@ enum DNGWriter {
         var errorDescription: String? { "Cannot render DNG" }
     }
 
-    static func write(_ image: CIImage, context: CIContext, to url: URL, camera: String?) throws {
+    static func write(_ image: CIImage, context: CIContext, to url: URL, camera: String?, xmp: Data? = nil, dpi: Int = 300) throws {
         let extent = image.extent.integral
         let width = Int(extent.width), height = Int(extent.height)
         guard width > 0, height > 0 else { throw WriteError.render }
@@ -21,7 +21,7 @@ enum DNGWriter {
         let preview = try previewPixels(image, extent: extent, context: context)
         let model = camera ?? "PhotographersPocketKnife"
 
-        let ifd0: [TIFFEntry] = [
+        var ifd0: [TIFFEntry] = [
             .long(254, [1]), // pré-visualização
             .long(256, [UInt32(preview.width)]),
             .long(257, [UInt32(preview.height)]),
@@ -36,6 +36,9 @@ enum DNGWriter {
             .long(278, [UInt32(preview.height)]),
             .long(279, [UInt32(preview.data.count)]),
             .short(284, [1]),
+            .rational(282, [(UInt32(clamping: dpi), 1)]),
+            .rational(283, [(UInt32(clamping: dpi), 1)]),
+            .short(296, [2]),
             .ascii(305, "PhotographersPocketKnife"),
             .ascii(306, dateString()),
             .long(330, [0]), // SubIFDs
@@ -52,6 +55,7 @@ enum DNGWriter {
             .rational(50739, [(1, 1)]), // ShadowScale
             .short(50778, [21]), // CalibrationIlluminant1 = D65
         ]
+        if let xmp { ifd0.append(.bytes(700, Array(xmp))) }
         let raw: [TIFFEntry] = [
             .long(254, [0]),
             .long(256, [UInt32(width)]),
@@ -64,6 +68,9 @@ enum DNGWriter {
             .long(278, [UInt32(height)]),
             .long(279, [UInt32(rawData.count)]),
             .short(284, [1]),
+            .rational(282, [(UInt32(clamping: dpi), 1)]),
+            .rational(283, [(UInt32(clamping: dpi), 1)]),
+            .short(296, [2]),
             .short(50713, [1, 1]), // BlackLevelRepeatDim
             .long(50714, [0, 0, 0]), // BlackLevel
             .long(50717, [65535, 65535, 65535]), // WhiteLevel

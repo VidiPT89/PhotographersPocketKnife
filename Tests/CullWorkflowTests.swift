@@ -82,8 +82,14 @@ final class CullWorkflowTests: XCTestCase {
         XCTAssertEqual(MetadataReader.xmpString(embedded, "xmp:Rating"), "3")
         XCTAssertEqual(MetadataReader.xmpString(embedded, "xmp:Label"), "Blue")
 
+        try MetadataWriter.writeRating(2, label: .none, to: jpeg)
+        let cleared = try XCTUnwrap(MetadataWriter.readMetadata(for: jpeg))
+        XCTAssertNil(MetadataReader.xmpString(cleared, "xmp:Label"))
+        XCTAssertEqual(MetadataReader.xmpString(cleared, "xmp:Rating"), "2")
+
         let raw = folder.appendingPathComponent("IMG_1.CR3")
         try Data("raw".utf8).write(to: raw)
+        try MetadataWriter.writeRating(4, label: .green, to: raw)
         try MetadataWriter.writeRating(5, label: .none, to: raw)
         let sidecar = try XCTUnwrap(MetadataWriter.readMetadata(for: raw))
         XCTAssertEqual(MetadataReader.xmpString(sidecar, "xmp:Rating"), "5")
@@ -110,6 +116,119 @@ final class CullWorkflowTests: XCTestCase {
 
         model.minISO = 3200
         XCTAssertTrue(model.hasActiveFilters)
+    }
+
+    func testRAWJPEGPairsMatchByFolderAndNameIgnoringCase() {
+        let raw = UUID(), jpeg = UUID(), elsewhere = UUID(), heic = UUID(), lone = UUID()
+        let twins = PhotoPairs.twins([
+            (raw, "/card/DCIM/IMG_0001.CR3"),
+            (jpeg, "/card/DCIM/img_0001.JPG"),
+            (heic, "/card/DCIM/IMG_0001.heic"),
+            (elsewhere, "/backup/IMG_0001.JPG"),
+            (lone, "/card/DCIM/IMG_0002.JPG"),
+        ])
+        XCTAssertEqual(twins.count, 1)
+        XCTAssertEqual(Set(twins[raw] ?? []), [jpeg, heic])
+    }
+
+    @MainActor
+    func testStackedPairsHideTheJPEGAndShareClassification() throws {
+        let container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let raw = photo("/shoot/A.NEF"), jpeg = photo("/shoot/A.JPG"), other = photo("/shoot/B.JPG")
+        [raw, jpeg, other].forEach(container.mainContext.insert)
+        let catalog = [raw, jpeg, other]
+        let model = CullingModel()
+        let saved = UserDefaults.standard.object(forKey: "culling.stackPairs")
+        defer { UserDefaults.standard.set(saved, forKey: "culling.stackPairs") }
+
+        model.stackPairs = false
+        XCTAssertEqual(model.visible(catalog).count, 3)
+        model.selection = [raw.id]
+        model.perform(.rate4, in: model.visible(catalog), catalog: catalog)
+        XCTAssertEqual(jpeg.rating, 0, "Without stacking, the JPEG is its own photo")
+
+        model.stackPairs = true
+        let list = model.visible(catalog)
+        XCTAssertEqual(Set(list.map(\.id)), [raw.id, other.id])
+        model.perform(.rate5, in: list, catalog: catalog)
+        model.perform(.pick, in: list, catalog: catalog)
+        model.perform(.labelGreen, in: list, catalog: catalog)
+        XCTAssertEqual(jpeg.rating, 5)
+        XCTAssertEqual(jpeg.flag, .pick)
+        XCTAssertEqual(jpeg.colorLabel, .green)
+        XCTAssertEqual(other.rating, 0)
+        model.perform(.pick, in: list, catalog: catalog)
+        XCTAssertEqual(jpeg.flag, .none, "Toggling off clears both files")
+    }
+
+    @MainActor
+    func testDeliveryFilterSeparatesSentFromPending() {
+        let sent = photo("/shoot/sent.jpg"), pending = photo("/shoot/pending.jpg")
+        sent.deliveredAt = Date()
+        let model = CullingModel()
+        model.deliveryFilter = .delivered
+        XCTAssertTrue(model.hasActiveFilters)
+        XCTAssertEqual(model.visible([sent, pending]).map(\.id), [sent.id])
+        model.deliveryFilter = .pending
+        XCTAssertEqual(model.visible([sent, pending]).map(\.id), [pending.id])
+        model.clearFilters()
+        XCTAssertEqual(model.deliveryFilter, .all)
+    }
+
+    @MainActor
+    func testRelinkMovesOnlyPhotosFoundUnderTheNewFolder() throws {
+        let container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let nested = photo("/Volumes/Old/2026/a.jpg"), top = photo("/Volumes/Old/b.jpg")
+        let gone = photo("/Volumes/Old/c.jpg"), unrelated = photo("/Volumes/Older/d.jpg")
+        [nested, top, gone, unrelated].forEach(container.mainContext.insert)
+        let present: Set<String> = ["/Volumes/New/2026/a.jpg", "/Volumes/New/b.jpg", "/Volumes/New/d.jpg"]
+
+        let found = CatalogService.relink(from: URL(fileURLWithPath: "/Volumes/Old"), to: URL(fileURLWithPath: "/Volumes/New/"),
+                                          in: container.mainContext, fileExists: present.contains)
+        XCTAssertEqual(found, 2)
+        XCTAssertEqual(nested.path, "/Volumes/New/2026/a.jpg")
+        XCTAssertEqual(top.path, "/Volumes/New/b.jpg")
+        XCTAssertEqual(gone.path, "/Volumes/Old/c.jpg", "A file missing from the new folder keeps its old path")
+        XCTAssertEqual(unrelated.path, "/Volumes/Older/d.jpg", "A sibling folder sharing the prefix is not touched")
+    }
+
+    @MainActor
+    func testLegacyCatalogIsCopiedOnceIntoTheAppFolder() throws {
+        let legacy = folder.appendingPathComponent("default.store")
+        let target = folder.appendingPathComponent("PhotographersPocketKnife/Catalog.store")
+        do {
+            let container = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                                               configurations: ModelConfiguration(url: legacy))
+            let kept = photo("/shoot/kept.jpg")
+            kept.rating = 4
+            container.mainContext.insert(kept)
+            try container.mainContext.save()
+        }
+        XCTAssertTrue(CatalogStore.isCatalog(legacy))
+        XCTAssertTrue(try CatalogStore.migrateLegacy(from: legacy, to: target))
+        XCTAssertFalse(try CatalogStore.migrateLegacy(from: legacy, to: target), "Never overwrite the new catalog")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacy.path), "The old catalog is left in place")
+
+        let reopened = try ModelContainer(for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
+                                          configurations: ModelConfiguration(url: target))
+        let photos = try reopened.mainContext.fetch(FetchDescriptor<Photo>())
+        XCTAssertEqual(photos.map(\.rating), [4])
+    }
+
+    func testForeignDatabaseIsNotTakenAsTheCatalog() throws {
+        let foreign = folder.appendingPathComponent("default.store")
+        try Data("not a database".utf8).write(to: foreign)
+        let target = folder.appendingPathComponent("new/Catalog.store")
+        XCTAssertFalse(CatalogStore.isCatalog(foreign))
+        XCTAssertFalse(try CatalogStore.migrateLegacy(from: foreign, to: target))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+    }
+
+    @MainActor
+    private func photo(_ path: String) -> Photo {
+        Photo(info: ImportedPhotoInfo(url: URL(fileURLWithPath: path), captureDate: nil, camera: nil, lens: nil, width: 1, height: 1, fileSize: 1), sessionName: "S")
     }
 
     @MainActor

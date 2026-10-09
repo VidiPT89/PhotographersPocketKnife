@@ -25,7 +25,7 @@ struct PhotographersPocketKnifeApp: App {
         do {
             container = try ModelContainer(
                 for: Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self,
-                configurations: ModelConfiguration(isStoredInMemoryOnly: Self.isUITesting)
+                configurations: Self.isUITesting ? ModelConfiguration(isStoredInMemoryOnly: true) : ModelConfiguration(url: CatalogStore.prepare())
             )
         } catch {
             // O ficheiro do catálogo fica intacto no disco; só não é usado nesta sessão.
@@ -62,6 +62,11 @@ struct PhotographersPocketKnifeApp: App {
                 .frame(minWidth: 1100, minHeight: 680)
                 .onAppear {
                     appState.transfers.attach(context: container.mainContext)
+                    if !Self.isUITesting, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                        let queueURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                            .appendingPathComponent("PhotographersPocketKnife/transfers.json")
+                        appState.transfers.restore(from: queueURL)
+                    }
                     appState.hotFolder.attach(context: container.mainContext)
                     if !Self.isUITesting { appState.watchFolder.attach(context: container.mainContext, culling: appState.culling) }
                     appDelegate.attach { urls in openFromFinder(urls) }

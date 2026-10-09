@@ -351,7 +351,7 @@ struct PresentationView: View {
                 return .handled
             }
             guard action.showsToast else { return .ignored }
-            withAnimation(Motion.pop) { app.culling.perform(action, in: list) }
+            withAnimation(Motion.pop) { app.culling.perform(action, in: list, catalog: photos) }
             return .handled
         }
     }
@@ -362,7 +362,6 @@ struct PresentationView: View {
 }
 
 struct PhotoCaptionBar: View {
-    @Environment(AppState.self) private var app
     let photo: Photo
 
     var body: some View {

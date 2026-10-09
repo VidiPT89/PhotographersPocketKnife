@@ -5,6 +5,8 @@ import XCTest
 @MainActor
 final class AppUITests: XCTestCase {
     private var app: XCUIApplication!
+    /// A primeira abertura depois de compilar passa pela verificação da assinatura e pode demorar muito mais.
+    private static let launchTimeout: TimeInterval = 60
 
     override func setUp() async throws {
         continueAfterFailure = false
@@ -21,7 +23,7 @@ final class AppUITests: XCTestCase {
         // Consoante a versão do macOS, o texto do SwiftUI chega à acessibilidade como `label` ou como `value`.
         let credit = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
                                                             "David Arsénio Martins", "David Arsénio Martins")).firstMatch
-        XCTAssertTrue(credit.waitForExistence(timeout: 5), "Developer credit on the splash")
+        XCTAssertTrue(credit.waitForExistence(timeout: Self.launchTimeout), "Developer credit on the splash")
         // Os links entram um instante depois do crédito: espera-se por eles em vez de os ver logo.
         XCTAssertTrue(app.links["ividi.dev"].waitForExistence(timeout: 3) || app.buttons["ividi.dev"].exists
                       || app.staticTexts["ividi.dev"].exists)
@@ -33,7 +35,7 @@ final class AppUITests: XCTestCase {
         app.launch()
 
         let editing = app.buttons["Edição"]
-        XCTAssertTrue(editing.waitForExistence(timeout: 10))
+        XCTAssertTrue(editing.waitForExistence(timeout: Self.launchTimeout))
         editing.click()
         XCTAssertTrue(app.staticTexts["Nenhuma foto para editar"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.toolbars.buttons["EN"].exists, "Language lives in Settings, not in the toolbar")
