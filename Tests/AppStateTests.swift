@@ -7,8 +7,8 @@ final class AppStateTests: XCTestCase {
     // o idioma de um teste passar para o seguinte. Por isso limpa-se antes de cada teste.
     private let defaults = UserDefaults(suiteName: "AppStateTests")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         defaults.removePersistentDomain(forName: "AppStateTests")
     }
 
