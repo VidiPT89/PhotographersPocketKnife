@@ -20,7 +20,9 @@ targets:
     type: application
     platform: macOS
     sources:
-      - App
+      # Os Info.plist de cada versão não são recursos: copiados para Resources, a Apple vê um segundo bundle.
+      - path: App
+        excludes: ["Info.plist", "Info-AppStore.plist"]
       - Core
       - DesignSystem
       - Modules
@@ -67,7 +69,9 @@ targets:
     type: application
     platform: macOS
     sources:
-      - App
+      # Os Info.plist de cada versão não são recursos: copiados para Resources, a Apple vê um segundo bundle.
+      - path: App
+        excludes: ["Info.plist", "Info-AppStore.plist"]
       - Core
       - DesignSystem
       - Modules
