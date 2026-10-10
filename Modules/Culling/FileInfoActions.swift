@@ -222,7 +222,7 @@ extension FileInfoSheet {
                 message = String(format: app.t("metadata.failures"), jobs.count - saved.count)
                 return
             }
-            app.showToast(String(format: app.t("toast.metadata"), saved.count), icon: "info.circle.fill")
+            app.showToast(app.t("toast.metadata", count: saved.count), icon: "info.circle.fill")
             original = fields
             perPhotoCaptureTime = false
             perform(step)

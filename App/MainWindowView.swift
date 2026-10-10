@@ -285,7 +285,7 @@ struct StatusBarView: View {
     var body: some View {
         HStack(spacing: 16) {
             Label {
-                Text(String(format: app.t("status.selected"), app.culling.selection.count))
+                Text(app.t("status.selected", count: app.culling.selection.count))
                     .contentTransition(.numericText())
             } icon: {
                 Image(systemName: "checkmark.circle")

@@ -9,15 +9,21 @@
 "splash.tagline" = "SELECIONA · EDITA · ENTREGA";
 "toast.action" = "%@ · %d fotos";
 "toast.imported" = "%d fotos importadas";
+"toast.imported.one" = "%d foto importada";
 "toast.renamed" = "%d fotos renomeadas";
+"toast.renamed.one" = "%d foto renomeada";
 "toast.metadata" = "Metadados aplicados a %d fotos";
+"toast.metadata.one" = "Metadados aplicados a %d foto";
 "toast.exported" = "%d fotos exportadas";
+"toast.exported.one" = "%d foto exportada";
 "toast.copied" = "Definições copiadas";
 "toast.pasted" = "Definições coladas em %d fotos";
+"toast.pasted.one" = "Definições coladas em %d foto";
 "toast.uploadDone" = "Envio concluído · %d enviados, %d falhados";
 "toast.importFailures" = "%d fotos importadas · %d falharam a cópia ou a verificação";
 "toast.sidecars" = "%d ficheiros .ppk guardados";
 "toast.xmp" = "XMP escrito em %d fotos";
+"toast.xmp.one" = "XMP escrito em %d foto";
 "filter.iso" = "ISO mínimo";
 "culling.more" = "Mais ações";
 "culling.presentation" = "Modo apresentação";
@@ -126,6 +132,7 @@
 "history.upload.report" = "Exportar relatório CSV";
 "toast.report" = "Relatório de envios guardado";
 "toast.hotFolder" = "Hot folder: %d fotos a exportar e enviar";
+"toast.hotFolder.one" = "Hot folder: %d foto a exportar e enviar";
 "hotFolder.title" = "Hot folder";
 "hotFolder.enable" = "Exportar e enviar automaticamente pela etiqueta de cor";
 "hotFolder.hint" = "Fluxo de desporto ao vivo: basta marcar a foto com a etiqueta escolhida na Seleção.";
@@ -163,6 +170,7 @@
 "sidebar.empty" = "Nada por aqui ainda";
 "sidebar.removeFromCatalog" = "Remover do catálogo";
 "status.selected" = "%d fotos selecionadas";
+"status.selected.one" = "%d foto selecionada";
 "status.imported" = "%d fotos novas importadas";
 "status.freeSpace" = "%@ livres";
 "status.offline" = "Sem ligação";

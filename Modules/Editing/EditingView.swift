@@ -43,7 +43,7 @@ struct EditingView: View {
                 guard let clipboard = app.editing.clipboard else { return }
                 let targets = app.culling.targets(in: list)
                 app.editing.applySettings(clipboard, labelKey: "history.paste", to: targets)
-                app.showToast(String(format: app.t("toast.pasted"), targets.count), icon: "doc.on.clipboard.fill")
+                app.showToast(app.t("toast.pasted", count: targets.count), icon: "doc.on.clipboard.fill")
             }
         } else {
             EmptyModuleView(
@@ -118,7 +118,7 @@ struct EditingToolbar: View {
                 guard let clipboard = editing.clipboard else { return }
                 let targets = app.culling.targets(in: list)
                 editing.applySettings(clipboard, labelKey: "history.paste", to: targets)
-                app.showToast(String(format: app.t("toast.pasted"), targets.count), icon: "doc.on.clipboard.fill")
+                app.showToast(app.t("toast.pasted", count: targets.count), icon: "doc.on.clipboard.fill")
             } label: { Image(systemName: "doc.on.clipboard") }
             .disabled(editing.clipboard == nil)
             .hint(app.t("editing.paste"))

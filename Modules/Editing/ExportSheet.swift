@@ -261,7 +261,7 @@ struct ExportSheet: View {
             }
             progress = nil
             if errors.isEmpty {
-                app.showToast(String(format: app.t("toast.exported"), outputs.count), icon: "square.and.arrow.up.fill")
+                app.showToast(app.t("toast.exported", count: outputs.count), icon: "square.and.arrow.up.fill")
                 dismiss()
             }
         }

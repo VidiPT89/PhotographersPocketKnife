@@ -86,7 +86,7 @@ struct ImportSheet: View {
             if culling.lastImportFailures > 0 {
                 app.showToast(String(format: app.t("toast.importFailures"), culling.lastImportCount ?? 0, culling.lastImportFailures), icon: "exclamationmark.triangle.fill")
             } else {
-                app.showToast(String(format: app.t("toast.imported"), culling.lastImportCount ?? 0), icon: "photo.stack")
+                app.showToast(app.t("toast.imported", count: culling.lastImportCount ?? 0), icon: "photo.stack")
             }
         }
         dismiss()
@@ -158,7 +158,7 @@ struct RenameSheet: View {
                 photo.fileName = plan.to.lastPathComponent
             }
             try? context.save()
-            app.showToast(String(format: app.t("toast.renamed"), plans.count), icon: "character.cursor.ibeam")
+            app.showToast(app.t("toast.renamed", count: plans.count), icon: "character.cursor.ibeam")
             dismiss()
         } catch {
             self.error = error.localizedDescription

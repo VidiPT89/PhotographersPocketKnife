@@ -9,15 +9,21 @@
 "splash.tagline" = "CULL · DEVELOP · DELIVER";
 "toast.action" = "%@ · %d photos";
 "toast.imported" = "%d photos imported";
+"toast.imported.one" = "%d photo imported";
 "toast.renamed" = "%d photos renamed";
+"toast.renamed.one" = "%d photo renamed";
 "toast.metadata" = "Metadata applied to %d photos";
+"toast.metadata.one" = "Metadata applied to %d photo";
 "toast.exported" = "%d photos exported";
+"toast.exported.one" = "%d photo exported";
 "toast.copied" = "Settings copied";
 "toast.pasted" = "Settings pasted to %d photos";
+"toast.pasted.one" = "Settings pasted to %d photo";
 "toast.uploadDone" = "Upload finished · %d sent, %d failed";
 "toast.importFailures" = "%d photos imported · %d failed to copy or verify";
 "toast.sidecars" = "%d .ppk sidecars saved";
 "toast.xmp" = "XMP written to %d photos";
+"toast.xmp.one" = "XMP written to %d photo";
 "filter.iso" = "Minimum ISO";
 "culling.more" = "More actions";
 "culling.presentation" = "Presentation mode";
@@ -126,6 +132,7 @@
 "history.upload.report" = "Export CSV report";
 "toast.report" = "Upload report saved";
 "toast.hotFolder" = "Hot folder: exporting and uploading %d photos";
+"toast.hotFolder.one" = "Hot folder: exporting and uploading %d photo";
 "hotFolder.title" = "Hot folder";
 "hotFolder.enable" = "Automatically export and upload by colour label";
 "hotFolder.hint" = "Live sports workflow: just give a photo the chosen label while culling.";
@@ -163,6 +170,7 @@
 "sidebar.empty" = "Nothing here yet";
 "sidebar.removeFromCatalog" = "Remove from catalog";
 "status.selected" = "%d photos selected";
+"status.selected.one" = "%d photo selected";
 "status.imported" = "%d new photos imported";
 "status.freeSpace" = "%@ free";
 "status.offline" = "Not connected";

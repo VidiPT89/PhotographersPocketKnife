@@ -126,7 +126,7 @@ struct CullingView: View {
         if action.isColorLabel, app.hotFolder.isEnabled {
             let started = app.hotFolder.handleLabelChange(culling.targets(in: list), transfers: app.transfers)
             if started > 0 {
-                app.showToast(String(format: app.t("toast.hotFolder"), started), icon: "flame.fill")
+                app.showToast(app.t("toast.hotFolder", count: started), icon: "flame.fill")
                 return .handled
             }
         }
@@ -417,7 +417,7 @@ struct CullingToolbar: View {
             let written = await Task.detached(priority: .userInitiated) {
                 items.filter { (try? MetadataWriter.writeRating($0.rating, label: $0.label, to: $0.url)) != nil }.count
             }.value
-            app.showToast(String(format: app.t("toast.xmp"), written), icon: "arrow.up.doc.fill")
+            app.showToast(app.t("toast.xmp", count: written), icon: "arrow.up.doc.fill")
         }
     }
 }

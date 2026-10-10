@@ -3,12 +3,14 @@ import XCTest
 
 @MainActor
 final class AppStateTests: XCTestCase {
-    // O XCTest cria uma instância por teste, por isso cada teste parte de preferências limpas.
-    private let defaults: UserDefaults = {
-        let defaults = UserDefaults(suiteName: "AppStateTests")!
+    // O XCTest cria as instâncias todas antes de correr os testes: limpar só ao criar deixava
+    // o idioma de um teste passar para o seguinte. Por isso limpa-se antes de cada teste.
+    private let defaults = UserDefaults(suiteName: "AppStateTests")!
+
+    override func setUp() {
+        super.setUp()
         defaults.removePersistentDomain(forName: "AppStateTests")
-        return defaults
-    }()
+    }
 
     func testDefaultsAreDarkAndEnglish() {
         let state = AppState(defaults: defaults)
@@ -23,6 +25,16 @@ final class AppStateTests: XCTestCase {
         let reloaded = AppState(defaults: defaults)
         XCTAssertEqual(reloaded.theme, .light)
         XCTAssertEqual(reloaded.language, .pt)
+    }
+
+    func testCountsUseTheSingularForOne() {
+        let state = AppState(defaults: defaults)
+        XCTAssertEqual(state.t("status.selected", count: 1), "1 photo selected")
+        XCTAssertEqual(state.t("status.selected", count: 3), "3 photos selected")
+        XCTAssertEqual(state.t("status.selected", count: 0), "0 photos selected")
+        state.language = .pt
+        XCTAssertEqual(state.t("toast.exported", count: 1), "1 foto exportada")
+        XCTAssertEqual(state.t("toast.exported", count: 2), "2 fotos exportadas")
     }
 
     func testLanguageSwitchesAtRuntime() {

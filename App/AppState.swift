@@ -133,6 +133,13 @@ final class AppState {
         bundle.localizedString(forKey: key, value: key, table: nil)
     }
 
+    /// Texto com uma contagem: usa a variante `<chave>.one` quando há só um item ("1 photo selected").
+    func t(_ key: String, count: Int) -> String {
+        let singular = key + ".one"
+        let template = count == 1 && t(singular) != singular ? t(singular) : t(key)
+        return String(format: template, count)
+    }
+
     static func bundle(for language: AppLanguage, in base: Bundle = .main) -> Bundle {
         guard let path = base.path(forResource: language.rawValue, ofType: "lproj"),
               let bundle = Bundle(path: path) else { return base }
