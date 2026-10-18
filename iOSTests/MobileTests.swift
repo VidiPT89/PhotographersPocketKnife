@@ -80,6 +80,49 @@ final class MobileTests: XCTestCase {
         XCTAssertEqual(photo.rating, 5); XCTAssertEqual(photo.flag, .pick)
         XCTAssertEqual(try JSONDecoder().decode(EditRecipe.self, from: XCTUnwrap(photo.recipeData)).exposure, 0.75)
     }
+    /// Catálogo de 30 mil fotos no disco: o arranque lê tudo por data de importação, como a grelha.
+    @MainActor func testLargeCatalogOnDiskStaysFast() throws {
+        let root = try fixtureDirectory()
+        let schema = Schema([Photo.self, UploadDestination.self, UploadRecord.self, EditPreset.self])
+        let config = ModelConfiguration(schema: schema, url: root.appendingPathComponent("Catalog.store"))
+        let count = 30_000
+        var start = Date()
+        do {
+            let container = try ModelContainer(for: schema, configurations: config)
+            let infos = (0..<count).map { i in
+                ImportedPhotoInfo(url: URL(fileURLWithPath: "/big/DSC_\(i).NEF"), captureDate: Date(timeIntervalSince1970: Double(i)),
+                                  camera: i % 3 == 0 ? "NIKON Z 9" : "Sony A1", lens: "70-200", width: 8256, height: 5504, fileSize: 60_000_000)
+            }
+            XCTAssertEqual(try CatalogService.insert(infos, session: "Season", into: container.mainContext), count)
+        }
+        let insertTime = Date().timeIntervalSince(start)
+
+        start = Date()
+        let container = try ModelContainer(for: schema, configurations: config)
+        let all = try container.mainContext.fetch(FetchDescriptor<Photo>(sortBy: [SortDescriptor(\.importedAt, order: .reverse)]))
+        let openTime = Date().timeIntervalSince(start)
+        XCTAssertEqual(all.count, count)
+
+        for (index, photo) in all.enumerated() where index % 5 == 0 { photo.rating = 4; photo.keywords = "final" }
+        start = Date()
+        try container.mainContext.save()
+        let saveTime = Date().timeIntervalSince(start)
+
+        let model = CullingModel()
+        model.minRating = 3
+        model.camera = "NIKON Z 9"
+        model.searchText = "final"
+        start = Date()
+        let visible = model.visible(all)
+        let filterTime = Date().timeIntervalSince(start)
+        XCTAssertEqual(visible.count, all.filter { $0.rating >= 3 && $0.camera == "NIKON Z 9" }.count)
+        XCTAssertGreaterThan(visible.count, 0)
+
+        print("PPK iOS perf 30k — insert: \(insertTime)s, reopen+fetch: \(openTime)s, save 6k edits: \(saveTime)s, filter+search+sort: \(filterTime)s")
+        XCTAssertLessThan(openTime, 5)
+        XCTAssertLessThan(saveTime, 5)
+        XCTAssertLessThan(filterTime, 1.5)
+    }
     private func fixtureDirectory() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("PPK-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

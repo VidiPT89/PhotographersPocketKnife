@@ -58,8 +58,19 @@ struct MobileApp: App {
         WindowGroup {
             switch storage {
             case .success(let container):
-                MobileRoot().environment(app).modelContainer(container)
-                    .preferredColorScheme(app.theme.colorScheme).tint(Brand.orange)
+                ZStack {
+                    if app.isSplashVisible {
+                        SplashScreenView {
+                            withAnimation(.easeOut(duration: 0.5)) { app.isSplashVisible = false }
+                        }
+                        .statusBarHidden()
+                        .transition(.opacity)
+                    } else {
+                        MobileRoot().transition(.opacity)
+                    }
+                }
+                .environment(app).modelContainer(container)
+                .preferredColorScheme(app.theme.colorScheme).tint(Brand.orange)
             case .failure(let error):
                 ContentUnavailableView("Cannot open catalog", systemImage: "externaldrive.badge.exclamationmark", description: Text(error.localizedDescription))
             }

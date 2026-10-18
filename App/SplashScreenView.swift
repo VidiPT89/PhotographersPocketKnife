@@ -11,6 +11,13 @@ struct SplashScreenView: View {
     @State private var progress = 0.0
     @State private var sweep: CGFloat = -1
     @State private var exiting = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// No iPhone o ícone do Mac (280 pt) ocupava o ecrã quase todo.
+    private var iconSize: CGFloat { sizeClass == .compact ? 190 : 280 }
+    #else
+    private let iconSize: CGFloat = 280
+    #endif
 
     var body: some View {
         ZStack {
@@ -42,9 +49,10 @@ struct SplashScreenView: View {
                         .opacity(stage >= 4 ? 1 : 0)
                         .offset(y: stage >= 4 ? 0 : 8)
 
-                    HStack(spacing: 10) {
-                        CreditLink(icon: "globe", title: "ividi.dev", url: URL(string: "https://ividi.dev/")!)
-                        CreditLink(icon: "chevron.left.forwardslash.chevron.right", title: "github.com/VidiPT89", url: URL(string: "https://github.com/VidiPT89/")!)
+                    // Num ecrã estreito os dois links ficam um por baixo do outro.
+                    ViewThatFits {
+                        HStack(spacing: 10) { links }
+                        VStack(spacing: 10) { links }
                     }
                     .opacity(stage >= 5 ? 1 : 0)
                     .offset(y: stage >= 5 ? 0 : 8)
@@ -56,6 +64,7 @@ struct SplashScreenView: View {
                     .padding(.top, 40)
                     .opacity(stage >= 1 ? 1 : 0)
             }
+            .padding(.horizontal, 16)
         }
         .scaleEffect(exiting && !reduceMotion ? 1.06 : 1)
         .blur(radius: exiting && !reduceMotion ? 14 : 0)
@@ -65,11 +74,17 @@ struct SplashScreenView: View {
         .task { await run() }
     }
 
+    @ViewBuilder
+    private var links: some View {
+        CreditLink(icon: "globe", title: "ividi.dev", url: URL(string: "https://ividi.dev/")!)
+        CreditLink(icon: "chevron.left.forwardslash.chevron.right", title: "github.com/VidiPT89", url: URL(string: "https://github.com/VidiPT89/")!)
+    }
+
     private var aperture: some View {
         ZStack {
             Circle()
                 .fill(RadialGradient(colors: [Brand.orange.opacity(0.55), .clear], center: .center, startRadius: 10, endRadius: 150))
-                .frame(width: 300, height: 300)
+                .frame(width: iconSize + 20, height: iconSize + 20)
                 .blur(radius: 18)
                 .scaleEffect(apertureOpen ? 1 : 0.6)
 
@@ -77,18 +92,20 @@ struct SplashScreenView: View {
             Image("BrandIcon")
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 280, height: 280)
+                .frame(width: iconSize, height: iconSize)
                 .scaleEffect(apertureOpen ? 1 : 0.7)
                 .rotationEffect(.degrees(apertureOpen || reduceMotion ? 0 : -12))
                 .shadow(color: Brand.orange.opacity(0.45), radius: 24)
         }
-        .frame(height: 250)
+        .frame(height: iconSize - 30)
     }
 
     private var titleText: some View {
         Text("Photographer's Pocket Knife")
             .font(Typography.hero)
             .tracking(-0.5)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
     }
 
     private var title: some View {
