@@ -124,6 +124,15 @@ struct SplashScreenView: View {
     }
 
     private func run() async {
+        #if DEBUG
+        // Capturas para a App Store: a apresentação fica parada, já completa.
+        if ProcessInfo.processInfo.arguments.contains("-ppk-hold-splash") {
+            stage = 5
+            apertureOpen = true
+            progress = 1
+            return
+        }
+        #endif
         if reduceMotion {
             stage = 5
             apertureOpen = true

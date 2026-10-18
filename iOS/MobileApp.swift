@@ -35,6 +35,24 @@ struct MobileApp: App {
     }
     #if DEBUG
     @MainActor private static func seed(_ container: ModelContainer) throws {
+        // Capturas para a App Store: fotos reais de uma pasta em vez dos padrões de teste.
+        if let folder = ProcessInfo.processInfo.environment["PPK_DEMO_PHOTOS"] {
+            for (index, url) in PhotoImporter.imageFiles(in: URL(fileURLWithPath: folder)).enumerated() {
+                let photo = Photo(info: MetadataReader.basicInfo(for: url), sessionName: "Estoril Open")
+                photo.rating = [5, 4, 3, 5, 2, 4, 0, 3][index % 8]
+                if index % 4 == 0 { photo.flag = .pick }
+                if index % 5 == 2 { photo.colorLabel = .green }
+                container.mainContext.insert(photo)
+            }
+            let desk = UploadDestination(name: "Newsdesk", transferProtocol: .sftp)
+            desk.host = "ftp.newsdesk.example"; desk.username = "photographer"; desk.remoteFolderTemplate = "/{date}/{event}"
+            container.mainContext.insert(desk)
+            let agency = UploadDestination(name: "Agency archive", transferProtocol: .s3)
+            agency.host = "s3.eu-west-1.amazonaws.com"; agency.bucket = "agency-archive"; agency.region = "eu-west-1"
+            container.mainContext.insert(agency)
+            try container.mainContext.save()
+            return
+        }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("PPK-UI-Fixtures")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for index in 1...4 {
