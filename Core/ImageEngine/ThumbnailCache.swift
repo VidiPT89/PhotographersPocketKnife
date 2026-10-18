@@ -21,7 +21,11 @@ final class ThumbnailCache: @unchecked Sendable {
         self.directory = directory ?? caches.appendingPathComponent("PhotographersPocketKnife/Thumbnails", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         // Limite por bytes: 800 pré-visualizações de 1600 px passariam dos 6 GB.
+        #if os(iOS)
+        memory.totalCostLimit = 128 << 20
+        #else
         memory.totalCostLimit = 512 << 20
+        #endif
         memoryPressure.setEventHandler { [weak self] in self?.memory.removeAllObjects() }
         memoryPressure.resume()
         // O cache em disco nunca encolhia sozinho: alguns trabalhos seguidos enchiam dezenas de GB
@@ -31,7 +35,11 @@ final class ThumbnailCache: @unchecked Sendable {
     }
 
     /// Tecto do cache em disco. Chega para uma sessão grande e ainda assim não toma conta do disco.
+    #if os(iOS)
+    static let diskLimit: Int64 = 1 << 30
+    #else
     static let diskLimit: Int64 = 4 << 30
+    #endif
 
     /// Apaga as miniaturas mais antigas até ficar abaixo do tecto. A ordem vem da data de modificação:
     /// a chave do cache inclui a data da foto, por isso cada ficheiro é escrito de novo quando a foto muda,

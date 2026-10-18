@@ -1,4 +1,5 @@
 import XCTest
+import JavaScriptCore
 import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
@@ -89,6 +90,35 @@ final class RetouchGalleryTests: XCTestCase {
         XCTAssertTrue(html.contains("DSC_0001.jpg"))
         let thumb = MetadataReader.basicInfo(for: site.appendingPathComponent("thumb-001.jpg"))
         XCTAssertLessThanOrEqual(max(thumb.width, thumb.height), 640)
+    }
+
+    func testGalleryRestoresOnlyValidFavouritesAndClosesTheLastRemovedPhoto() throws {
+        let strings = ClientGallery.Strings(lang: "en", search: "Search", favourites: "Favourites", send: "Send", copy: "Copy",
+            copied: "Copied", download: "Download", photos: "Photos", close: "Close", previous: "Previous", next: "Next", empty: "Empty", by: "By")
+        let item = ClientGallery.Item(image: "photo.jpg", thumb: "thumb.jpg", width: 100, height: 80, caption: "Photo", keywords: [], name: "one.jpg")
+        let html = ClientGallery.html(items: [item], options: GalleryOptions(), strings: strings)
+        let data = try XCTUnwrap(html.components(separatedBy: "<script id=\"data\" type=\"application/json\">").last?.components(separatedBy: "</script>").first)
+        let script = try XCTUnwrap(html.components(separatedBy: "<script>").last?.components(separatedBy: "</script>").first)
+        let context = try XCTUnwrap(JSContext())
+        context.setObject(data, forKeyedSubscript: "payload" as NSString)
+        context.evaluateScript(#"""
+        const elements={};
+        function element(){const classes=new Set();return {value:'',textContent:'',style:{},children:[],
+          classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x),toggle:(x,on)=>on?classes.add(x):classes.delete(x)},
+          setAttribute(){},replaceChildren(){this.children=[]},appendChild(x){this.children.push(x)},append(...xs){this.children.push(...xs)}}}
+        const document={getElementById:id=>elements[id]||(elements[id]=element()),createElement:element,addEventListener(){}};
+        document.getElementById('data').textContent=payload;
+        const location={pathname:'/gallery/'};
+        let stored='["one.jpg","removed.jpg"]';
+        const localStorage={getItem:()=>stored,setItem:(key,value)=>{stored=value}};
+        """#)
+        context.evaluateScript(script)
+        XCTAssertNil(context.exception)
+        XCTAssertEqual(context.evaluateScript("document.getElementById('fav').textContent")?.toString(), "♥ Favourites (1)")
+        context.evaluateScript("document.getElementById('fav').onclick();show(0);document.getElementById('like').onclick();")
+        XCTAssertNil(context.exception)
+        XCTAssertEqual(context.evaluateScript("stored")?.toString(), "[]")
+        XCTAssertEqual(context.evaluateScript("document.getElementById('box').classList.contains('open')")?.toBool(), false)
     }
 
     /// `TEST_RUNNER_PPK_GALLERY_DIR` (fotos) + `TEST_RUNNER_PPK_GALLERY_OUT` (pasta) criam uma galeria verdadeira para ver no browser.

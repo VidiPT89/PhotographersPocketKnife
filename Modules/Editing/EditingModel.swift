@@ -143,6 +143,7 @@ final class EditingModel {
     var cropAspect: CropAspect = .free
     var cropGuide: CropGuide = .thirds
     var clipboard: EditRecipe?
+    var brushErase = false
     var removalMode: RemovalMode = .object
     var removalBrushSize = 0.05
     private(set) var isAutoEnhancing = false
@@ -151,10 +152,20 @@ final class EditingModel {
     @ObservationIgnored private var url: URL?
     @ObservationIgnored private var rendering = false
     @ObservationIgnored private var dirty = false
+    #if os(iOS)
+    @ObservationIgnored var previewMaxPixel = 1400
+    #else
     @ObservationIgnored var previewMaxPixel = 2000
+    #endif
 
     /// No separador de geometria mostra-se a imagem inteira para ajustar o recorte.
     var isCropping: Bool { tab == .geometry }
+
+    func unload() {
+        photo = nil; url = nil; preview = nil; beforeImage = nil
+        clippingOverlay = nil; hoverPreview = nil; histogram = nil
+        dirty = false; isRendering = false
+    }
 
     func load(_ photo: Photo) {
         guard photo.id != self.photo?.id || photo.url != url else { return }

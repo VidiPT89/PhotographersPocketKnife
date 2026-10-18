@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// Cores da marca, retiradas do CSS de ividi.dev. Iguais em qualquer tema.
 enum Brand {
@@ -39,9 +43,15 @@ extension Color {
     }
 
     init(light: UInt32, dark: UInt32) {
+        #if os(macOS)
         self.init(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return NSColor(Color(hex: isDark ? dark : light))
         })
+        #else
+        self.init(uiColor: UIColor { traits in
+            UIColor(Color(hex: traits.userInterfaceStyle == .dark ? dark : light))
+        })
+        #endif
     }
 }

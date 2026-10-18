@@ -140,7 +140,7 @@ final class TransferQueue {
         do {
             let saved = try JSONDecoder().decode([SavedItem].self, from: Data(contentsOf: url))
             items = saved.map { entry in
-                let item = TransferItem(id: entry.id, fileURL: entry.fileURL, destinationID: entry.destinationID,
+                let item = TransferItem(id: entry.id, fileURL: LocalFileLocation.restored(entry.fileURL), destinationID: entry.destinationID,
                                         destinationName: entry.destinationName, remotePath: entry.remotePath, bytes: entry.bytes,
                                         sourcePhotoID: entry.sourcePhotoID)
                 switch entry.status {
@@ -302,19 +302,27 @@ final class TransferQueue {
         }
         let endpoint = destination.endpoint()
         // A partir da 2.ª tentativa retoma o ficheiro parcial (FTP/SFTP).
+        #if os(macOS)
         let resume = item.attempts > 0 && item.progress > 0 && [.ftp, .ftps, .sftp].contains(endpoint.transferProtocol)
+        #else
+        let resume = false // Native mobile transfers restart from byte zero.
+        #endif
         let command = TransferCommand.upload(endpoint, file: item.fileURL, remotePath: item.remotePath, resume: resume)
 
         if !resume { item.progress = 0 }
         item.resetSpeed()
         item.status = .running
         item.attempts += 1
+        #if os(macOS)
         let process = CurlProcess(executable: command.executable, environment: command.environment)
+        #else
+        let process = CurlProcess()
+        #endif
         running[item.id] = process
 
         Task {
             do {
-                try await process.run(arguments: command.arguments, config: command.input) { progress in
+                try await process.execute(command) { progress in
                     Task { @MainActor in item.updateProgress(progress) }
                 }
                 guard items.contains(where: { $0.id == item.id }) else {

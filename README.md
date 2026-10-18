@@ -2,7 +2,7 @@
 
 # Photographer's Pocket Knife 🔪📷
 
-> A native macOS photography workflow app: cull like Photo Mechanic, develop RAW files non-destructively, and deliver over FTP/SFTP/WebDAV/S3 — all in one window, one catalog, no round trips.
+> A native macOS and iOS photography workflow app: cull like Photo Mechanic, develop RAW files non-destructively, and deliver over FTP/SFTP/WebDAV/S3 — all in one window, one catalog, no round trips.
 
 **[⬇️ Download for Mac](https://github.com/VidiPT89/PhotographersPocketKnife/releases/latest/download/PhotographersPocketKnife-macOS.zip)** (macOS 14 or later, Apple silicon and Intel) — this is the app itself; the green **Code** button only downloads the source code. See [opening it the first time](#-quick-start).
 
@@ -12,7 +12,11 @@
 
 ![Cull module: the catalog sidebar, a 16-photo shoot in the contact sheet, the culling toolbar, histogram and metadata (UI in Portuguese, the app is bilingual)](assets/cull.jpg)
 
-## ✨ Features
+## iPhone and iPad
+
+The native iOS 17+ app is built from the `PhotographersPocketKnife-iOS` scheme. See [IOS.md](IOS.md) for setup, mobile workflows, testing and platform differences. The downloadable release above is the Mac app.
+
+## ✨ Desktop features
 
 ### 🗂️ Cull — pick the keepers, fast
 - ✅ Ingest from a card or folder with a configurable folder structure (`{year}/{date}_{event}/{type}`), SHA-256 checksum verification and a simultaneous backup to a second destination
@@ -115,6 +119,7 @@
 ```bash
 git clone https://github.com/VidiPT89/PhotographersPocketKnife.git
 cd PhotographersPocketKnife
+sh scripts/ios-static-framework.sh
 xcodegen generate
 open PhotographersPocketKnife.xcodeproj
 ```

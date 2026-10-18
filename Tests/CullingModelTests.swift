@@ -14,9 +14,9 @@ final class CullingModelTests: XCTestCase {
             ImportedPhotoInfo(url: URL(fileURLWithPath: "/tmp/IMG_\(i).jpg"), captureDate: Date(timeIntervalSince1970: Double(i) * 60),
                               camera: i % 2 == 0 ? "Nikon Z9" : "Sony A1", lens: nil, width: 10, height: 10, fileSize: 1)
         }
-        CatalogService.insert(infos, session: "Jogo", into: container.mainContext)
+        try CatalogService.insert(infos, session: "Jogo", into: container.mainContext)
         // Reimportar os mesmos caminhos não duplica.
-        let duplicates = CatalogService.insert(infos, session: "Jogo", into: container.mainContext)
+        let duplicates = try CatalogService.insert(infos, session: "Jogo", into: container.mainContext)
         XCTAssertEqual(duplicates, 0)
         photos = try container.mainContext.fetch(FetchDescriptor<Photo>(sortBy: [SortDescriptor(\.captureDate)]))
     }
@@ -61,7 +61,7 @@ final class CullingModelTests: XCTestCase {
                               camera: i % 3 == 0 ? "Canon R5" : "Nikon Z8", lens: "50mm", width: 8192, height: 5464, fileSize: 45_000_000)
         }
         var start = Date()
-        XCTAssertEqual(CatalogService.insert(infos, session: "Grande", into: context), 10_000)
+        XCTAssertEqual(try CatalogService.insert(infos, session: "Grande", into: context), 10_000)
         let insertTime = Date().timeIntervalSince(start)
 
         start = Date()

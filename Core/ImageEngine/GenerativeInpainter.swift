@@ -2,6 +2,9 @@ import CoreImage
 import CoreML
 import ImageIO
 import Foundation
+#if os(iOS)
+import ZIPFoundation
+#endif
 
 /// Preenchimento generativo: em vez de copiar textura de outro sítio da foto, **inventa** o que estava por
 /// baixo do que foi apagado. É a LaMa (Suvorov et al., WACV 2022) convertida para Core ML, a correr no Mac.
@@ -86,12 +89,16 @@ final class GenerativeInpainter: @unchecked Sendable {
         try await download(to: zip, progress: { progress($0 * 0.85) })
 
         // O `unzip` do sistema chega e evita trazer uma dependência só para isto.
+        #if os(iOS)
+        try fm.unzipItem(at: zip, to: work)
+        #else
         let unzip = Process()
         unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         unzip.arguments = ["-q", "-o", zip.path, "-d", work.path]
         try unzip.run()
         unzip.waitUntilExit()
         guard unzip.terminationStatus == 0 else { throw InpaintError.unpackFailed }
+        #endif
         try Task.checkCancellation()
         progress(0.9)
 

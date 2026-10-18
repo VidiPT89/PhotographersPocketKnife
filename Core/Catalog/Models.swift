@@ -15,6 +15,8 @@ enum ColorLabel: Int, CaseIterable, Identifiable, Sendable {
 final class Photo {
     @Attribute(.unique) var id: UUID
     var path: String
+    /// Original source of an imported copy, used to avoid ingesting watched files again.
+    var sourcePath: String?
     var fileName: String
     var sessionName: String
     var captureDate: Date?
@@ -49,6 +51,7 @@ final class Photo {
     init(info: ImportedPhotoInfo, sessionName: String) {
         id = UUID()
         path = info.url.path
+        sourcePath = info.sourcePath
         fileName = info.url.lastPathComponent
         self.sessionName = sessionName
         captureDate = info.captureDate

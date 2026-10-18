@@ -14,7 +14,7 @@ extension TransferProtocol {
 
 extension UploadDestination {
     func endpoint(password: String? = nil) -> TransferEndpoint {
-        TransferEndpoint(
+        var endpoint = TransferEndpoint(
             transferProtocol: transferProtocol,
             host: host,
             port: port,
@@ -24,6 +24,10 @@ extension UploadDestination {
             region: region,
             trustUnknownHostKey: trustUnknownHostKey
         )
+        #if os(iOS)
+        endpoint.sshPrivateKey = Keychain.password(account: "privatekey:\(id.uuidString)")
+        #endif
+        return endpoint
     }
 
     /// Resumo curto para listas: `utilizador@servidor:porta` ou `bucket · endpoint`.

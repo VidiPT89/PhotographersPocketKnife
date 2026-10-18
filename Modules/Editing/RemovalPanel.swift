@@ -113,7 +113,9 @@ struct RemovalOverlay: View {
                     .contentShape(Rectangle())
                     .onTapGesture(coordinateSpace: .local) { location in pick(location) }
                     .onHover { inside in
+                        #if os(macOS)
                         if inside { NSCursor.crosshair.push() } else { NSCursor.pop() }
+                        #endif
                     }
             }
 

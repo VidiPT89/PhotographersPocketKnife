@@ -12,10 +12,98 @@ settings:
     MARKETING_VERSION: "1.0.2"
     CURRENT_PROJECT_VERSION: "86"
 packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    exactVersion: 0.9.20
+  Citadel:
+    url: https://github.com/orlandos-nl/Citadel.git
+    revision: ae8562f895de06ccb86fdb1cbb65fd99c8976e12
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.6.0
 targets:
+  PhotographersPocketKnife-iOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: iOS
+        excludes: ["Info.plist"]
+      - Core
+      - DesignSystem
+      - Localization
+      - App/AppState.swift
+      - App/ShortcutStore.swift
+      - Modules/Culling/CullingModel.swift
+      - Modules/Culling/DenoiseQueue.swift
+      - Modules/Culling/WatchFolderService.swift
+      - Modules/Upload/HotFolderService.swift
+      - Modules/Editing/EditCanvas.swift
+      - Modules/Editing/EditingModel.swift
+      - Modules/Editing/AdjustmentPanel.swift
+      - Modules/Editing/LocalAdjustments.swift
+      - Modules/Editing/RemovalPanel.swift
+      - App/Resources/PrivacyInfo.xcprivacy
+    dependencies:
+      - package: ZIPFoundation
+      - framework: Vendor/curl.xcframework
+        embed: false
+      - sdk: libz.tbd
+      - package: Citadel
+    info:
+      path: iOS/Info.plist
+      properties:
+        CFBundleDisplayName: Photographer's Pocket Knife
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        "UISupportedInterfaceOrientations~ipad": [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSPhotoLibraryAddUsageDescription: Save your developed photographs to your photo library.
+        NSLocalNetworkUsageDescription: Deliver photographs to your FTP, SFTP and WebDAV servers on your local network.
+        ITSAppUsesNonExemptEncryption: false
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Photo
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.image, public.camera-raw-image]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ividi.PhotographersPocketKnife
+        PRODUCT_NAME: PhotographersPocketKnife
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: S769436W24
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: iOS/Transfer/PPK-Bridging-Header.h
+  PhotographersPocketKnife-iOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [iOSUITests]
+    dependencies:
+      - target: PhotographersPocketKnife-iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PhotographersPocketKnife-iOS
+        DEVELOPMENT_TEAM: S769436W24
+  PhotographersPocketKnife-iOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [iOSTests]
+    dependencies:
+      - target: PhotographersPocketKnife-iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PhotographersPocketKnife.app/PhotographersPocketKnife"
+        BUNDLE_LOADER: "$(TEST_HOST)"
   PhotographersPocketKnife:
     type: application
     platform: macOS
@@ -152,6 +240,16 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: PhotographersPocketKnife
 schemes:
+  PhotographersPocketKnife-iOS:
+    build:
+      targets:
+        PhotographersPocketKnife-iOS: all
+    test:
+      targets:
+        - PhotographersPocketKnife-iOSTests
+        - PhotographersPocketKnife-iOSUITests
+    archive:
+      config: Release
   PhotographersPocketKnife:
     build:
       targets:

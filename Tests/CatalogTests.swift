@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 import ImageIO
 import UniformTypeIdentifiers
 import os
@@ -14,6 +15,48 @@ final class CatalogTests: XCTestCase {
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: folder)
+    }
+
+    func testImportDeduplicatesInputsAndReportsMissingSources() throws {
+        let photo = folder.appendingPathComponent("photo.jpg")
+        try writeJPEG(to: photo)
+        let missing = folder.appendingPathComponent("missing.jpg")
+        let result = try PhotoImporter.runReporting(files: [photo, photo, missing], options: .init()) { _, _ in }
+        XCTAssertEqual(result.infos.map(\.url), [photo])
+        XCTAssertEqual(result.successfulSources, [photo])
+        XCTAssertEqual(result.failures, ["missing.jpg"])
+    }
+
+    func testCopiedImportRemembersSourceAndDoesNotHideBackupFailure() throws {
+        let photo = folder.appendingPathComponent("photo.jpg")
+        try writeJPEG(to: photo)
+        var options = PhotoImporter.Options(copyDestination: folder.appendingPathComponent("copies"), subfolderByDate: false)
+        let result = try PhotoImporter.runReporting(files: [photo], options: options) { _, _ in }
+        XCTAssertEqual(result.infos.first?.sourcePath, photo.path)
+        XCTAssertEqual(result.successfulSources, [photo])
+        options.backupDestination = photo // A file cannot serve as a backup directory.
+        let failed = try PhotoImporter.runReporting(files: [photo], options: options) { _, _ in }
+        XCTAssertEqual(failed.infos.count, 1, "The primary copy remains usable")
+        XCTAssertNil(failed.infos.first?.sourcePath, "The watcher must retry an incomplete backup")
+        XCTAssertTrue(failed.successfulSources.isEmpty)
+        XCTAssertEqual(failed.failures, ["photo.jpg"])
+    }
+
+    @MainActor func testCatalogDeduplicatesWithinASingleBatch() throws {
+        let photo = folder.appendingPathComponent("photo.jpg")
+        try writeJPEG(to: photo)
+        let container = try ModelContainer(for: Photo.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let info = MetadataReader.basicInfo(for: photo)
+        XCTAssertEqual(try CatalogService.insert([info, info], session: "Test", into: container.mainContext), 1)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Photo>()), 1)
+    }
+
+    func testIngestTemplateCannotEscapeTheChosenFolder() {
+        let path = IngestTemplate.path("../../{event}/../session", date: Date(), event: "../../outside", isRaw: false)
+        XCTAssertFalse(path.split(separator: "/").contains(".."))
+        XCTAssertFalse(path.hasPrefix("/"))
+        let root = URL(fileURLWithPath: "/chosen")
+        XCTAssertTrue(root.appendingPathComponent(path).standardizedFileURL.path.hasPrefix("/chosen/"))
     }
 
     // MARK: Renomear
@@ -185,6 +228,25 @@ final class CatalogTests: XCTestCase {
         try PPKSidecar(file: copied.lastPathComponent, rating: 5, label: "green", flag: 1, develop: nil).write(for: copied)
         _ = try PhotoImporter.runReporting(files: PhotoImporter.imageFiles(in: source), options: options) { _, _ in }
         XCTAssertEqual(PPKSidecar.read(for: copied)?.rating, 5)
+    }
+
+    func testFailedSidecarReplacementPreservesPreviousDataAndReportsFailure() throws {
+        let source = folder.appendingPathComponent("card.jpg")
+        try writeJPEG(to: source)
+        let destination = folder.appendingPathComponent("library")
+        let options = PhotoImporter.Options(copyDestination: destination, subfolderByDate: false)
+        let first = try PhotoImporter.runReporting(files: [source], options: options) { _, _ in }
+        let copied = try XCTUnwrap(first.infos.first?.url)
+        let previous = MetadataWriter.sidecarURL(for: copied)
+        let data = Data("existing metadata".utf8)
+        try data.write(to: previous)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1)], ofItemAtPath: previous.path)
+        // An unreadable-as-data sidecar deterministically exercises a failed replacement.
+        try FileManager.default.createDirectory(at: MetadataWriter.sidecarURL(for: source), withIntermediateDirectories: true)
+        let result = try PhotoImporter.runReporting(files: [source], options: options) { _, _ in }
+        XCTAssertEqual(result.failures, ["card.jpg"])
+        XCTAssertTrue(result.successfulSources.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: previous), data)
     }
 
     func testParallelImportKeepsOrderAndReportsProgress() throws {

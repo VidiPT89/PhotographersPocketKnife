@@ -44,6 +44,7 @@ final class WatchFolderService {
     @ObservationIgnored var localize: (String) -> String = { $0 }
     @ObservationIgnored private var context: ModelContext?
     @ObservationIgnored private weak var culling: CullingModel?
+    @ObservationIgnored private var isActive = true
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var previous: [String: Int64] = [:]
     @ObservationIgnored private var known: Set<String> = []
@@ -61,12 +62,18 @@ final class WatchFolderService {
         restart()
     }
 
+    func setActive(_ active: Bool) {
+        guard isActive != active else { return }
+        isActive = active
+        restart()
+    }
+
     private func restart() {
         task?.cancel()
         task = nil
         previous = [:]
-        guard isEnabled, !folderPath.isEmpty, let context else { return }
-        known = Set(((try? context.fetch(FetchDescriptor<Photo>())) ?? []).map(\.path))
+        guard isActive, isEnabled, !folderPath.isEmpty, let context else { return }
+        known = Set(((try? context.fetch(FetchDescriptor<Photo>())) ?? []).flatMap { [$0.path, $0.sourcePath].compactMap { $0 } })
         let folder = URL(fileURLWithPath: folderPath, isDirectory: true)
         task = Task { [weak self] in
             while !Task.isCancelled {
@@ -83,9 +90,17 @@ final class WatchFolderService {
         let ready = WatchFolderScanner.ready(current: sizes, previous: previous, known: known)
         previous = sizes
         guard !ready.isEmpty, let context, let culling, !culling.isImporting else { return }
-        known.formUnion(ready)
         let name = sessionName.trimmingCharacters(in: .whitespaces).isEmpty ? defaultSessionName : sessionName
-        await culling.importFiles(ready.map { URL(fileURLWithPath: $0) }, options: .init(copyDestination: nil), session: name, context: context)
+        #if os(iOS)
+        let destination = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Originals")
+        var options = PhotoImporter.Options(copyDestination: destination)
+        options.verifyChecksum = true
+        #else
+        let options = PhotoImporter.Options(copyDestination: nil)
+        #endif
+        let imported = await culling.importFiles(ready.map { URL(fileURLWithPath: $0) }, options: options, session: name, context: context)
+        guard !Task.isCancelled else { return }
+        known.formUnion(imported.map(\.path))
         let added = culling.lastImportCount ?? 0
         guard added > 0 else { return }
         importedCount += added

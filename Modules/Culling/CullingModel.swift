@@ -83,7 +83,11 @@ final class CullingModel {
     /// 5 tamanhos de miniatura (teclas `-` e `+`).
     static let thumbnailSizes: [Double] = [110, 150, 200, 270, 360]
     static let isoSteps = [0, 400, 800, 1600, 3200, 6400]
+    #if os(iOS)
+    var thumbnailStep = 1
+    #else
     var thumbnailStep = 2
+    #endif
     var thumbnailSize: Double { Self.thumbnailSizes[min(max(thumbnailStep, 0), Self.thumbnailSizes.count - 1)] }
     /// Zoom 100 % a seguir o cursor, na lupa.
     var zoomed = false
@@ -198,6 +202,7 @@ final class CullingModel {
     }
 
     func click(_ photo: Photo, in list: [Photo]) {
+        #if os(macOS)
         let flags = NSEvent.modifierFlags
         if flags.contains(.command) {
             if selection.contains(photo.id) { selection.remove(photo.id) } else { selection.insert(photo.id) }
@@ -208,6 +213,9 @@ final class CullingModel {
         } else {
             selection = [photo.id]
         }
+        #else
+        selection = [photo.id]
+        #endif
         focusedID = photo.id
     }
 
@@ -317,7 +325,13 @@ final class CullingModel {
         await importFiles(files, options: options, session: session, context: context)
     }
 
-    func importFiles(_ files: [URL], options: PhotoImporter.Options, session: String, context: ModelContext) async {
+    @discardableResult
+    func importFiles(_ files: [URL], options: PhotoImporter.Options, session: String, context: ModelContext) async -> [URL] {
+        while isImporting {
+            try? await Task.sleep(for: .milliseconds(50))
+            if Task.isCancelled { return [] }
+        }
+        guard !Task.isCancelled else { return [] }
         FolderAccess.shared.remember(files)
         isImporting = true
         importProgress = 0
@@ -334,12 +348,19 @@ final class CullingModel {
                 }
                 guard changed else { return }
                 Task { @MainActor in self.importProgress = Double(percent) / 100 }
-            }) ?? PhotoImporter.Result(infos: [], failures: [])
+            }) ?? PhotoImporter.Result(infos: [], failures: files.map(\.lastPathComponent))
         }.value
         lastImportFailures = result.failures.count
-        lastImportCount = CatalogService.insert(result.infos, session: session, into: context)
+        do { lastImportCount = try CatalogService.insert(result.infos, session: session, into: context) }
+        catch {
+            lastImportCount = 0
+            lastImportFailures = max(files.count, 1)
+            isImporting = false
+            return []
+        }
         self.session = session
         isImporting = false
+        return result.successfulSources
     }
 
     // MARK: Seleção inteligente

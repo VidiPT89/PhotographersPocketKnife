@@ -35,6 +35,7 @@ enum PhotoImporter {
         var infos: [ImportedPhotoInfo]
         /// Ficheiros que falharam a cópia ou a verificação.
         var failures: [String]
+        var successfulSources: [URL] = []
     }
 
     static func isSupported(_ url: URL) -> Bool { supportedExtensions.contains(url.pathExtension.lowercased()) }
@@ -50,7 +51,7 @@ enum PhotoImporter {
         ) else { return [] }
         var files: [URL] = []
         for case let url as URL in enumerator where isSupported(url) {
-            files.append(url)
+            if (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true { files.append(url) }
         }
         return sorted ? files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending } : files
     }
@@ -58,8 +59,11 @@ enum PhotoImporter {
     /// Lê (e opcionalmente copia) as fotos. A cópia é sequencial (evita corridas nos nomes únicos);
     /// a leitura de metadados corre em paralelo e mantém a ordem original.
     static func runReporting(files: [URL], options: Options, progress: @Sendable (Int, Int) -> Void) throws -> Result {
-        let files = files.filter(isSupported)
+        var seen = Set<URL>()
+        let files = files.map(\.standardizedFileURL).filter { isSupported($0) && seen.insert($0).inserted }
         var targets: [URL] = []
+        var sources: [URL] = []
+        var successfulSources: [URL] = []
         var failures: [String] = []
         targets.reserveCapacity(files.count)
 
@@ -71,30 +75,38 @@ enum PhotoImporter {
                     : ""
                 do {
                     targets.append(try copy(file, into: destination.appendingPathComponent(relative, isDirectory: true), verify: options.verifyChecksum))
+                    sources.append(file)
                     if let backup = options.backupDestination {
                         _ = try copy(file, into: backup.appendingPathComponent(relative, isDirectory: true), verify: options.verifyChecksum)
                     }
+                    successfulSources.append(file)
                 } catch {
                     failures.append(file.lastPathComponent)
                 }
             }
         } else {
-            targets = files
+            targets = files.filter { FileManager.default.fileExists(atPath: $0.path) }
+            sources = targets
+            successfulSources = targets
+            failures = files.filter { !FileManager.default.fileExists(atPath: $0.path) }.map(\.lastPathComponent)
         }
 
         let copied = options.copyDestination != nil
         let inputs = targets
+        let successful = Set(successfulSources)
+        let sourcePaths = sources.map { successful.contains($0) ? $0.path : nil }
         let results = OrderedResults<ImportedPhotoInfo>(count: inputs.count)
         DispatchQueue.concurrentPerform(iterations: inputs.count) { index in
             let target = inputs[index]
             var info = Diagnostics.shared.measure(.importFile) { MetadataReader.basicInfo(for: target) }
+            info.sourcePath = sourcePaths[index]
             let xmp = MetadataWriter.readMetadata(for: target)
             info.sidecar = PPKSidecar.read(for: target) ?? xmp.flatMap { MetadataReader.xmpClassification(from: $0, url: target) }
             info.fileInfo = xmp.map(MetadataReader.iptcFields(from:))
             let done = results.set(info, at: index)
             if !copied { progress(done, inputs.count) }
         }
-        return Result(infos: results.values, failures: failures)
+        return Result(infos: results.values, failures: failures, successfulSources: successfulSources)
     }
 
     private static func copy(_ file: URL, into directory: URL, verify: Bool) throws -> URL {
@@ -103,12 +115,12 @@ enum PhotoImporter {
         let candidate = directory.appendingPathComponent(file.lastPathComponent)
         if sameFileAlreadyCopied(file, candidate),
            try !verify || FileChecksum.sha256(of: file) == FileChecksum.sha256(of: candidate) {
-            copySidecars(from: file, to: candidate)
+            try copySidecars(from: file, to: candidate)
             return candidate
         }
         let target = uniqueURL(candidate)
         try fm.copyItem(at: file, to: target)
-        copySidecars(from: file, to: target)
+        try copySidecars(from: file, to: target)
         if verify, try FileChecksum.sha256(of: file) != FileChecksum.sha256(of: target) {
             try? fm.removeItem(at: target)
             throw ImportError.checksumMismatch(file.lastPathComponent)
@@ -120,7 +132,7 @@ enum PhotoImporter {
     /// classificações ou revelações mais recentes do que a cópia anterior. Mas o que está no destino
     /// só é substituído se o do cartão for mesmo mais recente — senão, uma reimportação apagaria a
     /// classificação feita aqui na app depois da primeira cópia.
-    private static func copySidecars(from file: URL, to target: URL) {
+    private static func copySidecars(from file: URL, to target: URL) throws {
         let fm = FileManager.default
         for (source, destination) in [
             (MetadataWriter.sidecarURL(for: file), MetadataWriter.sidecarURL(for: target)),
@@ -129,9 +141,12 @@ enum PhotoImporter {
             if fm.fileExists(atPath: destination.path) {
                 guard let new = modificationDate(of: source), let old = modificationDate(of: destination),
                       new > old else { continue }
-                try? fm.removeItem(at: destination)
             }
-            try? fm.copyItem(at: source, to: destination)
+            // Read before replacing: a failed copy must preserve the previous sidecar.
+            try Data(contentsOf: source).write(to: destination, options: .atomic)
+            if let date = modificationDate(of: source) {
+                try fm.setAttributes([.modificationDate: date], ofItemAtPath: destination.path)
+            }
         }
     }
 
@@ -198,10 +213,15 @@ private final class OrderedResults<Value>: @unchecked Sendable {
 enum CatalogService {
     /// Insere as fotos novas (ignora caminhos que já estão no catálogo) e aplica `.ppk` encontrados.
     @discardableResult
-    static func insert(_ infos: [ImportedPhotoInfo], session: String, into context: ModelContext) -> Int {
-        let existing = Set(((try? context.fetch(FetchDescriptor<Photo>())) ?? []).map(\.path))
+    static func insert(_ infos: [ImportedPhotoInfo], session: String, into context: ModelContext) throws -> Int {
+        let stored = try context.fetch(FetchDescriptor<Photo>())
+        var existing = Set(stored.map(\.path))
+        let byPath = Dictionary(stored.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        for info in infos where info.sourcePath != nil {
+            if let photo = byPath[info.url.path], photo.sourcePath == nil { photo.sourcePath = info.sourcePath }
+        }
         var added = 0
-        for info in infos where !existing.contains(info.url.path) {
+        for info in infos where existing.insert(info.url.path).inserted {
             let photo = Photo(info: info, sessionName: session)
             if let sidecar = info.sidecar {
                 photo.rating = min(max(sidecar.rating, 0), 5)
@@ -214,7 +234,7 @@ enum CatalogService {
             context.insert(photo)
             added += 1
         }
-        try? context.save()
+        try context.save()
         return added
     }
 

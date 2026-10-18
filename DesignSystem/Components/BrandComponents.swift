@@ -268,38 +268,6 @@ struct PulsingDot: View {
     }
 }
 
-/// Diafragma de 6 lâminas; `openness` anima de fechado (0) a aberto (1).
-struct ApertureShape: Shape {
-    var openness: Double
-
-    var animatableData: Double {
-        get { openness }
-        set { openness = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = min(rect.width, rect.height) / 2
-        let inner = radius * (0.1 + 0.48 * openness)
-        let twist = (1 - openness) * .pi / 5
-        var path = Path()
-        for blade in 0..<6 {
-            let start = Double(blade) * .pi / 3
-            let end = start + .pi / 3
-            path.move(to: point(center, radius, start))
-            path.addArc(center: center, radius: radius, startAngle: .radians(start), endAngle: .radians(end), clockwise: false)
-            path.addLine(to: point(center, inner, end + twist))
-            path.addLine(to: point(center, inner, start + twist))
-            path.closeSubpath()
-        }
-        return path
-    }
-
-    private func point(_ center: CGPoint, _ radius: CGFloat, _ angle: Double) -> CGPoint {
-        CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
-    }
-}
-
 /// Mensagem curta que aparece por baixo da janela e desaparece sozinha.
 struct ToastOverlay: View {
     @Environment(AppState.self) private var app

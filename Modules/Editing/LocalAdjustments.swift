@@ -306,7 +306,12 @@ struct MaskOverlay: View {
                 var mask = app.editing.recipe.masks[index]
                 if !painting {
                     painting = true
-                    mask.strokes.append(BrushStroke(points: [point], erase: NSEvent.modifierFlags.contains(.option), size: mask.brushSize))
+                    #if os(macOS)
+                    let erase = NSEvent.modifierFlags.contains(.option)
+                    #else
+                    let erase = app.editing.brushErase
+                    #endif
+                    mask.strokes.append(BrushStroke(points: [point], erase: erase, size: mask.brushSize))
                 } else if var stroke = mask.strokes.popLast() {
                     if let previous = stroke.points.last, hypot(previous.x - point.x, previous.y - point.y) < 0.004 {
                         mask.strokes.append(stroke)

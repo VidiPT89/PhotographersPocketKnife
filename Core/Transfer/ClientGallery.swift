@@ -83,7 +83,7 @@ enum ClientGallery {
             let preview = try place(ImageRenderer.shared.export(url: photo.url, recipe: photo.recipe, settings: thumb, to: staging), as: "thumb-\(number).jpg", in: folder)
             let info = MetadataReader.basicInfo(for: preview)
             let caption = photo.caption.isEmpty
-                ? (MetadataWriter.readMetadata(for: photo.url).flatMap { MetadataReader.xmpString($0, "dc:description") } ?? "")
+                ? MetadataReader.iptcFields(for: photo.url).caption
                 : photo.caption
             items.append(Item(image: image.lastPathComponent, thumb: preview.lastPathComponent, width: info.width, height: info.height,
                               caption: caption, keywords: photo.keywords, name: photo.url.lastPathComponent))
@@ -175,7 +175,8 @@ enum ClientGallery {
         const d=JSON.parse(document.getElementById('data').textContent);
         const s=d.strings;const key='ppk-favourites-'+location.pathname;
         const $=id=>document.getElementById(id);
-        let favs=new Set();try{favs=new Set(JSON.parse(localStorage.getItem(key)||'[]'))}catch(e){}
+        const names=new Set(d.items.map(i=>i.name));
+        let favs=new Set();try{const stored=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(stored))favs=new Set(stored.filter(name=>names.has(name)))}catch(e){}
         let onlyFavs=false,shown=[],current=0;
         $('q').placeholder=s.search;$('send').textContent=s.send;$('copy').textContent=s.copy;
         $('prev').textContent='‹ '+s.previous;$('next').textContent=s.next+' ›';$('close').textContent=s.close;$('dl').textContent=s.download;
@@ -188,9 +189,9 @@ enum ClientGallery {
         shown.forEach((i,n)=>{const f=document.createElement('figure');const img=document.createElement('img');img.src=i.thumb;img.loading='lazy';img.alt=i.caption||i.name;img.width=i.width;img.height=i.height;
         const h=document.createElement('button');h.type='button';h.className='heart'+(favs.has(i.name)?' on':'');h.textContent='♥';h.setAttribute('aria-label',s.favourites);
         h.onclick=e=>{e.stopPropagation();toggle(i.name);h.classList.toggle('on',favs.has(i.name))};
-        f.onclick=()=>show(n);f.append(img,h);grid.appendChild(f)});save()}
+        f.tabIndex=0;f.setAttribute('role','button');f.setAttribute('aria-label',i.caption||i.name);f.onclick=()=>show(n);f.onkeydown=e=>{if(e.target===f&&(e.key==='Enter'||e.key===' ')){e.preventDefault();show(n)}};f.append(img,h);grid.appendChild(f)});save()}
         function toggle(name){favs.has(name)?favs.delete(name):favs.add(name);save();if(onlyFavs)render()}
-        function show(n){if(!shown.length)return;current=(n+shown.length)%shown.length;const i=shown[current];$('big').src=i.image;$('big').alt=i.caption||i.name;$('cap').textContent=i.caption||i.name;$('dl').href=i.image;$('like').textContent=(favs.has(i.name)?'♥ ':'♡ ')+s.favourites;$('box').classList.add('open')}
+        function show(n){if(!shown.length){hide();return;}current=(n+shown.length)%shown.length;const i=shown[current];$('big').src=i.image;$('big').alt=i.caption||i.name;$('cap').textContent=i.caption||i.name;$('dl').href=i.image;$('like').textContent=(favs.has(i.name)?'♥ ':'♡ ')+s.favourites;$('box').classList.add('open')}
         function hide(){$('box').classList.remove('open')}
         const list=()=>[...favs].sort().join('\n');
         $('q').oninput=render;$('fav').onclick=()=>{onlyFavs=!onlyFavs;render()};

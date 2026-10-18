@@ -50,7 +50,12 @@ final class ImageRenderer: @unchecked Sendable {
         lock.lock()
         baseCache[key] = image
         baseOrder.append(key)
-        if baseOrder.count > 6 {
+        #if os(iOS)
+        let cacheLimit = 2
+        #else
+        let cacheLimit = 6
+        #endif
+        if baseOrder.count > cacheLimit {
             baseCache[baseOrder.removeFirst()] = nil
         }
         lock.unlock()

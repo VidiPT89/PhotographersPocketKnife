@@ -2,6 +2,7 @@ import Foundation
 import ImageIO
 
 struct ImportedPhotoInfo: Sendable {
+    var sourcePath: String? = nil
     let url: URL
     let captureDate: Date?
     let camera: String?

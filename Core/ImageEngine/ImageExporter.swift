@@ -1,6 +1,13 @@
 import Foundation
 import Darwin
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+private typealias NSColor = UIColor
+private typealias NSFont = UIFont
+private typealias NSSize = CGSize
+#endif
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import ImageIO
@@ -192,7 +199,7 @@ extension ImageRenderer {
         }
         image = image.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
 
-        let baseName = url.deletingPathExtension().lastPathComponent + settings.suffix
+        let baseName = RenameTemplate.sanitize(url.deletingPathExtension().lastPathComponent + settings.suffix)
         let target = try Self.reserveExportURL(folder.appendingPathComponent(baseName).appendingPathExtension(settings.format.fileExtension))
         var completed = false
         defer { if !completed { try? FileManager.default.removeItem(at: target) } }

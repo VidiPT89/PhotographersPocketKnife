@@ -1,7 +1,11 @@
 import Foundation
 import CryptoKit
 import SwiftData
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// Ficheiro `.ppk` (JSON) ao lado da foto: a classificação e a revelação sobrevivem mesmo sem o catálogo.
 struct PPKSidecar: Codable, Equatable, Sendable {
@@ -78,7 +82,7 @@ enum IngestTemplate {
             .replacingOccurrences(of: "{type}", with: isRaw ? "RAW" : "JPEG")
         return resolved
             .split(separator: "/")
-            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " _-")) }
+            .map { RenameTemplate.sanitize(String($0)).trimmingCharacters(in: CharacterSet(charactersIn: " _-")) }
             .filter { !$0.isEmpty }
             .joined(separator: "/")
     }
@@ -139,7 +143,12 @@ enum CaptionTemplate {
 @MainActor
 final class SidecarAutosave {
     private let defaults: UserDefaults
-    var isEnabled: Bool { didSet { defaults.set(isEnabled, forKey: Self.key) } }
+    var isEnabled: Bool {
+        didSet {
+            defaults.set(isEnabled, forKey: Self.key)
+            if !isEnabled { flushTask?.cancel(); pending = [] }
+        }
+    }
     /// Espera para juntar alterações seguidas (arrastar um cursor, percorrer fotos a classificar).
     @ObservationIgnored var delay: Duration = .milliseconds(800)
 
@@ -163,7 +172,12 @@ final class SidecarAutosave {
             MainActor.assumeIsolated { self?.schedule(ids) }
         })
         // Fechar a app logo a seguir a classificar: grava o catálogo e os .ppk antes de sair.
-        observers.append(center.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+        #if os(macOS)
+        let closing = NSApplication.willTerminateNotification
+        #else
+        let closing = UIApplication.didEnterBackgroundNotification
+        #endif
+        observers.append(center.addObserver(forName: closing, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.flushBeforeQuit() }
         })
     }
@@ -176,6 +190,7 @@ final class SidecarAutosave {
     }
 
     private func takePending(from context: ModelContext) -> [(url: URL, sidecar: PPKSidecar)] {
+        guard isEnabled else { pending = []; return [] }
         let photos = pending.compactMap { context.registeredModel(for: $0) as Photo? }
         pending = []
         return CatalogService.sidecars(for: photos)

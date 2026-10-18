@@ -75,7 +75,7 @@ enum PhotoAssessor {
         if let observation = featurePrint.results?.first {
             result.featurePrint = try? NSKeyedArchiver.archivedData(withRootObject: observation, requiringSecureCoding: true)
         }
-        if #available(macOS 15.0, *) {
+        if #available(macOS 15.0, iOS 18.0, *) {
             if let scores = try? await CalculateImageAestheticsScoresRequest().perform(on: image) {
                 result.aesthetics = Double(scores.overallScore)
                 result.isUtility = scores.isUtility

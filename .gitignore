@@ -8,3 +8,6 @@ xcuserdata/
 .env
 
 PhotographersPocketKnife.xcodeproj/
+
+# Reproducible, checksum-verified iOS binary dependency
+Vendor/curl.xcframework/

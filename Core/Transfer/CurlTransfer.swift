@@ -9,6 +9,7 @@ struct TransferEndpoint: Sendable {
     var bucket: String
     var region: String
     var trustUnknownHostKey: Bool
+    var sshPrivateKey: String? = nil
 }
 
 enum RemotePath {
@@ -61,12 +62,21 @@ enum TransferError: LocalizedError, Equatable {
 
 /// Comando a executar para um envio ou teste de ligação, consoante o protocolo.
 struct TransferCommand: Sendable {
+    #if os(macOS)
     let executable: String
     let arguments: [String]
     let input: String
     let environment: [String: String]?
+    #else
+    let endpoint: TransferEndpoint
+    var file: URL?
+    var remotePath = "/"
+    #endif
 
     static func upload(_ endpoint: TransferEndpoint, file: URL, remotePath: String, resume: Bool) -> TransferCommand {
+        #if os(iOS)
+        return TransferCommand(endpoint: endpoint, file: file, remotePath: remotePath)
+        #else
         if endpoint.transferProtocol == .webdav {
             return TransferCommand(executable: "/usr/bin/curl", arguments: ["--config", "-"], input: WebDAVCommand.uploadConfig(endpoint, file: file, remotePath: remotePath), environment: nil)
         }
@@ -84,9 +94,13 @@ struct TransferCommand: Sendable {
             input: CurlCommand.config(endpoint),
             environment: nil
         )
+        #endif
     }
 
     static func test(_ endpoint: TransferEndpoint) -> TransferCommand {
+        #if os(iOS)
+        return TransferCommand(endpoint: endpoint)
+        #else
         if endpoint.transferProtocol == .webdav {
             return TransferCommand(executable: "/usr/bin/curl", arguments: ["--config", "-"], input: WebDAVCommand.testConfig(endpoint), environment: nil)
         }
@@ -99,6 +113,7 @@ struct TransferCommand: Sendable {
             )
         }
         return TransferCommand(executable: "/usr/bin/curl", arguments: CurlCommand.testArguments(endpoint), input: CurlCommand.config(endpoint), environment: nil)
+        #endif
     }
 }
 
@@ -307,6 +322,7 @@ enum CurlCommand {
 }
 
 /// Um processo `curl` com progresso e cancelamento.
+#if os(macOS)
 final class CurlProcess: @unchecked Sendable {
     private let process = Process()
     private let lock = NSLock()
@@ -374,8 +390,10 @@ final class CurlProcess: @unchecked Sendable {
     }
 }
 
+#endif
+
 /// Deixa passar uma leitura de progresso no máximo a cada 100 ms, e sempre a que chega ao fim.
-private final class ProgressThrottle: @unchecked Sendable {
+final class ProgressThrottle: @unchecked Sendable {
     private let lock = NSLock()
     private var lastSent: Date?
 
@@ -407,3 +425,11 @@ private final class OutputLog: @unchecked Sendable {
         }
     }
 }
+
+#if os(macOS)
+extension CurlProcess {
+    func execute(_ command: TransferCommand, onProgress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
+        try await run(arguments: command.arguments, config: command.input, onProgress: onProgress)
+    }
+}
+#endif

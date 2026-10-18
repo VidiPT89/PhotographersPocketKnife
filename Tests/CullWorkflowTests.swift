@@ -57,7 +57,7 @@ final class CullWorkflowTests: XCTestCase {
         recipe.exposure = 0.8
         var info = ImportedPhotoInfo(url: URL(fileURLWithPath: "/tmp/A.NEF"), captureDate: nil, camera: nil, lens: nil, width: 10, height: 10, fileSize: 1)
         info.sidecar = PPKSidecar(file: "A.NEF", rating: 5, label: "red", flag: -1, develop: recipe)
-        CatalogService.insert([info], session: "S", into: container.mainContext)
+        try CatalogService.insert([info], session: "S", into: container.mainContext)
 
         let photo = try XCTUnwrap(try container.mainContext.fetch(FetchDescriptor<Photo>()).first)
         XCTAssertEqual(photo.rating, 5)
@@ -251,7 +251,12 @@ final class CullWorkflowTests: XCTestCase {
         XCTAssertEqual(saved.rating, 4)
         XCTAssertEqual(saved.label, "green")
 
+        autosave.delay = .seconds(60)
+        shot.rating = 3
+        try context.save()
         autosave.isEnabled = false
+        await autosave.flush()
+        XCTAssertEqual(PPKSidecar.read(for: url)?.rating, 4, "Disabling cancels already queued writes")
         shot.rating = 1
         try context.save()
         try await Task.sleep(for: .milliseconds(150))

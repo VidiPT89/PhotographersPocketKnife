@@ -6,7 +6,21 @@ import Foundation
 final class FolderAccess: @unchecked Sendable {
     static let shared = FolderAccess(enabled: isSandboxed)
 
-    static var isSandboxed: Bool { ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil }
+    static var isSandboxed: Bool {
+        #if os(iOS)
+        true
+        #else
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+        #endif
+    }
+
+    #if os(macOS)
+    private static let creationOptions: URL.BookmarkCreationOptions = .withSecurityScope
+    private static let resolutionOptions: URL.BookmarkResolutionOptions = .withSecurityScope
+    #else
+    private static let creationOptions: URL.BookmarkCreationOptions = .minimalBookmark
+    private static let resolutionOptions: URL.BookmarkResolutionOptions = []
+    #endif
 
     private let enabled: Bool
     private let storeURL: URL
@@ -32,7 +46,7 @@ final class FolderAccess: @unchecked Sendable {
         var changed = false
         lock.withLock {
             for url in urls.map(\.standardizedFileURL) where !isCovered(url.path) {
-                guard let data = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) else { continue }
+                guard let data = try? url.bookmarkData(options: Self.creationOptions, includingResourceValuesForKeys: nil, relativeTo: nil) else { continue }
                 bookmarks[url.path] = data
                 changed = true
             }
@@ -50,14 +64,14 @@ final class FolderAccess: @unchecked Sendable {
         lock.withLock {
             for (path, data) in bookmarks where active[path] == nil {
                 var stale = false
-                guard let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale) else {
+                guard let url = try? URL(resolvingBookmarkData: data, options: Self.resolutionOptions, relativeTo: nil, bookmarkDataIsStale: &stale) else {
                     bookmarks[path] = nil
                     changed = true
                     continue
                 }
                 guard url.startAccessingSecurityScopedResource() else { continue }
                 active[path] = url
-                if stale, let fresh = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+                if stale, let fresh = try? url.bookmarkData(options: Self.creationOptions, includingResourceValuesForKeys: nil, relativeTo: nil) {
                     bookmarks[path] = fresh
                     changed = true
                 }

@@ -16,6 +16,7 @@ BUILD_NUMBER=$(( $(git rev-list --count HEAD) + 1 ))
 sed -i '' -E "s/MARKETING_VERSION: \"[^\"]+\"/MARKETING_VERSION: \"$VERSION\"/" project.yml
 sed -i '' -E "s/CURRENT_PROJECT_VERSION: \"[^\"]+\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
 
+sh scripts/ios-static-framework.sh
 xcodegen generate -q
 xcodebuild test -scheme PhotographersPocketKnife -destination 'platform=macOS' -derivedDataPath build -quiet
 xcodebuild build -scheme PhotographersPocketKnife -configuration Release -destination 'platform=macOS' -derivedDataPath build -quiet
