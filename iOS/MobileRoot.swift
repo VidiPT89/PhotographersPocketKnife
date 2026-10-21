@@ -45,7 +45,9 @@ struct MobileRoot: View {
                             .accessibilityLabel(app.m("Import photos", "Importar fotografias"))
                         }
                         ToolbarItem(placement: .topBarTrailing) {
-                            Button(selecting ? app.m("Done", "Concluído") : app.m("Select", "Selecionar")) { selecting.toggle() }
+                            Button { selecting.toggle() } label: { Image(systemName: selecting ? "checkmark.circle.fill" : "checkmark.circle") }
+                                .accessibilityLabel(selecting ? app.m("Done", "Concluído") : app.m("Select", "Selecionar"))
+                                .accessibilityIdentifier("mobile-select")
                         }
                     }
                     .searchable(text: $culling.searchText, prompt: app.m("Search photos and metadata", "Pesquisar fotos e metadados"))
