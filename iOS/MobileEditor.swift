@@ -9,7 +9,8 @@ struct MobileEditor: View {
     let photos: [Photo]
     @State private var exporting = false
     @State private var fullScreen = false
-    @State private var zoom: CGFloat = 1
+    @State private var zoom = MobileZoomPosition()
+    @State private var presentationZoom = MobileZoomPosition()
     var body: some View {
         Group {
             if app.editing.photo != nil {
@@ -29,27 +30,35 @@ struct MobileEditor: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { app.editing.undo() } label: { Image(systemName: "arrow.uturn.backward") }.disabled(!app.editing.history.canUndo)
+                    .accessibilityLabel(app.m("Undo", "Desfazer"))
                 Menu {
                     ForEach(CompareMode.allCases) { mode in Button(app.t(mode.labelKey)) { app.editing.compareMode = mode } }
                     Button(app.m("Copy settings", "Copiar ajustes")) { app.editing.copySettings() }
                     if let recipe = app.editing.clipboard {
                         Button(app.m("Paste settings", "Colar ajustes")) { app.editing.applySettings(recipe, labelKey: "history.paste", to: app.culling.targets(in: photos)) }
                     }
-                    Button(app.m("Presentation", "Apresentação")) { fullScreen = true }
+                    Button(app.m("Presentation", "Apresentação")) { presentationZoom = MobileZoomPosition(); fullScreen = true }
                     Button(app.m("Export", "Exportar")) { exporting = true }
                     Button(app.m("Reset edits", "Repor edição"), role: .destructive) { app.editing.reset() }
                 } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel(app.m("Editing options", "Opções de edição"))
+                .accessibilityIdentifier("mobile-editing-options")
             }
         }
         .sheet(isPresented: $exporting) { NavigationStack { MobileExport(photos: app.editing.photo.map { [$0] } ?? []) } }
         .fullScreenCover(isPresented: $fullScreen) {
             ZStack(alignment: .topTrailing) {
                 Color.black.ignoresSafeArea()
-                EditCanvas().scaleEffect(zoom).gesture(MagnifyGesture().onChanged { zoom = min(max($0.magnification, 1), 5) })
-                    .onTapGesture(count: 2) { zoom = zoom == 1 ? 2 : 1 }
-                Button { fullScreen = false; zoom = 1 } label: { Image(systemName: "xmark.circle.fill").font(.largeTitle).padding() }
+                MobileZoom(position: $presentationZoom, identifier: "mobile-presentation-zoom") {
+                    EditCanvas().environment(app).allowsHitTesting(false)
+                }
+                .id(app.editing.photo?.id)
+                Button { fullScreen = false; presentationZoom = MobileZoomPosition() } label: { Image(systemName: "xmark.circle.fill").font(.largeTitle).padding() }
+                    .accessibilityLabel(app.m("Close presentation", "Fechar apresentação"))
             }
         }
+        .onChange(of: previewDetail) { _, detail in app.editing.previewDetail = detail; app.editing.scheduleRender() }
+        .onDisappear { app.editing.previewDetail = 1 }
         .onAppear { if let photo = app.editing.photo { app.editing.load(photo) } }
         .onDisappear { try? context.save() }
         .onChange(of: app.culling.focusedID) { _, id in
@@ -58,20 +67,46 @@ struct MobileEditor: View {
     }
     private var canvas: some View {
         VStack(spacing: 0) {
-            EditCanvas()
+            MobileZoom(position: $zoom, editingTouches: usesEditingTouches) {
+                EditCanvas().environment(app)
+            }
+            .id(app.editing.photo?.id)
+            .onChange(of: app.editing.photo?.id) { _, _ in zoom = MobileZoomPosition() }
             HStack {
                 Button { navigate(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
+                    .accessibilityLabel(app.m("Previous photograph", "Fotografia anterior"))
+                    .accessibilityIdentifier("mobile-previous-photo")
                 Spacer()
+                Button { zoom = MobileZoomPosition() } label: {
+                    Text(String(format: "%.1f×", zoom.scale)).monospacedDigit().frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel(app.m("Fit photograph", "Ajustar fotografia ao ecrã"))
+                .accessibilityIdentifier("mobile-fit-photo")
                 if let photo = app.editing.photo {
-                    Menu("\(photo.rating) ★") {
+                    Menu {
                         ForEach(0...5, id: \.self) { n in Button("\(n) ★") { photo.rating = n; try? context.save() } }
-                    }
-                    Button { photo.flag = photo.flag == .pick ? .none : .pick; try? context.save() } label: { Image(systemName: photo.flag == .pick ? "flag.fill" : "flag") }
+                    } label: { Text("\(photo.rating) ★").frame(minWidth: 44, minHeight: 44) }
+                    Button { photo.flag = photo.flag == .pick ? .none : .pick; try? context.save() } label: { Image(systemName: photo.flag == .pick ? "flag.fill" : "flag").frame(width: 44, height: 44) }
+                        .accessibilityLabel(app.m("Toggle pick", "Alternar escolha"))
                 }
                 Spacer()
                 Button { navigate(1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
+                    .accessibilityLabel(app.m("Next photograph", "Fotografia seguinte"))
+                    .accessibilityIdentifier("mobile-next-photo")
             }.padding(.horizontal).background(Palette.panel)
+            if usesEditingTouches {
+                Text(app.m("Use two fingers to zoom or move; one finger to edit.", "Usa dois dedos para ampliar ou mover; um dedo para editar."))
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.bottom, 4)
+            }
         }
+    }
+    /// Sharper previews while zoomed; capped to keep RAW rendering within iPhone memory.
+    private var previewDetail: Double {
+        let scale = max(zoom.scale, fullScreen ? presentationZoom.scale : 1)
+        return scale > 3 ? 3 : scale > 1.5 ? 2 : 1
+    }
+    private var usesEditingTouches: Bool {
+        app.editing.isCropping || app.editing.tab == .masks || app.editing.tab == .remove || app.editing.compareMode == .split
     }
     private var controls: some View {
         @Bindable var editing = app.editing

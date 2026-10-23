@@ -130,6 +130,10 @@ struct CropOverlay: View {
                     .fill(Brand.orange)
                     .frame(width: 14, height: 14)
                     .shadow(color: .black.opacity(0.4), radius: 2)
+                    #if os(iOS)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    #endif
                     .position(position(of: corner, in: rect))
                     .gesture(resizeGesture(corner))
             }

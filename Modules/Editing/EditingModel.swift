@@ -157,6 +157,8 @@ final class EditingModel {
     #else
     @ObservationIgnored var previewMaxPixel = 2000
     #endif
+    /// Multiplica a resolução do preview quando a imagem está ampliada, para manter o detalhe.
+    @ObservationIgnored var previewDetail: Double = 1
 
     /// No separador de geometria mostra-se a imagem inteira para ajustar o recorte.
     var isCropping: Bool { tab == .geometry }
@@ -361,7 +363,7 @@ final class EditingModel {
         isRendering = true
         let recipe = hoverPreview ?? recipe
         let applyCrop = !isCropping
-        let maxPixel = previewMaxPixel
+        let maxPixel = Int(Double(previewMaxPixel) * previewDetail)
         let needsBefore = compareMode != .off
         let needsClipping = showClipping
 

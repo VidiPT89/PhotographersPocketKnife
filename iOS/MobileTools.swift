@@ -54,19 +54,17 @@ struct MobileTools: View {
 
 struct MobileCompare: View {
     let photos: [Photo]
-    @State private var zoom: CGFloat = 1
-    @State private var pan = CGSize.zero
-    @State private var committedPan = CGSize.zero
+    @State private var zoom = MobileZoomPosition()
     var body: some View {
         GeometryReader { geo in
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
                 ForEach(photos) { photo in
                     VStack {
-                        ThumbnailView(url: photo.url, maxPixel: 2400, recipeData: photo.recipeData, fit: true)
-                            .scaleEffect(zoom).offset(pan).frame(height: geo.size.height / (photos.count > 2 ? 2.3 : 1.3)).clipped()
-                            .gesture(MagnifyGesture().onChanged { zoom = min(max($0.magnification, 1), 6) })
-                            .simultaneousGesture(DragGesture().onChanged { pan = CGSize(width: committedPan.width + $0.translation.width, height: committedPan.height + $0.translation.height) }.onEnded { _ in committedPan = pan })
-                            .onTapGesture(count: 2) { zoom = 1; pan = .zero; committedPan = .zero }
+                        MobileZoom(position: $zoom, identifier: "mobile-compare-zoom-\(photo.id)") {
+                            ThumbnailView(url: photo.url, maxPixel: 2400, recipeData: photo.recipeData, fit: true)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .frame(height: geo.size.height / (photos.count > 2 ? 2.3 : 1.3))
                         Text(photo.fileName).font(.caption).lineLimit(1)
                     }
                 }

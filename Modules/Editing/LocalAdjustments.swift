@@ -143,7 +143,13 @@ struct MasksPanel: View {
                 case .brush:
                     AdjustmentSlider(labelKey: "mask.brushSize", value: \EditRecipe.masks[index].brushSize, range: 0.01...0.3, defaultValue: 0.06)
                     AdjustmentSlider(labelKey: "mask.feather", value: \EditRecipe.masks[index].feather, range: 0...1, defaultValue: 0.5)
-                    Text(app.t("mask.brushHint"))
+                    Group {
+                        #if os(iOS)
+                        Text(app.m("Paint with one finger. Use the Erase brush switch to erase.", "Pinta com um dedo. Ativa a Borracha para apagar."))
+                        #else
+                        Text(app.t("mask.brushHint"))
+                        #endif
+                    }
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecondary)
                     Button(app.t("mask.clearStrokes")) {
@@ -335,6 +341,10 @@ struct MaskOverlay: View {
             .frame(width: 14, height: 14)
             .overlay(Circle().stroke(Brand.orange, lineWidth: 2))
             .shadow(color: .black.opacity(0.4), radius: 2)
+            #if os(iOS)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            #endif
             .position(point)
             .gesture(
                 DragGesture()
