@@ -188,7 +188,24 @@ final class MobileUITests: XCTestCase {
         app.buttons["File info"].tap()
         let notes = app.textFields["fileinfo-notes"]
         XCTAssertTrue(notes.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["fileinfo-dictate"].exists)
+        // Carregar no micro já fechou a app (autorização da fala fora do MainActor); tem de continuar viva.
+        addUIInterruptionMonitor(withDescription: "Microphone and speech") { alert in
+            for label in ["Allow", "OK", "Permitir"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
+        let dictate = app.buttons["fileinfo-dictate"]
+        XCTAssertTrue(dictate.exists)
+        // No simulador o AURemoteIO não chega ao microfone do Mac e aborta; o micro só se testa num iPhone.
+        #if !targetEnvironment(simulator)
+        dictate.tap()
+        sleep(3)
+        app.swipeUp()
+        XCTAssertEqual(app.state, .runningForeground)
+        if dictate.label == "Stop" { dictate.tap() }
+        #endif
         notes.tap()
         notes.typeText("Pavlidis scores in Lisbon")
         let useCaption = app.buttons["fileinfo-use-caption"]

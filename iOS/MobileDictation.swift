@@ -63,7 +63,8 @@ final class MobileDictation {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    private static func authorize() async -> Bool {
+    // O iOS responde ao pedido de autorização numa fila qualquer; se o bloco herdasse o MainActor, a app fechava.
+    private nonisolated static func authorize() async -> Bool {
         let speech = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
@@ -71,7 +72,7 @@ final class MobileDictation {
         return await AVAudioApplication.requestRecordPermission()
     }
 
-    // Os blocos de áudio e de reconhecimento correm fora da main thread, por isso nascem fora do MainActor.
+    // Os blocos de áudio e de reconhecimento também correm fora da main thread, por isso nascem fora do MainActor.
 
     private nonisolated static func feed(_ input: AVAudioInputNode, into request: SFSpeechAudioBufferRecognitionRequest) {
         input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { buffer, _ in

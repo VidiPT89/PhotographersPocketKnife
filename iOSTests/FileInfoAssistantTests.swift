@@ -47,6 +47,10 @@ final class FileInfoAssistantTests: XCTestCase {
         throw XCTSkip("The simulator reports the model as available but cannot load its safety assets")
         #else
         let model = SystemLanguageModel.default
+        // Logo a seguir a ligar o Apple Intelligence o modelo pode estar "not ready" durante algum tempo.
+        for _ in 0..<15 where FileInfoAI.status(portuguese: true) == .preparing {
+            try await Task.sleep(for: .seconds(2))
+        }
         try XCTSkipUnless(FileInfoAI.isAvailable(portuguese: true),
                           "Apple Intelligence is not available: \(model.availability), pt-PT \(model.supportsLocale(Locale(identifier: "pt-PT")))")
         let proposal = try await FileInfoAI.propose(
