@@ -107,6 +107,7 @@ struct MobileMetadata: View {
                     }
                 }
             }
+            MobileFileInfoAssistant(fields: $fields, changed: $changed, photo: targets.first)
             if let first = targets.first {
                 Section("EXIF") {
                     Text(first.fileName)

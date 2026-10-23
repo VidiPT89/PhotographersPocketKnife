@@ -177,6 +177,33 @@ final class MobileUITests: XCTestCase {
         sleep(1)
         try save("5-Destination")
     }
+    @MainActor func testFileInfoAssistantTurnsNotesIntoFields() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-editing.tab", "basic", "-ppk-ui-testing", "-ppk-skip-splash"]
+        app.launch()
+        XCTAssertTrue(app.buttons["photo-Shoot-01.jpg"].waitForExistence(timeout: 20))
+        app.buttons["mobile-select"].tap()
+        app.buttons["photo-Shoot-01.jpg"].tap()
+        app.buttons["Tools"].tap()
+        app.buttons["File info"].tap()
+        let notes = app.textFields["fileinfo-notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["fileinfo-dictate"].exists)
+        notes.tap()
+        notes.typeText("Pavlidis scores in Lisbon")
+        let useCaption = app.buttons["fileinfo-use-caption"]
+        if useCaption.exists {
+            useCaption.tap()
+            // Com texto, o campo perde o placeholder "Caption"; procura-se pelo valor (notas + legenda).
+            let filled = app.textFields.matching(NSPredicate(format: "value == %@", "Pavlidis scores in Lisbon"))
+            XCTAssertEqual(filled.count, 2)
+        } else {
+            // Com Apple Intelligence no Mac anfitrião, o botão é o da IA; o modelo em si não corre no teste.
+            XCTAssertTrue(app.buttons["fileinfo-ai"].isEnabled)
+        }
+        screenshot("FileInfo-Assistant")
+    }
+
     @MainActor private func screenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

@@ -42,8 +42,12 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Deliver photographs to your FTP, SFTP and WebDAV servers on your local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate notes about a photograph to fill in its file info.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save your developed photographs to your photo library.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turn your dictated notes into text on this device for the file info.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>

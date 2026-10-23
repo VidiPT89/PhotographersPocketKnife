@@ -1,2 +1,4 @@
 "CFBundleName" = "Photographer's Pocket Knife";
 "CFBundleDisplayName" = "Photographer's Pocket Knife";
+"NSMicrophoneUsageDescription" = "Dictate notes about a photograph to fill in its file info.";
+"NSSpeechRecognitionUsageDescription" = "Turn your dictated notes into text on this device for the file info.";
