@@ -202,21 +202,37 @@ final class MobileUITests: XCTestCase {
         #if !targetEnvironment(simulator)
         dictate.tap()
         sleep(3)
-        app.swipeUp()
         XCTAssertEqual(app.state, .runningForeground)
         if dictate.label == "Stop" { dictate.tap() }
+        sleep(1)
         #endif
         notes.tap()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { notes.tap() }
         notes.typeText("Pavlidis scores in Lisbon")
         let useCaption = app.buttons["fileinfo-use-caption"]
         if useCaption.exists {
             useCaption.tap()
             // Com texto, o campo perde o placeholder "Caption"; procura-se pelo valor (notas + legenda).
-            let filled = app.textFields.matching(NSPredicate(format: "value == %@", "Pavlidis scores in Lisbon"))
+            // No iPhone o ditado pode ter apanhado som da sala antes do texto escrito.
+            let filled = app.textFields.matching(NSPredicate(format: "value CONTAINS %@", "Pavlidis scores in Lisbon"))
             XCTAssertEqual(filled.count, 2)
         } else {
-            // Com Apple Intelligence no Mac anfitrião, o botão é o da IA; o modelo em si não corre no teste.
-            XCTAssertTrue(app.buttons["fileinfo-ai"].isEnabled)
+            let ai = app.buttons["fileinfo-ai"]
+            XCTAssertTrue(ai.isEnabled)
+            // No simulador o modelo não carrega os recursos de segurança; num iPhone corre a sério, dentro da app.
+            #if !targetEnvironment(simulator)
+            ai.tap()
+            let apply = app.buttons["fileinfo-apply"]
+            XCTAssertTrue(apply.waitForExistence(timeout: 90), "The on-device model did not return a proposal")
+            let proposal = app.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " | ")
+            print("AI proposal:", proposal)
+            XCTAssertTrue(proposal.contains("Pavlidis"))
+            XCTAssertFalse(["Vangelis", "Evangelos", "1-0", "2-1"].contains { proposal.contains($0) },
+                           "The model added facts that are not in the notes")
+            screenshot("FileInfo-AI-Proposal")
+            apply.tap()
+            XCTAssertFalse(apply.exists)
+            #endif
         }
         screenshot("FileInfo-Assistant")
     }
