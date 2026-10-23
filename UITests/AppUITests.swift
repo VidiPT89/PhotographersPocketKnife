@@ -66,11 +66,11 @@ final class AppUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Zoom in"].isEnabled)
         XCTAssertFalse(app.buttons["Zoom out"].isEnabled, "Nothing to zoom out of at fit")
         app.buttons["Zoom in"].click()
-        XCTAssertTrue(app.staticTexts["150 %"].waitForExistence(timeout: 3) || fit.label.contains("150"))
+        XCTAssertTrue(hasValue(fit, "150 %"), "Zoom level after zooming in")
         app.typeKey("=", modifierFlags: .command)
         XCTAssertTrue(app.buttons["Zoom out"].isEnabled)
         app.typeKey("0", modifierFlags: .command)
-        XCTAssertTrue(app.staticTexts["100 %"].waitForExistence(timeout: 3) || fit.label.contains("100"))
+        XCTAssertTrue(hasValue(fit, "100 %"), "Back to fit")
         XCTAssertFalse(app.buttons["Zoom out"].isEnabled)
     }
 
@@ -93,5 +93,11 @@ final class AppUITests: XCTestCase {
         useCaption.click()
         let caption = app.textViews.containing(NSPredicate(format: "value CONTAINS %@", "Estadio da Luz")).firstMatch
         XCTAssertTrue(caption.waitForExistence(timeout: 3) || app.textFields.containing(NSPredicate(format: "value CONTAINS %@", "Estadio da Luz")).count > 1)
+    }
+
+    /// Espera que o valor de acessibilidade do elemento chegue ao esperado.
+    private func hasValue(_ element: XCUIElement, _ value: String) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
+        return XCTWaiter.wait(for: [expectation], timeout: 3) == .completed
     }
 }

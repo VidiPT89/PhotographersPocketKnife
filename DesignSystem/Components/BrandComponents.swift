@@ -73,15 +73,15 @@ struct PillPicker<Value: Hashable, Label: View>: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options, id: \.self) { option in
-                PillOption(selected: option == selection, compact: compact, namespace: namespace) {
+                PillOption(selected: option == selection, compact: compact, namespace: namespace,
+                           accessibilityName: accessibilityName?(option)) {
                     withAnimation(Motion.snappy) { selection = option }
                 } label: {
                     label(option, option == selection)
                 }
-                .modifier(OptionalAccessibilityLabel(text: accessibilityName?(option)))
-                .accessibilityAddTraits(option == selection ? .isSelected : [])
             }
         }
+        .accessibilityElement(children: .contain)
         .padding(3)
         .background(Capsule().fill(Palette.panel))
         .overlay(Capsule().stroke(Palette.separator, lineWidth: 1))
@@ -100,6 +100,7 @@ private struct PillOption<Label: View>: View {
     let selected: Bool
     let compact: Bool
     let namespace: Namespace.ID
+    let accessibilityName: String?
     let action: () -> Void
     @ViewBuilder let label: () -> Label
     @State private var hovering = false
@@ -125,6 +126,9 @@ private struct PillOption<Label: View>: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // No próprio botão: aplicado por fora, a barra de ferramentas do macOS dava a todos o nome do primeiro.
+        .modifier(OptionalAccessibilityLabel(text: accessibilityName))
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hover in withAnimation(Motion.snappy) { hovering = hover } }
     }
 }

@@ -134,6 +134,7 @@ struct EditingToolbar: View {
             }
             .keyboardShortcut("0", modifiers: .command)
             .hint(app.t("zoom.fit"))
+            .accessibilityValue("\(Int((zoom.scale * 100).rounded())) %")
             Button { withAnimation(Motion.snappy) { zoom = zoom.stepped(1.5) } } label: { Image(systemName: "plus.magnifyingglass") }
                 .keyboardShortcut("=", modifiers: .command)
                 .disabled(zoom.scale >= ZoomPosition.maxScale)
