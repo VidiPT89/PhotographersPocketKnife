@@ -53,6 +53,7 @@ struct MobileTools: View {
 }
 
 struct MobileCompare: View {
+    @Environment(AppState.self) private var app
     let photos: [Photo]
     @State private var zoom = MobileZoomPosition()
     var body: some View {
@@ -60,7 +61,8 @@ struct MobileCompare: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
                 ForEach(photos) { photo in
                     VStack {
-                        MobileZoom(position: $zoom, identifier: "mobile-compare-zoom-\(photo.id)") {
+                        MobileZoom(position: $zoom, identifier: "mobile-compare-zoom-\(photo.id)",
+                                   actionNames: [app.m("Zoom in", "Ampliar"), app.m("Zoom out", "Reduzir"), app.m("Fit photograph", "Ajustar fotografia ao ecrã")]) {
                             ThumbnailView(url: photo.url, maxPixel: 2400, recipeData: photo.recipeData, fit: true)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }

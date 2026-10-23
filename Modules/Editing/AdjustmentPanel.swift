@@ -188,6 +188,7 @@ struct AdjustmentSlider: View {
                 in: range
             ) { isEditing in
                 dragging = isEditing
+                editing.isAdjusting = isEditing
                 if !isEditing { editing.commit(labelKey) }
             }
             .tint(tint)

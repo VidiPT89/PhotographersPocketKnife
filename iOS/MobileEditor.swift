@@ -49,7 +49,7 @@ struct MobileEditor: View {
         .fullScreenCover(isPresented: $fullScreen) {
             ZStack(alignment: .topTrailing) {
                 Color.black.ignoresSafeArea()
-                MobileZoom(position: $presentationZoom, identifier: "mobile-presentation-zoom") {
+                MobileZoom(position: $presentationZoom, identifier: "mobile-presentation-zoom", actionNames: zoomActionNames) {
                     EditCanvas().environment(app).allowsHitTesting(false)
                 }
                 .id(app.editing.photo?.id)
@@ -67,7 +67,7 @@ struct MobileEditor: View {
     }
     private var canvas: some View {
         VStack(spacing: 0) {
-            MobileZoom(position: $zoom, editingTouches: usesEditingTouches) {
+            MobileZoom(position: $zoom, editingTouches: usesEditingTouches, actionNames: zoomActionNames) {
                 EditCanvas().environment(app)
             }
             .id(app.editing.photo?.id)
@@ -100,10 +100,12 @@ struct MobileEditor: View {
             }
         }
     }
-    /// Sharper previews while zoomed; capped to keep RAW rendering within iPhone memory.
+    /// Sharper previews while zoomed.
     private var previewDetail: Double {
-        let scale = max(zoom.scale, fullScreen ? presentationZoom.scale : 1)
-        return scale > 3 ? 3 : scale > 1.5 ? 2 : 1
+        MobileZoomPosition(scale: max(zoom.scale, fullScreen ? presentationZoom.scale : 1)).previewDetail()
+    }
+    private var zoomActionNames: [String] {
+        [app.m("Zoom in", "Ampliar"), app.m("Zoom out", "Reduzir"), app.m("Fit photograph", "Ajustar fotografia ao ecrã")]
     }
     private var usesEditingTouches: Bool {
         app.editing.isCropping || app.editing.tab == .masks || app.editing.tab == .remove || app.editing.compareMode == .split

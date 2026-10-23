@@ -11,6 +11,12 @@ struct MobileZoomPosition: Equatable {
         CGPoint(x: min(max(x * size.width * scale - size.width / 2, 0), size.width * (scale - 1)),
                 y: min(max(y * size.height * scale - size.height / 2, 0), size.height * (scale - 1)))
     }
+
+    /// Preview resolution multiplier for this zoom; 3× needs more than 5 GB so RAW previews fit in memory.
+    func previewDetail(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> Double {
+        let detail: Double = scale > 3 ? 3 : scale > 1.5 ? 2 : 1
+        return physicalMemory > 5 << 30 ? detail : min(detail, 2)
+    }
 }
 
 /// Native touch recognizers with anchored pinch zoom, inertial scrolling and bounded panning.
@@ -18,6 +24,8 @@ struct MobileZoom<Content: View>: UIViewControllerRepresentable {
     @Binding var position: MobileZoomPosition
     var editingTouches = false
     var identifier = "mobile-zoom"
+    /// VoiceOver actions: zoom in, zoom out, fit.
+    var actionNames = ["Zoom in", "Zoom out", "Fit"]
     @ViewBuilder var content: () -> Content
 
     func makeUIViewController(context: Context) -> MobileZoomController<Content> {
@@ -35,6 +43,7 @@ struct MobileZoom<Content: View>: UIViewControllerRepresentable {
     private func configure(_ controller: MobileZoomController<Content>) {
         controller.onChange = { position = $0 }
         controller.scroll.accessibilityIdentifier = identifier
+        controller.actionNames = actionNames
         // One finger remains available to crop, paint and move the before/after divider.
         let touches = editingTouches ? 2 : 1
         if controller.scroll.panGestureRecognizer.minimumNumberOfTouches != touches {
@@ -52,6 +61,14 @@ final class MobileZoomController<Content: View>: UIViewController, UIScrollViewD
     private let zoomContent = UIView()
     let doubleTap = UITapGestureRecognizer()
     var onChange: ((MobileZoomPosition) -> Void)?
+    var actionNames = ["Zoom in", "Zoom out", "Fit"] {
+        didSet {
+            guard actionNames != oldValue || scroll.accessibilityCustomActions == nil else { return }
+            scroll.accessibilityCustomActions = zip(actionNames, [1.5, 1 / 1.5, 0] as [CGFloat]).map { name, factor in
+                UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.step(factor) ?? false }
+            }
+        }
+    }
     private var position = MobileZoomPosition()
     private var viewport = CGSize.zero
     private var applying = false
@@ -92,6 +109,8 @@ final class MobileZoomController<Content: View>: UIViewController, UIScrollViewD
         scroll.addGestureRecognizer(pinch)
         host.didMove(toParent: self)
         doubleTap.numberOfTapsRequired = 2
+        // Single taps in the hosted editor should not wait for a possible second tap.
+        doubleTap.delaysTouchesEnded = false
         doubleTap.addTarget(self, action: #selector(toggleZoom(_:)))
         scroll.addGestureRecognizer(doubleTap)
     }
@@ -170,6 +189,23 @@ final class MobileZoomController<Content: View>: UIViewController, UIScrollViewD
             y: min(max(pinchAnchor.y * scale - location.y, 0), viewport.height * (scale - 1)))
         applying = false
         publish()
+    }
+
+    /// Zooms around the viewport centre; a factor of 0 fits the photograph.
+    func step(_ factor: CGFloat) -> Bool {
+        guard viewport.width > 0, viewport.height > 0 else { return false }
+        let current = scroll.zoomScale
+        let scale = factor == 0 ? 1 : min(max(current * factor, 1), 6)
+        let centre = CGPoint(x: (scroll.contentOffset.x + viewport.width / 2) / current,
+                             y: (scroll.contentOffset.y + viewport.height / 2) / current)
+        applying = true
+        scroll.setZoomScale(scale, animated: false)
+        scroll.contentOffset = CGPoint(
+            x: min(max(centre.x * scale - viewport.width / 2, 0), viewport.width * (scale - 1)),
+            y: min(max(centre.y * scale - viewport.height / 2, 0), viewport.height * (scale - 1)))
+        applying = false
+        publish()
+        return true
     }
 
     @objc private func toggleZoom(_ recognizer: UITapGestureRecognizer) {

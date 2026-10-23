@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.1.2"
-    CURRENT_PROJECT_VERSION: "93"
+    CURRENT_PROJECT_VERSION: "94"
 packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation.git
@@ -105,6 +105,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PhotographersPocketKnife.app/PhotographersPocketKnife"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        DEVELOPMENT_TEAM: S769436W24
   PhotographersPocketKnife:
     type: application
     platform: macOS

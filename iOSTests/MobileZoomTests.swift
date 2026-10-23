@@ -40,4 +40,28 @@ final class MobileZoomTests: XCTestCase {
         XCTAssertEqual(published, 0)
         XCTAssertEqual(controller.scroll.zoomScale, 4)
     }
+
+    func testPreviewDetailTiersAndMemoryCap() {
+        let large: UInt64 = 8 << 30, small: UInt64 = 4 << 30
+        XCTAssertEqual(MobileZoomPosition(scale: 1.5).previewDetail(physicalMemory: large), 1)
+        XCTAssertEqual(MobileZoomPosition(scale: 2).previewDetail(physicalMemory: large), 2)
+        XCTAssertEqual(MobileZoomPosition(scale: 3.5).previewDetail(physicalMemory: large), 3)
+        XCTAssertEqual(MobileZoomPosition(scale: 6).previewDetail(physicalMemory: small), 2)
+    }
+
+    @MainActor func testAccessibilityActionsZoomAroundCentreAndFit() {
+        let controller = MobileZoomController(rootView: Color.red)
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 300, height: 200)
+        controller.viewDidLayoutSubviews()
+        controller.actionNames = ["In", "Out", "Fit"]
+        var latest = MobileZoomPosition()
+        controller.onChange = { latest = $0 }
+        XCTAssertEqual(controller.scroll.accessibilityCustomActions?.map(\.name), ["In", "Out", "Fit"])
+        XCTAssertTrue(controller.step(1.5))
+        XCTAssertEqual(latest.scale, 1.5, accuracy: 0.001)
+        XCTAssertEqual(latest.x, 0.5, accuracy: 0.001)
+        XCTAssertTrue(controller.step(0))
+        XCTAssertEqual(latest, MobileZoomPosition())
+    }
 }
