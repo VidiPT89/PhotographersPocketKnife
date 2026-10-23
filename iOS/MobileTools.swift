@@ -55,7 +55,7 @@ struct MobileTools: View {
 struct MobileCompare: View {
     @Environment(AppState.self) private var app
     let photos: [Photo]
-    @State private var zoom = MobileZoomPosition()
+    @State private var zoom = ZoomPosition()
     var body: some View {
         GeometryReader { geo in
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {

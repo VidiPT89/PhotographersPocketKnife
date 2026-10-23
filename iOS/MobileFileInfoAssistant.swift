@@ -6,7 +6,7 @@ struct MobileFileInfoAssistant: View {
     @Binding var fields: IPTCFields
     @Binding var changed: Set<String>
     let photo: Photo?
-    @State private var dictation = MobileDictation()
+    @State private var dictation = FileInfoDictation()
     @State private var proposal: FileInfoProposal?
     @State private var thinking = false
     @State private var failure: String?

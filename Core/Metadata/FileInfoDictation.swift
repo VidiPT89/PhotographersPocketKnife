@@ -1,9 +1,9 @@
 import AVFoundation
 import Speech
 
-/// Ditado só no aparelho: as notas sobre a fotografia não saem do iPhone.
+/// Ditado só no aparelho: as notas sobre a fotografia não saem do iPhone nem do Mac.
 @MainActor @Observable
-final class MobileDictation {
+final class FileInfoDictation {
     enum Problem { case denied, unavailable, failed(String) }
 
     var transcript = ""
@@ -28,14 +28,20 @@ final class MobileDictation {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: portuguese ? "pt-PT" : "en-US")),
               recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else { problem = .unavailable; return }
         do {
+            #if os(iOS)
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .measurement, options: .duckOthers)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            let inputAvailable = session.isInputAvailable
+            #else
+            // No Mac não há sessão de áudio: sem microfone, o formato da entrada vem vazio.
+            let inputAvailable = true
+            #endif
             // Sem microfone (ou com um formato inválido) o installTap lança uma exceção que fecha a app.
             let format = engine.inputNode.outputFormat(forBus: 0)
-            guard session.isInputAvailable, format.sampleRate > 0, format.channelCount > 0 else {
+            guard inputAvailable, format.sampleRate > 0, format.channelCount > 0 else {
                 stop()
-                try? session.setActive(false, options: .notifyOthersOnDeactivation)
+                Self.deactivateSession()
                 problem = .unavailable
                 return
             }
@@ -58,7 +64,7 @@ final class MobileDictation {
             isRecording = true
         } catch {
             stop()
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            Self.deactivateSession()
             problem = .failed(error.localizedDescription)
         }
     }
@@ -78,10 +84,16 @@ final class MobileDictation {
         recognizer = nil
         guard isRecording else { return }
         isRecording = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Self.deactivateSession()
     }
 
-    // O iOS responde ao pedido de autorização numa fila qualquer; se o bloco herdasse o MainActor, a app fechava.
+    private static func deactivateSession() {
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
+    }
+
+    // O sistema responde ao pedido de autorização numa fila qualquer; se o bloco herdasse o MainActor, a app fechava.
     private nonisolated static func authorize() async -> Bool {
         let speech = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }

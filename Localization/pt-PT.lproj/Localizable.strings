@@ -765,3 +765,26 @@
 "export.retryFailed" = "Repetir as %d que falharam";
 "settings.autosaveSidecars" = "Guardar classificações junto dos originais";
 "settings.autosaveSidecarsHint" = "Um ficheiro .ppk ao lado de cada foto, atualizado sozinho: estrelas, marcação, etiqueta e revelação sobrevivem mesmo sem o catálogo. A imagem não é alterada.";
+
+/* Assistente do file info */
+"assistant.title" = "Assistente";
+"assistant.notes" = "Notas sobre esta fotografia";
+"assistant.stop" = "Parar";
+"assistant.dictate" = "Ditar";
+"assistant.fillAI" = "Preencher com IA";
+"assistant.useCaption" = "Usar como legenda";
+"assistant.thinking" = "A preparar uma proposta…";
+"assistant.empty" = "As notas não chegam para preencher nenhum campo.";
+"assistant.discard" = "Descartar";
+"assistant.apply" = "Aplicar proposta";
+"assistant.footerReady" = "O ditado e a IA funcionam no Mac. Confirma nomes e factos antes de guardar.";
+"assistant.footerPreparing" = "O ditado funciona no Mac. Preencher com IA aparece quando o Apple Intelligence acabar de descarregar.";
+"assistant.footerUnavailable" = "O ditado funciona no Mac. Preencher com IA precisa do Apple Intelligence.";
+"assistant.denied" = "Autoriza o microfone e o reconhecimento de fala nas Definições do Sistema para ditar.";
+"assistant.unavailable" = "O ditado no Mac não está disponível para esta língua, ou não há microfone.";
+"assistant.failed" = "A IA não conseguiu preparar uma proposta. Tenta outra vez, ou preenche os campos à mão.";
+
+/* Zoom no editor */
+"zoom.in" = "Ampliar";
+"zoom.out" = "Reduzir";
+"zoom.fit" = "Ajustar a foto à janela";

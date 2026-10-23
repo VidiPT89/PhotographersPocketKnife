@@ -1,27 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// Shared normalized viewport keeps comparison panes aligned even after a resize.
-struct MobileZoomPosition: Equatable {
-    var scale: CGFloat = 1
-    var x: CGFloat = 0.5
-    var y: CGFloat = 0.5
-
-    func offset(in size: CGSize) -> CGPoint {
-        CGPoint(x: min(max(x * size.width * scale - size.width / 2, 0), size.width * (scale - 1)),
-                y: min(max(y * size.height * scale - size.height / 2, 0), size.height * (scale - 1)))
-    }
-
-    /// Preview resolution multiplier for this zoom; 3× needs more than 5 GB so RAW previews fit in memory.
-    func previewDetail(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) -> Double {
-        let detail: Double = scale > 3 ? 3 : scale > 1.5 ? 2 : 1
-        return physicalMemory > 5 << 30 ? detail : min(detail, 2)
-    }
-}
-
 /// Native touch recognizers with anchored pinch zoom, inertial scrolling and bounded panning.
 struct MobileZoom<Content: View>: UIViewControllerRepresentable {
-    @Binding var position: MobileZoomPosition
+    @Binding var position: ZoomPosition
     var editingTouches = false
     var identifier = "mobile-zoom"
     /// VoiceOver actions: zoom in, zoom out, fit.
@@ -60,7 +42,7 @@ final class MobileZoomController<Content: View>: UIViewController, UIScrollViewD
     let scroll = UIScrollView()
     private let zoomContent = UIView()
     let doubleTap = UITapGestureRecognizer()
-    var onChange: ((MobileZoomPosition) -> Void)?
+    var onChange: ((ZoomPosition) -> Void)?
     var actionNames = ["Zoom in", "Zoom out", "Fit"] {
         didSet {
             guard actionNames != oldValue || scroll.accessibilityCustomActions == nil else { return }
@@ -69,7 +51,7 @@ final class MobileZoomController<Content: View>: UIViewController, UIScrollViewD
             }
         }
     }
-    private var position = MobileZoomPosition()
+    private var position = ZoomPosition()
     private var viewport = CGSize.zero
     private var applying = false
     private let pinch = UIPinchGestureRecognizer()
@@ -132,7 +114,7 @@ final class MobileZoomController<Content: View>: UIViewController, UIScrollViewD
         updateAccessibility()
     }
 
-    func apply(_ newPosition: MobileZoomPosition) {
+    func apply(_ newPosition: ZoomPosition) {
         guard pinch.state != .began, pinch.state != .changed, !scroll.isTracking, !scroll.isDragging, !scroll.isZooming, !scroll.isDecelerating else { return }
         guard newPosition != position else { return }
         position = newPosition
@@ -156,10 +138,10 @@ final class MobileZoomController<Content: View>: UIViewController, UIScrollViewD
     private func publish() {
         guard !applying, viewport.width > 0, viewport.height > 0 else { return }
         let scale = min(max(scroll.zoomScale, 1), 6)
-        position = MobileZoomPosition(scale: scale,
+        position = ZoomPosition(scale: scale,
             x: (scroll.contentOffset.x + viewport.width / 2) / (viewport.width * scale),
             y: (scroll.contentOffset.y + viewport.height / 2) / (viewport.height * scale))
-        if scale <= 1.001 { position = MobileZoomPosition() }
+        if scale <= 1.001 { position = ZoomPosition() }
         updateAccessibility()
         onChange?(position)
     }

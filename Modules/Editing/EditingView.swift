@@ -7,6 +7,7 @@ struct EditingView: View {
     @State private var showExport = false
     @State private var exportWithUpload = false
     @FocusState private var keyboardFocus: Bool
+    @State private var zoom = ZoomPosition()
 
     var body: some View {
         let list = app.culling.visible(photos)
@@ -15,10 +16,13 @@ struct EditingView: View {
         if let photo {
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    EditingToolbar(list: list, showExport: $showExport)
+                    EditingToolbar(list: list, showExport: $showExport, zoom: $zoom)
                     Divider()
-                    EditCanvas()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    EditZoom(position: $zoom, dragPans: !usesPointer, actionNames: [app.t("zoom.in"), app.t("zoom.out"), app.t("zoom.fit")]) {
+                        EditCanvas()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
                     FilmStrip(list: list)
                 }
                 Divider()
@@ -34,6 +38,13 @@ struct EditingView: View {
             }
             .onKeyPress(phases: .down) { press in handleKey(press) }
             .task(id: "\(photo.id)|\(photo.path)") { app.editing.load(photo) }
+            // Outra foto começa ajustada à janela; ampliada, o preview é renderizado com mais detalhe.
+            .onChange(of: photo.id) { _, _ in zoom = ZoomPosition() }
+            .onChange(of: zoom.previewDetail()) { _, detail in
+                app.editing.previewDetail = detail
+                app.editing.scheduleRender()
+            }
+            .onDisappear { app.editing.previewDetail = 1 }
             .sheet(isPresented: $showExport) {
                 ExportSheet(photos: app.culling.targets(in: list).isEmpty ? [photo] : app.culling.targets(in: list), startWithUpload: exportWithUpload)
             }
@@ -52,6 +63,12 @@ struct EditingView: View {
                 subtitle: app.t("editing.empty.subtitle")
             )
         }
+    }
+
+    /// Ferramentas em que arrastar edita a foto (recorte, máscaras, remoção, divisão antes/depois).
+    private var usesPointer: Bool {
+        let editing = app.editing
+        return editing.isCropping || editing.tab == .masks || editing.tab == .remove || editing.compareMode == .split
     }
 
     /// `⌘E` / `⌘⇧E` podem chegar antes de este ecrã existir: o pedido fica no estado da app até ser consumido.
@@ -89,6 +106,7 @@ struct EditingToolbar: View {
     @Environment(AppState.self) private var app
     let list: [Photo]
     @Binding var showExport: Bool
+    @Binding var zoom: ZoomPosition
 
     var body: some View {
         @Bindable var editing = app.editing
@@ -106,6 +124,20 @@ struct EditingToolbar: View {
             .pickerStyle(.segmented)
             .fixedSize()
             .hint(app.t("compare.mode"))
+
+            Button { withAnimation(Motion.snappy) { zoom = zoom.stepped(1 / 1.5) } } label: { Image(systemName: "minus.magnifyingglass") }
+                .keyboardShortcut("-", modifiers: .command)
+                .disabled(zoom.scale <= 1)
+                .hint(app.t("zoom.out"))
+            Button { withAnimation(Motion.snappy) { zoom = ZoomPosition() } } label: {
+                Text("\(Int((zoom.scale * 100).rounded())) %").monospacedDigit().frame(minWidth: 40)
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .hint(app.t("zoom.fit"))
+            Button { withAnimation(Motion.snappy) { zoom = zoom.stepped(1.5) } } label: { Image(systemName: "plus.magnifyingglass") }
+                .keyboardShortcut("=", modifiers: .command)
+                .disabled(zoom.scale >= ZoomPosition.maxScale)
+                .hint(app.t("zoom.in"))
 
             Spacer(minLength: 8)
 

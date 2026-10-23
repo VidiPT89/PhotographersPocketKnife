@@ -765,3 +765,26 @@
 "export.retryFailed" = "Retry the %d that failed";
 "settings.autosaveSidecars" = "Save ratings next to the originals";
 "settings.autosaveSidecarsHint" = "A .ppk file beside each photo, kept up to date on its own: stars, flags, labels and edits survive even without the catalog. The image itself is not changed.";
+
+/* Assistente do file info */
+"assistant.title" = "Assistant";
+"assistant.notes" = "Notes about this photograph";
+"assistant.stop" = "Stop";
+"assistant.dictate" = "Dictate";
+"assistant.fillAI" = "Fill with AI";
+"assistant.useCaption" = "Use as caption";
+"assistant.thinking" = "Writing a proposal…";
+"assistant.empty" = "The notes did not give enough to fill any field.";
+"assistant.discard" = "Discard";
+"assistant.apply" = "Apply proposal";
+"assistant.footerReady" = "Dictation and AI run on this Mac. Check names and facts before saving.";
+"assistant.footerPreparing" = "Dictation runs on this Mac. Filling with AI will appear once Apple Intelligence finishes downloading.";
+"assistant.footerUnavailable" = "Dictation runs on this Mac. Filling with AI needs Apple Intelligence.";
+"assistant.denied" = "Allow the microphone and speech recognition in System Settings to dictate.";
+"assistant.unavailable" = "Dictation on this Mac is not available for this language, or there is no microphone.";
+"assistant.failed" = "The AI could not write a proposal. Try again, or fill in the fields yourself.";
+
+/* Zoom no editor */
+"zoom.in" = "Zoom in";
+"zoom.out" = "Zoom out";
+"zoom.fit" = "Fit photo to window";

@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.2.0"
-    CURRENT_PROJECT_VERSION: "96"
+    CURRENT_PROJECT_VERSION: "97"
 packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation.git
@@ -44,6 +44,7 @@ targets:
       - Modules/Editing/AdjustmentPanel.swift
       - Modules/Editing/LocalAdjustments.swift
       - Modules/Editing/RemovalPanel.swift
+      - Modules/Editing/ZoomPosition.swift
       - App/Resources/PrivacyInfo.xcprivacy
     dependencies:
       - package: ZIPFoundation
@@ -126,6 +127,8 @@ targets:
       properties:
         # Build sem Developer ID: o Sparkle vem assinado por outra equipa e o hardened runtime recusa-o sem isto.
         com.apple.security.cs.disable-library-validation: true
+        # O ditado do file info: o hardened runtime bloqueia o microfone sem isto.
+        com.apple.security.device.audio-input: true
     info:
       path: App/Info.plist
       properties:
@@ -137,6 +140,8 @@ targets:
         LSApplicationCategoryType: public.app-category.photography
         NSHumanReadableCopyright: "© 2026 David Arsénio Martins"
         NSPrincipalClass: NSApplication
+        NSMicrophoneUsageDescription: Dictate notes about a photograph to fill in its file info.
+        NSSpeechRecognitionUsageDescription: Turn your dictated notes into text on this device for the file info.
         CFBundleDocumentTypes:
           - CFBundleTypeName: Folder
             CFBundleTypeRole: Viewer
@@ -175,6 +180,7 @@ targets:
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
         com.apple.security.network.client: true
+        com.apple.security.device.audio-input: true
     info:
       path: App/Info-AppStore.plist
       properties:
@@ -186,6 +192,8 @@ targets:
         LSApplicationCategoryType: public.app-category.photography
         NSHumanReadableCopyright: "© 2026 David Arsénio Martins"
         NSPrincipalClass: NSApplication
+        NSMicrophoneUsageDescription: Dictate notes about a photograph to fill in its file info.
+        NSSpeechRecognitionUsageDescription: Turn your dictated notes into text on this device for the file info.
         ITSAppUsesNonExemptEncryption: false
         CFBundleDocumentTypes:
           - CFBundleTypeName: Folder
@@ -211,6 +219,7 @@ targets:
     platform: macOS
     sources:
       - Tests
+      - iOSTests/FileInfoAssistantTests.swift
     dependencies:
       - target: PhotographersPocketKnife
     settings:
@@ -224,6 +233,7 @@ targets:
     platform: macOS
     sources:
       - Tests
+      - iOSTests/FileInfoAssistantTests.swift
     dependencies:
       - target: PhotographersPocketKnifeAppStore
     settings:

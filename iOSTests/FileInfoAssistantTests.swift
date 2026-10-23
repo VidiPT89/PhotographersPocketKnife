@@ -40,8 +40,8 @@ final class FileInfoAssistantTests: XCTestCase {
         XCTAssertTrue(FileInfoProposal.prompt(notes: "x", date: nil, camera: nil, fields: IPTCFields(), sceneKeywords: []).contains("none"))
     }
 
-    /// Corre o modelo da Apple Intelligence a sério, num iPhone que o tenha; no simulador e sem ele o teste é ignorado.
-    @available(iOS 26, *)
+    /// Corre o modelo da Apple Intelligence a sério, num iPhone ou Mac que o tenha; no simulador e sem ele o teste é ignorado.
+    @available(iOS 26, macOS 26, *)
     func testOnDeviceModelFillsFieldsFromPortugueseNotesWithoutInventing() async throws {
         #if targetEnvironment(simulator)
         throw XCTSkip("The simulator reports the model as available but cannot load its safety assets")

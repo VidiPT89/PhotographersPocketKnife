@@ -54,4 +54,44 @@ final class AppUITests: XCTestCase {
         app.radioButtons["EN"].click()
         XCTAssertTrue(app.buttons["Editing"].waitForExistence(timeout: 5))
     }
+
+    func testEditorZoomsFromTheToolbarAndKeyboard() {
+        app.launchArguments += ["-ppk-skip-splash", "-ppk-ui-fixtures"]
+        app.launch()
+        let editing = app.buttons["Editing"]
+        XCTAssertTrue(editing.waitForExistence(timeout: Self.launchTimeout))
+        editing.click()
+        let fit = app.buttons["Fit photo to window"]
+        XCTAssertTrue(fit.waitForExistence(timeout: 10), "Zoom controls in the editor toolbar")
+        XCTAssertTrue(app.buttons["Zoom in"].isEnabled)
+        XCTAssertFalse(app.buttons["Zoom out"].isEnabled, "Nothing to zoom out of at fit")
+        app.buttons["Zoom in"].click()
+        XCTAssertTrue(app.staticTexts["150 %"].waitForExistence(timeout: 3) || fit.label.contains("150"))
+        app.typeKey("=", modifierFlags: .command)
+        XCTAssertTrue(app.buttons["Zoom out"].isEnabled)
+        app.typeKey("0", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["100 %"].waitForExistence(timeout: 3) || fit.label.contains("100"))
+        XCTAssertFalse(app.buttons["Zoom out"].isEnabled)
+    }
+
+    func testFileInfoAssistantTurnsNotesIntoTheCaption() {
+        app.launchArguments += ["-ppk-skip-splash", "-ppk-ui-fixtures"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Culling"].waitForExistence(timeout: Self.launchTimeout))
+        app.typeKey("i", modifierFlags: .command)
+        let notes = app.textFields["fileinfo-notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 10), "Assistant in the file info window")
+        XCTAssertTrue(app.buttons["fileinfo-dictate"].exists)
+        notes.click()
+        notes.typeText("Benfica v Porto at the Estadio da Luz")
+        // Sem Apple Intelligence aparece "Usar como legenda"; com ela, "Preencher com IA" (o modelo testa-se nos testes unitários).
+        let useCaption = app.buttons["fileinfo-use-caption"]
+        guard useCaption.exists else {
+            XCTAssertTrue(app.buttons["fileinfo-ai"].isEnabled)
+            return
+        }
+        useCaption.click()
+        let caption = app.textViews.containing(NSPredicate(format: "value CONTAINS %@", "Estadio da Luz")).firstMatch
+        XCTAssertTrue(caption.waitForExistence(timeout: 3) || app.textFields.containing(NSPredicate(format: "value CONTAINS %@", "Estadio da Luz")).count > 1)
+    }
 }

@@ -156,9 +156,12 @@ struct FileInfoSheet: View {
             if let message {
                 Text(message).font(Typography.caption).foregroundStyle(Brand.error)
             }
-            Spacer()
+            FileInfoAssistant(fields: $fields, photo: together ? nil : photo)
+                .disabled(isLoading || isSaving || photos.isEmpty)
+                // A foto encolhe primeiro, para a proposta se ler sem deslocar.
+                .layoutPriority(1)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     /// Uma foto, ou as primeiras quatro em mosaico quando se preenchem todas juntas.
@@ -176,7 +179,8 @@ struct FileInfoSheet: View {
                 ThumbnailView(url: photo.url, maxPixel: 1200, recipeData: photo.recipeData, fit: true)
             }
         }
-        .frame(height: 320)
+        // Encolhe quando o assistente mostra uma proposta, para caber tudo na janela.
+        .frame(minHeight: 160, maxHeight: 320)
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 

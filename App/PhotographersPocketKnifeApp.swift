@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+import CoreImage
+import ImageIO
+import UniformTypeIdentifiers
 #if !APPSTORE
 import Sparkle
 #endif
@@ -46,7 +49,28 @@ struct PhotographersPocketKnifeApp: App {
                 fatalError("Catalog unavailable: \(error)")
             }
         }
+        #if DEBUG
+        if Self.isUITesting, ProcessInfo.processInfo.arguments.contains("-ppk-ui-fixtures") { try? Self.seed(container) }
+        #endif
     }
+
+    #if DEBUG
+    /// Fotos de teste para os testes de interface do editor e do file info.
+    @MainActor private static func seed(_ container: ModelContainer) throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("PPK-UI-Fixtures")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for index in 1...2 {
+            let url = directory.appendingPathComponent("Shoot-0\(index).jpg")
+            let filter = CIFilter(name: "CICheckerboardGenerator", parameters: ["inputColor0": CIColor(red: 0.2, green: Double(index) * 0.15, blue: 0.4), "inputColor1": CIColor(red: 0.85, green: 0.6, blue: Double(index) * 0.1), "inputWidth": 90])!
+            let image = filter.outputImage!.cropped(to: CGRect(x: 0, y: 0, width: 800, height: 600))
+            let cg = ImageRenderer.shared.context.createCGImage(image, from: image.extent)!
+            let writer = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+            CGImageDestinationAddImage(writer, cg, nil); CGImageDestinationFinalize(writer)
+            container.mainContext.insert(Photo(info: MetadataReader.basicInfo(for: url), sessionName: "Test shoot"))
+        }
+        try container.mainContext.save()
+    }
+    #endif
 
     @MainActor
     private func warnIfCatalogFailed() {

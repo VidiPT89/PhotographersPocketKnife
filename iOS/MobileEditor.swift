@@ -9,8 +9,8 @@ struct MobileEditor: View {
     let photos: [Photo]
     @State private var exporting = false
     @State private var fullScreen = false
-    @State private var zoom = MobileZoomPosition()
-    @State private var presentationZoom = MobileZoomPosition()
+    @State private var zoom = ZoomPosition()
+    @State private var presentationZoom = ZoomPosition()
     var body: some View {
         Group {
             if app.editing.photo != nil {
@@ -37,7 +37,7 @@ struct MobileEditor: View {
                     if let recipe = app.editing.clipboard {
                         Button(app.m("Paste settings", "Colar ajustes")) { app.editing.applySettings(recipe, labelKey: "history.paste", to: app.culling.targets(in: photos)) }
                     }
-                    Button(app.m("Presentation", "Apresentação")) { presentationZoom = MobileZoomPosition(); fullScreen = true }
+                    Button(app.m("Presentation", "Apresentação")) { presentationZoom = ZoomPosition(); fullScreen = true }
                     Button(app.m("Export", "Exportar")) { exporting = true }
                     Button(app.m("Reset edits", "Repor edição"), role: .destructive) { app.editing.reset() }
                 } label: { Image(systemName: "ellipsis.circle") }
@@ -53,7 +53,7 @@ struct MobileEditor: View {
                     EditCanvas().environment(app).allowsHitTesting(false)
                 }
                 .id(app.editing.photo?.id)
-                Button { fullScreen = false; presentationZoom = MobileZoomPosition() } label: { Image(systemName: "xmark.circle.fill").font(.largeTitle).padding() }
+                Button { fullScreen = false; presentationZoom = ZoomPosition() } label: { Image(systemName: "xmark.circle.fill").font(.largeTitle).padding() }
                     .accessibilityLabel(app.m("Close presentation", "Fechar apresentação"))
             }
         }
@@ -71,13 +71,13 @@ struct MobileEditor: View {
                 EditCanvas().environment(app)
             }
             .id(app.editing.photo?.id)
-            .onChange(of: app.editing.photo?.id) { _, _ in zoom = MobileZoomPosition() }
+            .onChange(of: app.editing.photo?.id) { _, _ in zoom = ZoomPosition() }
             HStack {
                 Button { navigate(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }
                     .accessibilityLabel(app.m("Previous photograph", "Fotografia anterior"))
                     .accessibilityIdentifier("mobile-previous-photo")
                 Spacer()
-                Button { zoom = MobileZoomPosition() } label: {
+                Button { zoom = ZoomPosition() } label: {
                     Text(String(format: "%.1f×", zoom.scale)).monospacedDigit().frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel(app.m("Fit photograph", "Ajustar fotografia ao ecrã"))
@@ -102,7 +102,7 @@ struct MobileEditor: View {
     }
     /// Sharper previews while zoomed.
     private var previewDetail: Double {
-        MobileZoomPosition(scale: max(zoom.scale, fullScreen ? presentationZoom.scale : 1)).previewDetail()
+        ZoomPosition(scale: max(zoom.scale, fullScreen ? presentationZoom.scale : 1)).previewDetail()
     }
     private var zoomActionNames: [String] {
         [app.m("Zoom in", "Ampliar"), app.m("Zoom out", "Reduzir"), app.m("Fit photograph", "Ajustar fotografia ao ecrã")]
